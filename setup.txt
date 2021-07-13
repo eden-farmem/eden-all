@@ -1,0 +1,44 @@
+
+Running memcached on shenango
+=============================
+(Reference: https://github.com/shenango/all/blob/master/build_all.sh but we can't use that script itself because the repo it is in 
+is built for another kernel version)
+
+1. Building Shenango
+    sudo apt install build-essential libnuma-dev clang autoconf autotools-dev m4 automake libevent-dev  libpcre++-dev libtool ragel libev-dev moreutils parallel
+    git clone https://github.com/shenango/shenango
+    cd shenango/
+    code README.md 
+    sudo ./dpdk.sh
+    sudo ./scripts/setup_machine.sh
+
+    pushd shenango/scripts
+    gcc cstate.c -o cstate
+    popd
+
+    mkdir /dev/hugepages1G
+# mount -t hugetlbfs -o pagesize=1G none /dev/hugepages1G
+sudo mkdir /dev/hugepages2M
+sudo mount -t hugetlbfs -o pagesize=2M none /dev/hugepages2M
+
+2. Building memcached
+    cd apps/
+    git clone https://github.com/shenango/memcached
+    cd memcached/
+    ./autogen.sh 
+    ./configure --with-shenango=$PWD/../..
+    make
+
+3. Running memcached
+    Following experiment.py
+
+    pushd shenango/ && make clean && make DEBUG=1 -j && popd        # build Shenango
+    python experiment.py
+    function ioklog { dir=$(ls . | grep run | tail -n1); log=$dir/iokernel.sc2-hs2-b1630.log; echo $log; cat $log; }   # latest iokernel log
+
+
+4. Seeing errors (membinf EIO) on newer kernel version. Going back to 4.15 which 
+    is the one that's well tested. To boot to older version by default:
+    sudo vim /etc/default/grub
+    GRUB_DEFAULT="Advanced options for Ubuntu>Ubuntu, with Linux 4.15.0-144-generic"
+    sudo update-grub
