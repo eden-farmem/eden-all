@@ -5,40 +5,100 @@ Running memcached on shenango
 is built for another kernel version)
 
 1. Building Shenango
-    sudo apt install build-essential libnuma-dev clang autoconf autotools-dev m4 automake libevent-dev  libpcre++-dev libtool ragel libev-dev moreutils parallel
-    git clone https://github.com/shenango/shenango
+    sudo apt install build-essential libnuma-dev clang autoconf autotools-dev m4 automake libevent-dev  libpcre++-dev libtool ragel libev-dev moreutils parallel libmnl-dev
+    git clone https://github.com/shenango/shenango 
+    or, in our case:
+        git clone git@gitlab.eng.vmware.com:ayelam/rmem-scheduler.git   #needs git ssh access
+        git config --global user.email "ayelam@vmware.com"
+        git config --global user.name "Anil Yelam"
+        cd rmem-scheduler
+        git submodule init
+        git submodule update --recursive
+
     cd shenango/
     code README.md 
     sudo ./dpdk.sh
     sudo ./scripts/setup_machine.sh
 
-    pushd shenango/scripts
+    pushd scripts
     gcc cstate.c -o cstate
     popd
 
-    mkdir /dev/hugepages1G
-# mount -t hugetlbfs -o pagesize=1G none /dev/hugepages1G
-sudo mkdir /dev/hugepages2M
-sudo mount -t hugetlbfs -o pagesize=2M none /dev/hugepages2M
+    make clean
+    make -j DEBUG=1
+
+    1.1. Also build the synthetic app; it provides client-side for memcached
+    Watch out for the error pointed out in https://github.com/shenango/shenango/issues/10
+        pushd shenango/apps/synthetic
+        curl https://sh.rustup.rs -sSf | sh
+        source $HOME/.cargo/env
+        rustup default nightly-2020-06-06
+        cargo clean
+        cargo update
+        cargo build --release
+        popd
+
 
 2. Building memcached
-    cd apps/
     git clone https://github.com/shenango/memcached
+    or, in our case, it should already exist.
     cd memcached/
     ./autogen.sh 
-    ./configure --with-shenango=$PWD/../..
-    make
+    ./configure --with-shenango=$PWD/../shenango
+    make -j
 
-3. Running memcached
-    Following experiment.py
 
+3. Running Shenago iokernel (following https://github.com/shenango/all/blob/master/experiment.py)
     pushd shenango/ && make clean && make DEBUG=1 -j && popd        # build Shenango
+    sudo ./shenango/iokerneld
+
+    ISSUES:
+    3.1. Seeing errors (membinf EIO) on newer kernel version. Going back to 4.15 which 
+        is the one that's well tested. To boot to older version by default:
+        sudo vim /etc/default/grub
+        GRUB_DEFAULT="Advanced options for Ubuntu>Ubuntu, with Linux 4.15.0-144-generic"
+        sudo update-grub
+        Skip this step if the kernel is already 4.15 (Ubuntu 18.04).
+
+    3.2. Now Shenango's DPDK cannot see the mellanox cx-5 ports. 
+        a. Installed OFED with DPDK and rebooted. Testpmd works with these ports!
+        b. The mellanox5 drivers are not being detected because shenango makefile is building mlx4 by default.
+        c. libmnl-dev must be installed as well
+
+
+4. Running experiment.py with a client and a server machine.
+    
+    4.1. Turn off the background app (swaptions) in experiment.py; just running memcached for now.
+
+    4.2. (NOT NEEDED?) Edit /etc/hosts for machines to ping/see each other through the mellanox NICs 
+        i.e., hostnames resove to mellanox IPs 
+
+    4.3. Time is not properly synchronized on my servers (off by a few seconds), which Shenango seems to check.
+        Installed ntp and set up one of the machines as ntp source (VMware network would not allow an external
+        synchronization source like ntp.ubuntu.com)
+        http://aixperts.blogspot.com/2012/11/configuring-ntp-server-without-internet.html
+            sudo apt install aptitude
+            sudo aptitude install ntp
+            sudo vim /etc/ntp.conf 
+                Comment out default ubuntu servers and pools. Add: 
+                    logfile /var/log/ntpd.log
+                    server sc2-hs2-b1640.eng.vmware.com iburst
+            sudo systemctl restart ntp
+            sudo systemctl status ntp
+            ntpq -pn    # CHECK!
+
+    4.4. Install `go` on the observer machine. 
+        sudo apt install golang-go
+
+    
+
+
+11. The client needs to run Shenango/iokernel too, not sure why yet. Instead of b1630, using b1607 
+    instead that has the proper kernel ready to go!
+
+
+
+
     python experiment.py
-    function ioklog { dir=$(ls . | grep run | tail -n1); log=$dir/iokernel.sc2-hs2-b1630.log; echo $log; cat $log; }   # latest iokernel log
-
-
-4. Seeing errors (membinf EIO) on newer kernel version. Going back to 4.15 which 
-    is the one that's well tested. To boot to older version by default:
-    sudo vim /etc/default/grub
-    GRUB_DEFAULT="Advanced options for Ubuntu>Ubuntu, with Linux 4.15.0-144-generic"
-    sudo update-grub
+    function logdir { dir=$(ls . | grep run | tail -n1); echo $dir; }   # latest log dir
+    function ioklog { dir=$(ls . | grep run | tail -n1); log=$dir/iokernel.`hostname`.log; echo $log; cat $log; }   # latest iokernel log

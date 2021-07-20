@@ -6,13 +6,15 @@ import json
 import atexit
 import random
 from datetime import datetime
+import socket
 
 # Requires password-less sudo and ssh
 
 # ts requires moreutils to be installed
 # 
 
-BASE_DIR = os.getcwd()
+# BASE_DIR = os.getcwd()
+BASE_DIR = "/home/ayelam/rmem-scheduler"
 SDIR = "{}/shenango/".format(BASE_DIR)
 
 CLIENT_BIN = "{}/apps/synthetic/target/release/synthetic".format(SDIR)
@@ -72,6 +74,7 @@ NETMASK = "255.255.255.0"
 GATEWAY = IP(1)
 
 LNX_IPS = {
+    'sc2-hs2-b1607': IP(7),
     'sc2-hs2-b1630': IP(30),
     'sc2-hs2-b1640': IP(40),
 }
@@ -84,24 +87,40 @@ LNX_IPS = {
 #     'sc2-hs2-b1640':    '18.26.4.41',
 # })
 
+# Normal ssh IPs? TODO: Confirm
 OOB_IPS = {
-    'sc2-hs2-b1630':    '18.26.4.39',
-    'sc2-hs2-b1640':    '18.26.4.41',
+    'sc2-hs2-b1607':    '10.172.209.77',
+    'sc2-hs2-b1630':    '10.172.209.100',
+    'sc2-hs2-b1640':    '10.172.209.110',
 }
 
 SERVER_MACS = {
+    'sc2-hs2-b1607': '50:6b:4b:23:a8:25',
     'sc2-hs2-b1630': '50:6b:4b:23:a8:2d',
-    'sc2-hs2-b1640': '50:6b:4b:23:a8:a4 ',
+    'sc2-hs2-b1640': '50:6b:4b:23:a8:a4',
 }
 
-OBSERVER = "sc2-hs2-b1630"
-OBSERVER_IP = IP(30)
-OBSERVER_MAC = SERVER_MACS['sc2-hs2-b1630']
-CLIENT_SET = ["sc2-hs2-b1640"]
+PCI_SLOTS = {
+    'sc2-hs2-b1607': '0000:d8:00.1',
+    'sc2-hs2-b1630': '0000:d8:00.1',
+    'sc2-hs2-b1640': '0000:d8:00.0',
+}
+
+IFNAMES = {
+    'sc2-hs2-b1607': 'enp216s0f1',
+    'sc2-hs2-b1630': 'enp216s0f1',
+    'sc2-hs2-b1640': 'enp216s0f0',
+}
+
+OBSERVER = "sc2-hs2-b1640"
+OBSERVER_IP = IP(40)
+OBSERVER_MAC = SERVER_MACS['sc2-hs2-b1640']
+CLIENT_SET = ["sc2-hs2-b1607"]
 CLIENT_MACHINE_NCORES = 6
 NEXT_CLIENT_ASSIGN = 0
-NIC_PCI = "0000:d8:00.1"
-NIC_IFNAME = "enp216s0f1"
+NIC_PCI = PCI_SLOTS[socket.gethostname()]
+NIC_IFNAME = IFNAMES[socket.gethostname()]
+
 
 def is_server():
     return THISHOST in SERVER_MACS.keys()
@@ -689,6 +708,7 @@ def launch_shenango_program(cfg, experiment):
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
     time.sleep(3)
     proc.poll()
+    print("returns code: " + str(proc.returncode))
     assert not proc.returncode
     return proc
 
@@ -801,6 +821,7 @@ def launch_apps(experiment):
 
     procs = []
     for cfg in experiment['apps']:
+        print(cfg)
         if 'before' in cfg:
             for cmd in cfg['before']:
                 eval(cmd)(cfg, experiment)
@@ -950,6 +971,7 @@ def verify_dates(host_list):
 
 
 def setup_clients(experiment):
+    print("Setting up clients")
     servers = experiment['clients'].keys()
     verify_dates(servers + [OBSERVER])
     runremote("mkdir -p {}".format(
@@ -1081,8 +1103,10 @@ def paper_experiments():
     if True:
         # Shenango, 1 MPPS at a time
         for start_mpps in range(6):
+            # execute_experiment(bench_memcached(
+            #     "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg="swaptions", samples=10))
             execute_experiment(bench_memcached(
-                "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg="swaptions", samples=10))
+                "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg=None, samples=10))
 
         # # Linux, higher sample rate below 1.6
         # execute_experiment(bench_memcached(
