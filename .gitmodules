@@ -1,6 +1,6 @@
 [submodule "memcached"]
 	path = memcached
-	url = https://gitlab.eng.vmware.com/ayelam/memcached.git
+	url = git@gitlab.eng.vmware.com:ayelam/memcached.git
 [submodule "shenango"]
 	path = shenango
-	url = https://gitlab.eng.vmware.com/ayelam/shenango
+	url = git@gitlab.eng.vmware.com:ayelam/shenango.git
