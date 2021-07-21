@@ -29,10 +29,10 @@ is built for another kernel version)
 
     1.1. Also build the synthetic app; it provides client-side for memcached
     Watch out for the error pointed out in https://github.com/shenango/shenango/issues/10
-        pushd shenango/apps/synthetic
         curl https://sh.rustup.rs -sSf | sh
         source $HOME/.cargo/env
         rustup default nightly-2020-06-06
+        pushd shenango/apps/synthetic
         cargo clean
         cargo update
         cargo build --release
@@ -47,8 +47,11 @@ is built for another kernel version)
     ./configure --with-shenango=$PWD/../shenango
     make -j
 
+(We need to rebuild the whole thing in case of changes to Shenago)
+
 
 3. Running Shenago iokernel (following https://github.com/shenango/all/blob/master/experiment.py)
+    # NOTE: Turn off debug during real experiments!
     pushd shenango/ && make clean && make DEBUG=1 -j && popd        # build Shenango
     sudo ./shenango/iokerneld
 
@@ -90,7 +93,7 @@ is built for another kernel version)
     4.4. Install `go` on the observer machine. 
         sudo apt install golang-go
 
-    
+
 
 
 11. The client needs to run Shenango/iokernel too, not sure why yet. Instead of b1630, using b1607 
@@ -102,3 +105,5 @@ is built for another kernel version)
     python experiment.py
     function logdir { dir=$(ls . | grep run | tail -n1); echo $dir; }   # latest log dir
     function ioklog { dir=$(ls . | grep run | tail -n1); log=$dir/iokernel.`hostname`.log; echo $log; cat $log; }   # latest iokernel log
+
+numactl -N 0 -m 0 ./synthetic --config 0-sc2-hs2-b1607.memcached.config 192.168.0.100:5060 --warmup --output=buckets --protocol memcached --mode runtime-client --threads 1200 --runtime 10 --barrier-peers 1 --barrier-leader sc2-hs2-b1607  --mean=842 --distribution=zero --mpps=1.0 --samples=10 --transport tcp --start_mpps 0.0 > 0-sc2-hs2-b1607.memcached.out 2> 0-sc2-hs2-b1607.memcached.err

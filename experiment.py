@@ -582,8 +582,8 @@ def start_iokerneld(experiment):
     if 'noht' in experiment and THISHOST == experiment['server_hostname']:
         binary = binaries['iokerneld']['noht']
     runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    proc = subprocess.Popen("sudo {} 2>&1 | ts %s > iokernel.{}.log".format(
-        binary, THISHOST), shell=True, cwd=experiment['name'])
+    proc = subprocess.Popen("sudo {} {} 2>&1 | ts %s > iokernel.{}.log".format(
+        binary, NIC_PCI, THISHOST), shell=True, cwd=experiment['name'])
     time.sleep(10)
     proc.poll()
 
@@ -696,6 +696,7 @@ def launch_shenango_program(cfg, experiment):
         "{}/{}.config".format(experiment['name'], cfg['name']), experiment, **cfg)
 
     args = cfg['args'].format(**cfg)
+    print(args)
 
     fullcmd = "numactl -N 0 -m 0 {bin} {name}.config {args} > {name}.out 2> {name}.err"
     fullcmd = fullcmd.format(bin=cfg['binary'], name=cfg['name'], args=args)
@@ -705,11 +706,13 @@ def launch_shenango_program(cfg, experiment):
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
     #     fullcmd = "export RUST_BACKTRACE=1; " + fullcmd
 
-    proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
-    time.sleep(3)
-    proc.poll()
-    print("returns code: " + str(proc.returncode))
-    assert not proc.returncode
+    # proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
+    # time.sleep(3)
+    # proc.poll()
+    # print("returns code: " + str(proc.returncode))
+    # assert not proc.returncode
+
+    proc = subprocess.Popen("ls -l", shell=True, cwd=experiment['name'])
     return proc
 
 def launch_zygos_program(cfg, experiment):
@@ -1017,6 +1020,8 @@ def execute_experiment(experiment):
         observer_cmd = "exec ssh -t -t {observer} 'python {dir}/{script} observer {dir} > {dir}/py.{observer}.log 2>&1'".format(
             observer=OBSERVER, dir=experiment['name'], script=os.path.basename(__file__))
         if OBSERVER: observer = subprocess.Popen(observer_cmd, shell=True)
+        time.sleep(3000)
+
         runremote("ulimit -S -c unlimited; python {dir}/{script} client {dir} > {dir}/py.{{}}.log 2>&1".format(dir=experiment[
                   'name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
     finally:
