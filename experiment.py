@@ -582,8 +582,9 @@ def start_iokerneld(experiment):
     if 'noht' in experiment and THISHOST == experiment['server_hostname']:
         binary = binaries['iokerneld']['noht']
     runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    proc = subprocess.Popen("sudo {} {} 2>&1 | ts %s > iokernel.{}.log".format(
-        binary, NIC_PCI, THISHOST), shell=True, cwd=experiment['name'])
+    cmd = "sudo {} {} 2>&1 | ts %s > iokernel.{}.log".format(binary, NIC_PCI, THISHOST)
+    print("iokernel cmd: " + cmd)
+    proc = subprocess.Popen(cmd, shell=True, cwd=experiment['name'])
     time.sleep(10)
     proc.poll()
 
@@ -701,18 +702,17 @@ def launch_shenango_program(cfg, experiment):
     fullcmd = "numactl -N 0 -m 0 {bin} {name}.config {args} > {name}.out 2> {name}.err"
     fullcmd = fullcmd.format(bin=cfg['binary'], name=cfg['name'], args=args)
     print "Running", fullcmd
+    time.sleep(3000)
 
     ### HACK
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
     #     fullcmd = "export RUST_BACKTRACE=1; " + fullcmd
 
-    # proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
-    # time.sleep(3)
-    # proc.poll()
-    # print("returns code: " + str(proc.returncode))
-    # assert not proc.returncode
-
-    proc = subprocess.Popen("ls -l", shell=True, cwd=experiment['name'])
+    proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
+    time.sleep(3)
+    proc.poll()
+    print("returns code: " + str(proc.returncode))
+    assert not proc.returncode
     return proc
 
 def launch_zygos_program(cfg, experiment):
