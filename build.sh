@@ -11,6 +11,7 @@ set -e
 usage="\n
 -d, --debug \t\t build debug\n
 -o, --onetime \t\t first time (includes some one-time init stuff)\n
+-n, --sync \t\t sync code base from git (for syncing updates on other machines)\n
 -s, --shenango \t\t build shenango core\n
 -sd,--sdpdk \t\t include dpdk in the build\n
 -m, --memcached \t\t build memcached app\n
@@ -30,6 +31,9 @@ case $i in
     ONETIME=1
     ;;
 
+    -n|--sync)
+    SYNC=1
+    ;;
 
     -s|--shenango)
     SHENANGO=1
@@ -75,6 +79,10 @@ done
 if [[ $ONETIME ]]; then
     git submodule init
     git submodule update --recursive
+fi
+
+if [[ $SYNC ]]; then 
+    git pull --recurse-submodules
 fi
 
 if [[ $SHENANGO ]]; then 
