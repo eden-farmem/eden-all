@@ -16,6 +16,7 @@ usage="\n
 -sd,--sdpdk \t\t include dpdk in the build\n
 -m, --memcached \t\t build memcached app\n
 -sy,--synthetic \t\t build shenango synthetic app\n
+-sb,--sbench \t\t build shenango bench app\n
 -a, --all \t\t build everything\n
 -h, --help \t\t this usage information message\n"
 
@@ -39,7 +40,7 @@ case $i in
     SHENANGO=1
     ;;
 
-    -sd|--sdpdk)
+    -sd|--dpdk)
     DPDK=1
     ;;
 
@@ -51,6 +52,11 @@ case $i in
     -sy|--synthetic)
     SHENANGO=1
     SYNTHETIC=1
+    ;;
+
+    -sb|--sbench)
+    SHENANGO=1
+    SBENCH=1
     ;;
 
     -a|--all)
@@ -77,8 +83,7 @@ esac
 done
 
 if [[ $ONETIME ]]; then
-    git submodule init
-    git submodule update --recursive
+    git submodule update --init --recursive
 fi
 
 if [[ $SYNC ]]; then 
@@ -86,12 +91,10 @@ if [[ $SYNC ]]; then
 fi
 
 if [[ $SHENANGO ]]; then 
-    if [[ $DPDK ]]; then
-        sudo ./dpdk.sh
-    fi
 
     pushd shenango 
-    make clean
+    make clean    
+    if [[ $DPDK ]]; then    ./dpdk.sh;  fi
     make -j ${DEBUG}
     popd 
 
@@ -119,8 +122,19 @@ if [[ $MEMCACHED ]]; then
     pushd memcached/
     ./autogen.sh 
     ./configure --with-shenango=$PWD/../shenango
+    make clean
     make -j
     popd
+fi
+
+if [[ $SBENCH ]]; then
+    pushd shenango/bindings
+    make clean && make all
+    popd
+    pushd shenango/apps/bench
+    make clean && make all
+    popd
+    # echo "Run `./shenango/iokerneld` and then `tbench tbench.config` "
 fi
 
 echo "ALL DONE!"
