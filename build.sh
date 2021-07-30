@@ -128,11 +128,11 @@ if [[ $MEMCACHED ]]; then
 fi
 
 if [[ $SBENCH ]]; then
-    pushd shenango/bindings
+    pushd shenango/bindings/cc
     make clean && make all
     popd
     pushd shenango/apps/bench
-    make clean && make all
+    make clean && make all -j
     popd
     # echo "Run `./shenango/iokerneld` and then `tbench tbench.config` "
 fi
