@@ -72,6 +72,7 @@ def IP(node):
 NETPFX = "192.168.0"
 NETMASK = "255.255.255.0"
 GATEWAY = IP(1)
+NIC_NUMA_NODE = 1
 
 LNX_IPS = {
     'sc2-hs2-b1607': IP(7),
@@ -112,10 +113,11 @@ IFNAMES = {
     'sc2-hs2-b1640': 'enp216s0f0',
 }
 
-OBSERVER = "sc2-hs2-b1640"
-OBSERVER_IP = IP(40)
-OBSERVER_MAC = SERVER_MACS['sc2-hs2-b1640']
-CLIENT_SET = ["sc2-hs2-b1607"]
+OBSERVER = "sc2-hs2-b1630"
+OBSERVER_IP = IP(30)
+OBSERVER_MAC = SERVER_MACS['sc2-hs2-b1630']
+CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
+# CLIENT_SET = ["sc2-hs2-b1640"]
 CLIENT_MACHINE_NCORES = 6
 NEXT_CLIENT_ASSIGN = 0
 NIC_PCI = PCI_SLOTS[socket.gethostname()]
@@ -289,7 +291,8 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'mac': gen_random_mac(),
             'host': client,
             'name': "{}-{}.{}".format(i, client, server_handle['name']),
-            'binary': "./synthetic --config",
+            'binary': "{} --config".format(CLIENT_BIN),
+            # 'binary': "./synthetic --config",
             'app': 'synthetic',
             'serverip': server_handle['ip'],
             'serverport': server_handle['port'],
@@ -457,7 +460,6 @@ def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=
     new_measurement_instances(len(CLIENT_SET), memcached_handle, mpps, x, nconns=nconns, start_mpps=start_mpps)
     finalize_measurement_cohort(x, samples, time)
 
-
     return x
 
 
@@ -596,8 +598,8 @@ def start_corearbiter(experiment):
     assert is_server()
     assert not 'noht' in experiment
     runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    proc = subprocess.Popen("sudo numactl -N 0 -m 0 {} > corearbiter.{}.log 2>&1".format(
-      binary, THISHOST), shell=True, cwd=experiment['name'])
+    proc = subprocess.Popen("sudo numactl -N {} -m {} {} > corearbiter.{}.log 2>&1".format(
+        NIC_NUMA_NODE, NIC_NUMA_NODE, binary, THISHOST), shell=True, cwd=experiment['name'])
     time.sleep(5)
     proc.poll()
     assert proc.returncode is None
@@ -699,10 +701,10 @@ def launch_shenango_program(cfg, experiment):
     args = cfg['args'].format(**cfg)
     print(args)
 
-    fullcmd = "numactl -N 0 -m 0 {bin} {name}.config {args} > {name}.out 2> {name}.err"
-    fullcmd = fullcmd.format(bin=cfg['binary'], name=cfg['name'], args=args)
+    fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err"
+    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)
     print "Running", fullcmd
-    time.sleep(3000)
+    # time.sleep(3000)
 
     ### HACK
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
@@ -738,8 +740,8 @@ def launch_zygos_program(cfg, experiment):
     args = cfg['args'].format(**cfg)
 
     ix = "{}/zygos/dp/ix".format(BASE_DIR)
-    fullcmd = "sudo numactl -N 0 -m 0 {prio} {ix} -c {cnf} -- {bin} {args} > {name}.out 2>&1"
-    fullcmd = fullcmd.format(prio=prio, ix=ix, bin=cfg['binary'], name=cfg['name'], cnf=os.path.abspath(cnf_name), args=args)
+    fullcmd = "sudo numactl -N {numa} -m {numa} {prio} {ix} -c {cnf} -- {bin} {args} > {name}.out 2>&1"
+    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE,prio=prio, ix=ix, bin=cfg['binary'], name=cfg['name'], cnf=os.path.abspath(cnf_name), args=args)
     print "Running", fullcmd
 
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
@@ -769,8 +771,8 @@ def launch_linux_program(cfg, experiment):
     # assert cfg['threads'] <= len(cpu_list)
     cpu_bind = "-C " + USABLE_CPUS_STR #-C " + ",".join(cpu_list[:cfg['threads']])
 
-    fullcmd = "numactl -N 0 -m 0 {bind} {prio} {bin} {args} > {name}.out 2>&1"
-    fullcmd = fullcmd.format(bind=cpu_bind, bin=binary,
+    fullcmd = "numactl -N {numa} -m {numa} {bind} {prio} {bin} {args} > {name}.out 2>&1"
+    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE,bind=cpu_bind, bin=binary,
                              name=name, args=args, prio=prio)
     print "Running", fullcmd
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
@@ -802,8 +804,8 @@ def launch_arachne_program(cfg, experiment):
         #prio = "nice -n {}".format(cfg['nice'])
 
     args = cfg['args'].format(**cfg)
-    fullcmd = "numactl -N 0 -m 0 {prio} {bin} {args} > {name}.out 2>&1"
-    fullcmd = fullcmd.format(bin=binary, prio=prio,
+    fullcmd = "numactl -N {numa} -m {numa} {prio} {bin} {args} > {name}.out 2>&1"
+    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE,bin=binary, prio=prio,
                              name=name, args=args)
     print "Running", fullcmd
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
@@ -1019,12 +1021,18 @@ def execute_experiment(experiment):
     try:
         observer_cmd = "exec ssh -t -t {observer} 'python {dir}/{script} observer {dir} > {dir}/py.{observer}.log 2>&1'".format(
             observer=OBSERVER, dir=experiment['name'], script=os.path.basename(__file__))
-        if OBSERVER: observer = subprocess.Popen(observer_cmd, shell=True)
-        time.sleep(3000)
+        if OBSERVER: 
+            print(observer_cmd)
+            observer = subprocess.Popen(observer_cmd, shell=True)
+            time.sleep(3)
+            assert not observer.returncode, "Observer process failed, check {dir}/py.{observer}.log".format(
+                observer=OBSERVER, dir=experiment['name'])
+        # time.sleep(3000)
 
         runremote("ulimit -S -c unlimited; python {dir}/{script} client {dir} > {dir}/py.{{}}.log 2>&1".format(dir=experiment[
                   'name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
     finally:
+        print("finally")
         collect_clients(experiment)
         if observer:
             observer.terminate()
@@ -1112,6 +1120,7 @@ def paper_experiments():
             #     "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg="swaptions", samples=10))
             execute_experiment(bench_memcached(
                 "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg=None, samples=10))
+            time.sleep(10)  # leave some time b/w experiments
 
         # # Linux, higher sample rate below 1.6
         # execute_experiment(bench_memcached(

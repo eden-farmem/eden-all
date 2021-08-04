@@ -17,7 +17,7 @@ is built for another kernel version)
 
     cd shenango/
     code README.md 
-    sudo ./dpdk.sh
+    ./dpdk.sh
     sudo ./scripts/setup_machine.sh
 
     pushd scripts
@@ -101,9 +101,15 @@ is built for another kernel version)
     function ioklog { dir=$(ls . | grep run | tail -n1); log=$dir/iokernel.`hostname`.log; echo $log; cat $log; }   # latest iokernel log
 
 
-
 MISC COMMANDS
 =============
 numactl -N 0 -m 0 ./synthetic --config 0-sc2-hs2-b1607.memcached.config 192.168.0.100:5060 --warmup --output=buckets --protocol memcached --mode runtime-client --threads 1200 --runtime 10 --barrier-peers 1 --barrier-leader sc2-hs2-b1607  --mean=842 --distribution=zero --mpps=1.0 --samples=10 --transport tcp --start_mpps 0.0 > 0-sc2-hs2-b1607.memcached.out 2> 0-sc2-hs2-b1607.memcached.err
 python tools/plot.py -d data/latencies.dat -xc "Actual" -xl "Actual load (Mops)" --xmin 0 --xmax 3 -yc "99.9th" -yl "micro-sec" --xmul 1e-6 -o lat99.9th.pdf -of pdf  -s
 python tools/plot.py -d data/latencies.dat -xc "Target" -xl "Target load (Mops)" -yc "Actual" -yl "Actual load (Mops)" --ymul 1e-6 --xmul 1e-6 -o actual-load.pdf -of pdf -s --twin 2 -tyl "Latency (micro-sec)" -yc "99.9th"
+
+
+
+Upgrading Shenango to latest kernel (v5.9)
+=========================================
+1. Getting DPDK to latest
+    Was at 19.11. 

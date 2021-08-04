@@ -95,7 +95,7 @@ if [[ $SHENANGO ]]; then
     pushd shenango 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    make -j ${DEBUG}
+    make -j ${DEBUG} NUMA_NODE=1
     popd 
 
     pushd shenango/scripts
