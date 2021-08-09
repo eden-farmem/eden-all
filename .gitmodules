@@ -4,3 +4,6 @@
 [submodule "shenango"]
 	path = shenango
 	url = git@gitlab.eng.vmware.com:ayelam/shenango.git
+[submodule "kona"]
+	path = kona
+	url = git@gitlab.eng.vmware.com:kona/kona.git

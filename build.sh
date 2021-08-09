@@ -17,6 +17,8 @@ usage="\n
 -m, --memcached \t\t build memcached app\n
 -sy,--synthetic \t\t build shenango synthetic app\n
 -sb,--sbench \t\t build shenango bench app\n
+-k,--kona \t\t build kona\n
+-mk,--with-kona \t\t build memcached + shenango linked with kona\n
 -a, --all \t\t build everything\n
 -h, --help \t\t this usage information message\n"
 
@@ -59,6 +61,15 @@ case $i in
     SBENCH=1
     ;;
 
+
+    -k|--kona)
+    KONA=1
+    ;;
+
+    -mk|--with-kona)
+    WITH_KONA=1
+    ;;
+
     -a|--all)
     SHENANGO=1
     MEMCACHED=1
@@ -84,6 +95,10 @@ done
 
 if [[ $ONETIME ]]; then
     git submodule update --init --recursive
+    pushd kona/
+    # can the above command not do this too?
+    git submodule update --init --recursive
+    popd
 fi
 
 if [[ $SYNC ]]; then 
@@ -91,7 +106,6 @@ if [[ $SYNC ]]; then
 fi
 
 if [[ $SHENANGO ]]; then 
-
     pushd shenango 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
@@ -100,6 +114,12 @@ if [[ $SHENANGO ]]; then
 
     pushd shenango/scripts
     gcc cstate.c -o cstate
+    popd
+fi
+
+if [[ $KONA ]]; then 
+    pushd kona/pbmem
+    bash build.sh 
     popd
 fi
 
@@ -121,7 +141,8 @@ fi
 if [[ $MEMCACHED ]]; then
     pushd memcached/
     ./autogen.sh 
-    ./configure --with-shenango=$PWD/../shenango
+    if [[ $WITH_KONA ]]; then   SFX="--with-kona=../kona"; fi
+    ./configure --with-shenango=$PWD/../shenango $SFX
     make clean
     make -j
     popd
