@@ -66,9 +66,11 @@ def parse_loadgen_output(filename):
     line_starts = ["Latencies: ", "Trace: ", "zero, ","exponential, ",
                    "bimodal1, ", "constant, "]
 
+
     def get_line_start(line):
         for l in line_starts:
-            if line.startswith(l): return l
+            # if line.startswith(l): return l
+            if l in line:   return l
         return None
 
     """Distribution, Target, Actual, Dropped, Never Sent, Median, 90th, 99th, 99.9th, 99.99th, Start"""
@@ -77,6 +79,7 @@ def parse_loadgen_output(filename):
 	#line = line.split(" ", 1)[1]
         line_start = get_line_start(line)
         if not line_start: continue
+        if not line.startswith(line_start): line = line[line.find(line_start):]
         if line_start == "Latencies: ":
             samples.append({
                 'distribution': header_line[0],

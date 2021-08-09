@@ -116,9 +116,9 @@ IFNAMES = {
 OBSERVER = "sc2-hs2-b1630"
 OBSERVER_IP = IP(30)
 OBSERVER_MAC = SERVER_MACS['sc2-hs2-b1630']
-CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
-# CLIENT_SET = ["sc2-hs2-b1640"]
-CLIENT_MACHINE_NCORES = 6
+# CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
+CLIENT_SET = ["sc2-hs2-b1607"]
+CLIENT_MACHINE_NCORES = 12
 NEXT_CLIENT_ASSIGN = 0
 NIC_PCI = PCI_SLOTS[socket.gethostname()]
 NIC_IFNAME = IFNAMES[socket.gethostname()]
@@ -1115,11 +1115,11 @@ def paper_experiments():
     # memcached experiments
     if True:
         # Shenango, 1 MPPS at a time
-        for start_mpps in range(6):
+        for start_mpps in range(1,2):
             # execute_experiment(bench_memcached(
             #     "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg="swaptions", samples=10))
             execute_experiment(bench_memcached(
-                "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg=None, samples=10))
+                "shenango", 24, start_mpps=start_mpps, mpps=start_mpps+1, bg=None, samples=10))
             time.sleep(10)  # leave some time b/w experiments
 
         # # Linux, higher sample rate below 1.6

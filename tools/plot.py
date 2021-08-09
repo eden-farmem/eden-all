@@ -408,7 +408,7 @@ def main():
     matplotlib.rc('figure', autolayout=True)
     matplotlib.rcParams['pdf.fonttype'] = 42        # required for latex embedded figures
 
-    fig, axmain = plt.subplots(1, 1, figsize=(6,4))
+    fig, axmain = plt.subplots(1, 1, figsize=(8,4))
     fig.suptitle(args.ptitle if args.ptitle else '')
     #plt.ylim(0, 1000)
 
@@ -546,13 +546,15 @@ def main():
         
 
         plot_num += 1
-        if args.ymin:    ax.set_ylim(ymin=args.ymin)
-        if args.ymax:    ax.set_ylim(ymax=args.ymax)
+        if args.ymin and args.ymac: ax.set_ylim(ymin=args.ymin,ymax=args.ymax)
+        elif args.ymin:    ax.set_ylim(ymin=args.ymin)
+        elif args.ymax:    ax.set_ylim(ymax=args.ymax)
         ax.set_ylabel(ylabel)
 
     # print(args.xmin, args.xmax)
     if args.xmin is not None:   axmain.set_xlim(xmin=args.xmin)
     if args.xmax is not None:   axmain.set_xlim(xmax=args.xmax)
+    plt.ylim(args.ymin, args.ymax)
 
     axmain.set_xlabel(xlabel)
     # axmain.set_ylabel(ylabel)
