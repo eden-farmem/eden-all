@@ -109,7 +109,9 @@ if [[ $SHENANGO ]]; then
     pushd shenango 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    make -j ${DEBUG} NUMA_NODE=1
+    if [[ $WITH_KONA ]]; then   KONA_OPT="WITH_KONA=1"; fi
+    make -j ${DEBUG} NUMA_NODE=1 $KONA_OPT
+    # make -j ${DEBUG} NUMA_NODE=1 WITH_KONA=1
     popd 
 
     pushd shenango/scripts
@@ -141,8 +143,8 @@ fi
 if [[ $MEMCACHED ]]; then
     pushd memcached/
     ./autogen.sh 
-    if [[ $WITH_KONA ]]; then   SFX="--with-kona=../kona"; fi
-    ./configure --with-shenango=$PWD/../shenango $SFX
+    if [[ $WITH_KONA ]]; then   KONA_OPT="--with-kona=../kona"; fi
+    ./configure --with-shenango=$PWD/../shenango $KONA_OPT
     make clean
     make -j
     popd
