@@ -93,6 +93,16 @@ case $i in
 esac
 done
 
+# Initial CPU allocation
+# NUMA node0 CPU(s):   0-13,28-41
+# NUMA node1 CPU(s):   14-27,42-55
+# RNIC NUMA node = 1
+NUMA_NODE=1
+KONA_POLLER_CORE=53
+KONA_EVICTION_CORE=54
+KONA_FAULT_HANDLER_CORE=55
+SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},${KONA_FAULT_HANDLER_CORE}
+
 if [[ $ONETIME ]]; then
     git submodule update --init --recursive
     pushd kona/
@@ -110,8 +120,7 @@ if [[ $SHENANGO ]]; then
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
     if [[ $WITH_KONA ]]; then   KONA_OPT="WITH_KONA=1"; fi
-    make -j ${DEBUG} NUMA_NODE=1 $KONA_OPT
-    # make -j ${DEBUG} NUMA_NODE=1 WITH_KONA=1
+    make -j ${DEBUG} NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} $KONA_OPT 
     popd 
 
     pushd shenango/scripts
@@ -121,7 +130,11 @@ fi
 
 if [[ $KONA ]]; then 
     pushd kona/pbmem
-    bash build.sh 
+    make je_clean
+    make clean
+    make je_jemalloc
+    opts="POLLER_CORE=$KONA_POLLER_CORE FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE EVICTION_CORE=$KONA_EVICTION_CORE"
+    make all -j $opts
     popd
 fi
 
