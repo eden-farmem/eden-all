@@ -6,161 +6,130 @@ import json
 import atexit
 import random
 from datetime import datetime
-import socket
+from enum import Enum
+import argparse
 
 # Requires password-less sudo and ssh
-
 # ts requires moreutils to be installed
-# 
+# Pip install: enum34, argparse, paramiko, 
 
 # BASE_DIR = os.getcwd()
 BASE_DIR = "/home/ayelam/rmem-scheduler"
 SDIR = "{}/shenango/".format(BASE_DIR)
-
-CLIENT_BIN = "{}/apps/synthetic/target/release/synthetic".format(SDIR)
 RSTAT = "{}/scripts/rstat.go".format(SDIR)
-
 THISHOST = subprocess.check_output("hostname -s", shell=True).strip()
 
-CORES_RESTRICT = True # Restrict cores on sc2-hs2-b1630/sc2-hs2-b1640
+# Network
+def IP(node):
+    assert node > 0 and node < 255
+    return "{}.{}".format(NETPFX, node)
+NETPFX = "192.168.0"
+NETMASK = "255.255.255.0"
+GATEWAY = IP(1)
+IP_MAP = {
+    'sc2-hs2-b1607': IP(7),
+    'sc2-hs2-b1630': IP(30),
+    'sc2-hs2-b1640': IP(40),
+}
+MAC_MAP = {
+    'sc2-hs2-b1607': '50:6b:4b:23:a8:25',
+    'sc2-hs2-b1630': '50:6b:4b:23:a8:2d',
+    'sc2-hs2-b1640': '50:6b:4b:23:a8:a4',
+}
+NIC_PCIE_MAP = {
+    'sc2-hs2-b1607': '0000:d8:00.1',
+    'sc2-hs2-b1630': '0000:d8:00.1',
+    'sc2-hs2-b1640': '0000:d8:00.0',
+}
+IFNAME_MAP = {
+    'sc2-hs2-b1607': 'enp216s0f1',
+    'sc2-hs2-b1630': 'enp216s0f1',
+    'sc2-hs2-b1640': 'enp216s0f0',
+}
+
+# Memcached host settings
+SERVER = "sc2-hs2-b1630"
+# CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
+CLIENT_SET = ["sc2-hs2-b1607"]
+CLIENT_MACHINE_NCORES = 18
+SERVER_CORES = 12
+NEXT_CLIENT_ASSIGN = 0
+NIC_NUMA_NODE = 1
+NIC_PCI = NIC_PCIE_MAP[THISHOST]
+NIC_IFNAME = IFNAME_MAP[THISHOST]
+
+OBSERVER = "sc2-hs2-b1630"
+OBSERVER_IP = IP_MAP[OBSERVER]
+OBSERVER_MAC = MAC_MAP[OBSERVER]
+
+# Kona host settings
+KONA_RACK_CONTROLLER = "sc2-hs2-b1640"
+KONA_RACK_CONTROLLER_PORT = 9202
+KONA_MEM_SERVERS = ["sc2-hs2-b1640"]
+KONA_MEM_SERVER_PORT = 9200
+
+# Defaults
+DEFAULT_START_MPPS = 0
+DEFAULT_MPPS = 1
+DEFAULT_SAMPLES = 1
+DEFAULT_RUNTIME_SECS = 10
+DEFAULT_KONA_MEM = 1E9
+DEFAULT_KONA_EVICT_THR = 0.8
+DEFAULT_KONA_EVICT_DONE_THR = 0.8
+
+class Role(Enum):
+    host = "host"           # where memcached server and the experiment is hosted
+    app = 'app'             # where related apps (e.g., kona) are hosted
+    client = 'client'       # clients generating workload
+    observer = 'observer'   # observer to co-ordinate runs across machines
+    def __str__(self):
+        return self.value
+role = None
+stopat = 0
 
 binaries = {
     'iokerneld': {
         'ht': "{}/iokerneld".format(SDIR),
         'noht': "{}/iokerneld-noht".format(SDIR),
     },
-    'corearbiter': {
-        'ht': "{}/memcached-arachne/arachne-all/CoreArbiter/bin/coreArbiterServer".format(BASE_DIR),
-    },
-    'memcached': {
-        'linux': "{}/memcached-linux/memcached".format(BASE_DIR),
-        'shenango': "{}/memcached/memcached".format(BASE_DIR),
-        'arachne': "{}/memcached-arachne/memcached".format(BASE_DIR),
-        'zygos': "{}/memcached-ix/memcached".format(BASE_DIR)
-    },
-    'gdnsd': {
-        'linux': "{}/gdnsd-linux/build/sbin/gdnsd".format(BASE_DIR),
-        'shenango': "{}/gdnsd/build/sbin/gdnsd".format(BASE_DIR)
-    },
-    'swaptions': {
-        'linux': "{}/parsec/pkgs/apps/swaptions/inst/amd64-linux.gcc-pthreads/bin/swaptions".format(BASE_DIR),
-        'shenango': "{}/parsec/pkgs/apps/swaptions/inst/amd64-linux.gcc-shenango/bin/swaptions".format(BASE_DIR),
-        'arachne': "{}/parsec/pkgs/apps/swaptions/inst/amd64-linux.gcc-pthreads/bin/swaptions".format(BASE_DIR),
-        'linux-floating': "{}/parsec/pkgs/apps/swaptions/inst/amd64-linux.gcc-pthreads/bin/swaptions".format(BASE_DIR),
-    },
-    # for synthetic server launches
-    'synthetic': {
-        'linux': "{}/apps/synthetic/target/release/synthetic".format(SDIR),
-        'shenango': "{}/apps/synthetic/target/release/synthetic --config".format(SDIR),
-        'arachne': "{}/bench/servers/spin-arachne".format(BASE_DIR),
-        'zygos': "{}/bench/servers/spin-ix".format(BASE_DIR),
-        'linux-floating': "{}/bench/servers/spin-linux".format(BASE_DIR),
-    },
+    'memcached': "{}/memcached/memcached".format(BASE_DIR),
+    'synthetic': "{}/apps/synthetic/target/release/synthetic".format(SDIR),
+    'kona-controller': "{}/kona/pbmem/rcntrl".format(BASE_DIR),
+    'kona-server': "{}/kona/pbmem/memserver".format(BASE_DIR)
 }
-
-if CORES_RESTRICT:
-    USABLE_CPUS = range(0, 16, 2) + range(24, 40, 2)
-else:
-    USABLE_CPUS = range(0, 48, 2)
-
-USABLE_CPUS_STR = ",".join([str(x) for x in USABLE_CPUS])
-
-def IP(node):
-    assert node > 0 and node < 255
-    return "{}.{}".format(NETPFX, node)
-
-NETPFX = "192.168.0"
-NETMASK = "255.255.255.0"
-GATEWAY = IP(1)
-NIC_NUMA_NODE = 1
-
-LNX_IPS = {
-    'sc2-hs2-b1607': IP(7),
-    'sc2-hs2-b1630': IP(30),
-    'sc2-hs2-b1640': IP(40),
-}
-
-# OOB_IPS = {
-#     'pd%d' % d: '18.26.5.%d' % d for d in range(1, 12)
-# }
-# OOB_IPS.update({
-#     'sc2-hs2-b1630':    '18.26.4.39',
-#     'sc2-hs2-b1640':    '18.26.4.41',
-# })
-
-# Normal ssh IPs? TODO: Confirm
-OOB_IPS = {
-    'sc2-hs2-b1607':    '10.172.209.77',
-    'sc2-hs2-b1630':    '10.172.209.100',
-    'sc2-hs2-b1640':    '10.172.209.110',
-}
-
-SERVER_MACS = {
-    'sc2-hs2-b1607': '50:6b:4b:23:a8:25',
-    'sc2-hs2-b1630': '50:6b:4b:23:a8:2d',
-    'sc2-hs2-b1640': '50:6b:4b:23:a8:a4',
-}
-
-PCI_SLOTS = {
-    'sc2-hs2-b1607': '0000:d8:00.1',
-    'sc2-hs2-b1630': '0000:d8:00.1',
-    'sc2-hs2-b1640': '0000:d8:00.0',
-}
-
-IFNAMES = {
-    'sc2-hs2-b1607': 'enp216s0f1',
-    'sc2-hs2-b1630': 'enp216s0f1',
-    'sc2-hs2-b1640': 'enp216s0f0',
-}
-
-OBSERVER = "sc2-hs2-b1630"
-OBSERVER_IP = IP(30)
-OBSERVER_MAC = SERVER_MACS['sc2-hs2-b1630']
-# CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
-CLIENT_SET = ["sc2-hs2-b1607"]
-CLIENT_MACHINE_NCORES = 12
-NEXT_CLIENT_ASSIGN = 0
-NIC_PCI = PCI_SLOTS[socket.gethostname()]
-NIC_IFNAME = IFNAMES[socket.gethostname()]
-
 
 def is_server():
-    return THISHOST in SERVER_MACS.keys()
-
-################# Experiment Building Blocks #########################
-
+    return THISHOST == SERVER
 
 def new_experiment(system, **kwargs):
+    name = "run-{}".format(datetime.now().strftime('%m-%d-%H-%M'))
     return {
-        'name': "run.{}-{}".format(datetime.now().strftime('%Y%m%d%H%M%S'), system),
+        'name': kwargs.get('name') if kwargs.get('name') else name,
+        'desc': kwargs.get('desc'),
         'system': system,
         'clients': {},
-        'server_hostname': THISHOST,
+        'server_hostname': SERVER,
+        'app_files': [__file__],
         'client_files': [__file__],
-        'apps': [],
+        'apps': {},
         'nextip': 100,
         'nextport': 5000 + random.randint(0,255),
     }
 
-
 def gen_random_mac():
     return ":".join(["02"] + ["%02x" % random.randint(0, 255) for i in range(5)])
-
 
 def alloc_ip(experiment, is_shenango_client=False):
     if experiment["system"] == "shenango" or is_shenango_client:
         ip = IP(experiment['nextip'])
         experiment['nextip'] += 1
         return ip
-
-    return LNX_IPS[THISHOST]
-
+    return IP_MAP[THISHOST]
 
 def alloc_port(experiment):
     port = experiment['nextport']
     experiment['nextport'] += 1
     return port
-
 
 def new_memcached_server(threads, experiment, name="memcached", transport="tcp"):
     x = {
@@ -177,109 +146,77 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp")
         'mac': gen_random_mac(),
         'protocol': 'memcached',
         'transport': transport,
+        'host': THISHOST
     }
 
     args = "-U {port} -p {port} -c 32768 -m {meml} -b 32768"
     args += " -o hashpower={hashpower}"
 
     args += {
-        'arachne': ",no_hashexpand,no_lru_crawler,no_lru_maintainer,no_slab_reassign",
-        'linux': ",no_hashexpand,lru_crawler,lru_maintainer,idle_timeout=0",
         'shenango': ",no_hashexpand,lru_crawler,lru_maintainer,idle_timeout=0",
-        'zygos': ",lru_crawler", # TODO: change this?
     }.get(experiment['system'])
 
-    if experiment['system'] == "arachne":
-        x['args'] = "--minNumCores 2 --maxNumCores {threads} -t 1 " + args
-    else:
-        x['args'] = "-t {threads} " + args
+    x['args'] = "-t {threads} " + args
 
     # Requires SO_REUSEPORT hack for memcached
     if experiment['system'] in ["arachne", "linux"] and transport == "udp":
         x['args'] += " -l " + ",".join(["{ip}:{port}" for i in range(4 * threads)])
 
-    experiment['apps'].append(x)
+    if not THISHOST in experiment['apps']:
+        experiment['apps'][THISHOST] = []
+    experiment['apps'][THISHOST].append(x)
     return x
 
 
-def new_gdnsd_server(threads, experiment, name="dns"):
+def add_kona_apps(experiment, server_handle, kona_mem, kona_evict_thr, kona_evict_done_thr):
+    # App for rack controller
+    app = "kona-controller"
+    host = KONA_RACK_CONTROLLER
+    instance = "{}.{}".format(host, app)
+    if not host in experiment['apps']:
+        experiment['apps'][host] = []
     x = {
-        'name': name,
-        'ip': alloc_ip(experiment),
-        'before': ["configure_dns_environment"],
-        'threads': threads,
-        'guaranteed': threads,
-        'spin': 0,
-        'app': 'gdnsd',
+        'name': instance,
+        'ip': IP_MAP[KONA_RACK_CONTROLLER],
+        'port': KONA_RACK_CONTROLLER_PORT,
+        'mac': MAC_MAP[host],
+        'host': host,
+        'binary': "./rcntrl",
+        'app': app,
+        'args': "-s {ip} -p {port}",
         'nice': -20,
-        'protocol': 'dns',
-        'args': "-f start -c ./",
-        'transport': 'udp',
-        'mac': gen_random_mac(),
+        'after': [ 'sleep_5' ],
+        'system': 'linux'       #override global system
     }
-    if experiment["system"] == "shenango":
-        x['port'] = 53
-    else:
-        x['port'] = alloc_port(experiment)
-    experiment['apps'].append(x)
-    return x
+    server_handle["dependson"] = instance
+    experiment['apps'][host].append(x)
+    experiment['app_files'].append(binaries[app])
 
-def new_synthetic_server(threads, experiment, **kwargs):
-    x = {
-        'name': kwargs.get('name', 'synth'),
-        'ip': alloc_ip(experiment),
-        'port': alloc_port(experiment),
-        'threads': threads,
-        'guaranteed': threads,
-        'spin': 0,
-        'app': 'synthetic',
-        'nice': -20,
-        'mac': gen_random_mac(),
-        'protocol': 'synthetic',
-        'transport': kwargs.get('transport', 'tcp'),
-        'fakework': kwargs.get('fakework', 'stridedmem:1024:7'),
-        'args': "--mode={stype}-server {ip}:{port} --threads {threads} --transport {transport}"
-    }
-
-    x['args'] += " --fakework {fakework}"
-    if experiment["system"] == "shenango":
-        x['stype'] = 'spawner'
-    elif experiment["system"] == "linux":
-        x['stype'] = 'linux'
-    elif experiment['system'] == "arachne":
-        assert x['transport'] == "tcp"
-        x['args'] = "--minNumCores 2 --maxNumCores {threads}"
-        if x['transport'] == "udp": x['args'] += " --udp"
-        x['args'] += " {fakework} {port}"
-    elif experiment['system'] == "zygos":
-        assert x['transport'] == "tcp"
-        x['args'] = "{fakework}"
-    elif experiment['system'] == "linux-floating":
-        x['args'] = "{fakework} {threads} {port}"
-    experiment['apps'].append(x)
-    return x
-
-
-def new_swaptions_inst(threads, experiment, name="swaptions"):
-    x = {
-        'name': name,
-        'ip': alloc_ip(experiment),
-        'port': None,
-        'mac': gen_random_mac(),
-        'threads': threads,
-        'guaranteed': 0,
-        'spin': 0,
-        'app': 'swaptions',
-        'nice': 20,
-        'args': "-ns {threads} -sm 40000 -nt {threads} 2>&1 | ts %s",
-    }
-    experiment['apps'].append(x)
-    return x
-
+    # Apps for memory servers
+    app = "kona-server"
+    for host in KONA_MEM_SERVERS:
+        if not host in experiment['apps']:
+            experiment['apps'][host] = []
+        x = {
+            'name': "{}.{}".format(host, app),
+            'ip': IP_MAP[host],
+            'mac': MAC_MAP[host],
+            'port': KONA_MEM_SERVER_PORT,
+            'rcntrl_ip': IP_MAP[KONA_RACK_CONTROLLER],
+            'rcntrl_port': KONA_RACK_CONTROLLER_PORT,
+            'host': host,
+            'binary': "./memserver",
+            'app': app,
+            'args': "-s {ip} -p {port} -c {rcntrl_ip} -r {rcntrl_port}",
+            'nice': -20,
+            'after': [ 'sleep_5' ],
+            'system': 'linux'       #override global system
+        }
+        experiment['apps'][host].append(x)
+    experiment['app_files'].append(binaries[app])
 
 def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, nconns=300, **kwargs):
     global NEXT_CLIENT_ASSIGN
-
     all_instances = []
     for i in range(count):
         client = CLIENT_SET[(NEXT_CLIENT_ASSIGN + i) % len(CLIENT_SET)]
@@ -291,7 +228,7 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'mac': gen_random_mac(),
             'host': client,
             'name': "{}-{}.{}".format(i, client, server_handle['name']),
-            'binary': "{} --config".format(CLIENT_BIN),
+            'binary': "{} --config".format(binaries["synthetic"]),
             # 'binary': "./synthetic --config",
             'app': 'synthetic',
             'serverip': server_handle['ip'],
@@ -333,7 +270,7 @@ def finalize_measurement_cohort(experiment, samples, runtime):
     threads_per_client = CLIENT_MACHINE_NCORES // max_client_permachine
     assert threads_per_client % 2 == 0
     # Apps must have unique names
-    assert len(set(app['name'] for app in experiment['apps'])) == len(experiment['apps'])
+    # assert len(set(app['name'] for app in experiment['apps'][THISHOST])) == len(experiment['apps'])
     for i, cfg in enumerate(all_clients):
         cfg['threads'] = threads_per_client
         cfg['guaranteed'] = threads_per_client
@@ -341,111 +278,19 @@ def finalize_measurement_cohort(experiment, samples, runtime):
         cfg['runtime'] = runtime
         cfg['npeers'] = len(all_clients)
         cfg['samples'] = samples
-        cfg['leader'] = OOB_IPS[all_clients[0]
-                                ['host']] if i > 0 else cfg['host']
-        if i > 0:
-            cfg['before'] = ['sleep_5']
-    experiment['client_files'].append(CLIENT_BIN)
-
-########################## EXPERIMENTS ###############################
+        cfg['leader'] = cfg['host']
+        if i > 0:   cfg['before'] = ['sleep_5']
+    experiment['client_files'].append(binaries['synthetic'])
 
 
-def loadshift(system, **kwargs):
-    assert system in ["shenango", "arachne", "linux-floating"]
-
-    x = new_experiment(system)
-    x['name'] += "-loadshift"
-
-    loadshift_points = []
-    loadshift_points.append((100000, 1000000)) #warmup
-    for krps in range(400, 1200, 200):
-        loadshift_points.append((100000, 1000000))
-        loadshift_points.append((krps * 1000, 1000000))
-
-    if system == "shenango":
-        for mrps in range(2, 6):
-            loadshift_points.append((100000, 1000000))
-            loadshift_points.append((mrps * 1e6, 1000000))
-
-    NCLIENTS = len(CLIENT_SET)
-    loadshift_points = map(lambda p: (int(p[0] / NCLIENTS), p[1]), loadshift_points)
-
-    thr = {
-        'arachne': 15,
-        'shenango': 14,
-        'linux-floating': 16,
-    }.get(system)
-
-    mean = get_mean(1.0, system, False)
-
-    synth_handle = new_synthetic_server(thr, x, **kwargs)
-
-    new_swaptions_inst(len(USABLE_CPUS), x)
-
-    clients = new_measurement_instances(
-        NCLIENTS, synth_handle, 0, x, mean=mean, distribution="exponential", nconns=1200)
-
-    spec = ",".join("{}:{}".format(*p) for p in loadshift_points)
-    for c in clients:
-        c['args'] += " --loadshift=" + spec
-    finalize_measurement_cohort(x, 0, 0)
-    return x
-
-# for 'stridedmem:1024:7'
-def get_mean(target_us, system, noht):
-    assert system in ["shenango", "linux", "arachne", "zygos", "linux-floating"]
-
-    impl = {
-        'shenango': 'rust',
-        'linux': 'rust',
-        'arachne': 'cpp',
-        'zygos': 'cpp',
-        'linux-floating': 'cpp'
-    }.get(system)
-
-    return int(float(target_us) * {
-        ('rust', True): 83.89,
-        ('rust', False): 59.37,
-        ('cpp', True): 78.0,
-        ('cpp', False): 65.0,
-    }.get((impl, noht)))
-
-
-def assemble_local_synth(mrps, producers, consumers, time=10, samples=20, **kwargs):
-    y = new_experiment("shenango")
-    y['noht'] = True
-    x = {
-        'ip': alloc_ip(y),
-        'port': alloc_port(y),
-        'mac': gen_random_mac(),
-        'threads': producers + consumers,
-        'guaranteed': 1,
-        'spin': 0,
-        'samples': samples,
-        'runtime': time,
-        'name': "localsynth",
-        'app': 'synthetic',
-        'output': "normal",
-        'mpps': mrps,
-        'protocol': 'synthetic',
-        'distribution': kwargs.get('distribution', 'exponential'),
-        'mean': kwargs.get('mean', get_mean(10, "shenango", True)),
-        'client_threads': producers,
-        'start_mpps': kwargs.get('start_mpps', 0),
-        'args': "{ip}:{port} --rampup=0 --output={output} --protocol {protocol} --mode local-client --threads {client_threads} --runtime {runtime}  --mean={mean} --distribution={distribution} --mpps={mpps} --samples={samples} --start_mpps {start_mpps}"
-    }
-    y['name'] += "-localsynth-" + x['distribution']
-    y['apps'].append(x)
-    return y
-
-def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=6.0, noht=False, transport="tcp", nconns=1200, start_mpps=0.0):
-    assert system in ["shenango", "linux", "arachne", "zygos"]
-
-    x = new_experiment(system)
-    x['name'] += "-memcached" + "-" + transport
-    x['name'] += "-spin" if spin else ""
-    if bg: x['name'] += '-' + bg
-
+def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=6.0, 
+        noht=False, transport="tcp", nconns=1200, start_mpps=0.0, warmup=False,
+        kona=False, kona_mem=None, kona_evict_thr=0.9, kona_evict_done_thr=0.9,
+        name=None, desc=None):
+    x = new_experiment(system, name=name, desc=desc)
+    # x['name'] += "-memcached" + "-" + transport
+    # x['name'] += "-spin" if spin else ""
+    # if bg: x['name'] += '-' + bg
     if noht:
         assert system == "shenango"
         x['noht'] = True
@@ -454,132 +299,62 @@ def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=
     if spin:
         memcached_handle['spin'] = thr
 
-    if bg == "swaptions":
-        new_swaptions_inst(len(USABLE_CPUS), x)
+    if kona:
+        memcached_handle['kona'] = {}
+        memcached_handle['kona']['mlimit'] = kona_mem
+        memcached_handle['kona']['evict_thr'] = kona_evict_thr
+        memcached_handle['kona']['evict_done_thr'] = kona_evict_done_thr
+        add_kona_apps(x, memcached_handle, kona_mem, kona_evict_thr, kona_evict_done_thr)
 
-    new_measurement_instances(len(CLIENT_SET), memcached_handle, mpps, x, nconns=nconns, start_mpps=start_mpps)
+    new_measurement_instances(len(CLIENT_SET), memcached_handle, mpps, x, nconns=nconns, start_mpps=start_mpps, warmup=warmup)
     finalize_measurement_cohort(x, samples, time)
-
     return x
 
-
-def bench_dns(system, spin=False, bg=None, samples=54, time=10, mpps=5.4, noht=False, thr=None, **kwargs):
-    assert system in ["shenango", "linux"]
-
-    x = new_experiment(system)
-    x['name'] += "-dns"
-    x['name'] += ("-" + bg) if bg else ""
-    x['name'] += "-spin" if spin else ""
-
-    if not thr and system == "shenango":
-        thr = 5 if noht else 6
-    elif not thr:
-        thr = 24
-
-    if noht:
-        assert system == "shenango"
-        x['noht'] = True
-
-    dns_handle = new_gdnsd_server(thr, x)
-    if spin:
-        dns_handle['spin'] = thr
-
-    if bg == "swaptions":
-        new_swaptions_inst(len(USABLE_CPUS), x)
-
-    new_measurement_instances(len(CLIENT_SET), dns_handle, mpps, x, nconns=1200, warmup=False, **kwargs)
-    finalize_measurement_cohort(x, samples, time)
-
-    return x
 
 # try different thread configurations with memcached
 def try_thr_memcached(system, thread_range, mpps_start, mpps_end, samples, transport, bg=False, time=20):
-    assert system in ["shenango", "linux", "arachne"]
+    assert system in ["shenango", "linux"]
     for i in thread_range:
         x = new_experiment(system)
         x['name'] += "-memcached-{}-{}threads".format(transport, i)
         memcached_handle = new_memcached_server(i, x, transport=transport)
-        if bg: new_swaptions_inst(24, x)
         new_measurement_instances(len(CLIENT_SET), memcached_handle, mpps_end, x, start_mpps=mpps_start,  nconns=200*len(CLIENT_SET))
         finalize_measurement_cohort(x, samples, time)
         execute_experiment(x)
 
-def exitfn():
+def cleanup(pre=False):
+    print("Pre-cleanup" if pre else "Cleaning up")
     procs = ["iokerneld", "cstate", "memcached",
-             "swaptions", "mpstat", "synthetic", "gdnsd",
-             "coreArbit", "ix", "spin-arachne", "spin-linux"]
+            "swaptions", "mpstat", "synthetic", 
+            "rcntrl", "memserver"]
     for j in procs:
         os.system("sudo pkill " + j)
     for j in procs:
         os.system("sudo pkill -9 " + j)
 
-    if is_server():
-        runcmd("sudo rmmod dune 2>/dev/null || true")
-        runcmd("sudo rmmod pcidma 2>/dev/null || true")
-
-
-def switch_to_linux():
-    assert is_server()
-    print "switch to linux"
-    runcmd("sudo ifdown {} || true".format(NIC_IFNAME))
-    runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    runcmd("sudo {}/dpdk/usertools/dpdk-devbind.py -b none {}".format(SDIR, NIC_PCI))
-    runcmd("sudo modprobe ixgbe")
-    runcmd("sudo {}/dpdk/usertools/dpdk-devbind.py -b ixgbe {}".format(SDIR, NIC_PCI))
-    runcmd("sudo ethtool -N {} rx-flow-hash udp4 sdfn".format(NIC_IFNAME))
-    runcmd("sudo {}/scripts/set_irq_affinity {} {}".format(SDIR, USABLE_CPUS_STR, NIC_IFNAME))
-    runcmd("sudo ip addr flush {}".format(NIC_IFNAME))
-    runcmd("sudo ip addr add {}/24 dev {}".format(LNX_IPS[THISHOST], NIC_IFNAME))
-    runcmd("sudo sysctl net.ipv4.tcp_syncookies=1")
-    return
-
-
-def switch_to_shenango():
-    runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    if not is_server():
-        return
-    runcmd("sudo ifdown {}".format(NIC_IFNAME))
-    runcmd("sudo modprobe uio")
-    runcmd("(lsmod | grep -q igb_uio) || sudo insmod {}/dpdk/build/kmod/igb_uio.ko".format(SDIR))
-    runcmd("sudo {}/dpdk/usertools/dpdk-devbind.py -b igb_uio {}".format(SDIR, NIC_PCI))
-    return
-
-def switch_to_zygos():
-    assert is_server()
-    runcmd("sudo find /dev/hugepages -type f -delete")
-    runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    runcmd("sudo modprobe -r ixgbe")
-    runcmd("sudo rmmod dune 2>&1 || true")
-    runcmd("sudo rmmod pcidma 2>&1 || true")
-    runcmd("sudo insmod {}/zygos/deps/dune/kern/dune.ko".format(BASE_DIR))
-    runcmd("sudo insmod {}/zygos/deps/pcidma/pcidma.ko".format(BASE_DIR))
-    runcmd("sudo modprobe uio")
-    runcmd("sudo rmmod igb_uio 2>&1 || true")
-    runcmd("sudo insmod {}/zygos/deps/dpdk/build/kmod/igb_uio.ko".format(BASE_DIR))
-    runcmd("sudo {}/zygos/deps/dpdk/tools/dpdk_nic_bind.py -b igb_uio {}".format(BASE_DIR, NIC_PCI))
-    runcmd("sudo rm -fr /var/run/.rte_config")
-
+    global role
+    if role == Role.host:
+        # TODO: KONA CLEANUP (remove if not needed)
+        # ipcs -mp | grep $(whoami) |  grep -v grep  | awk '{ print $1 }' | xargs ipcrm -m
+        # ipcs -m | grep root |  grep -v grep  | awk '$6 == "0" { print $2 }' | sudo xargs ipcrm -m
+        # sleep 2
+        # ipcs -mp
+        pass
 
 def runcmd(cmdstr, **kwargs):
     print("running command: " + cmdstr)
     return subprocess.check_output(cmdstr, shell=True, **kwargs)
 
-
 def runpara(cmd, inputs, die_on_failure=False, **kwargs):
     fail = "--halt now,fail=1" if die_on_failure else ""
     return runcmd("parallel {} \"{}\" ::: {}".format(fail, cmd, " ".join(inputs)))
-
 
 def runremote(cmd, hosts, **kwargs):
     return runpara("ssh -t -t {{}} '{cmd}'".format(cmd=cmd), hosts, kwargs)
 
 ############################# APPLICATIONS ###########################
 
-# Launching configuration spec
-
-
 def start_iokerneld(experiment):
-    # switch_to_shenango()         # no need with cx-5s
     binary = binaries['iokerneld']['ht']
     if 'noht' in experiment and THISHOST == experiment['server_hostname']:
         binary = binaries['iokerneld']['noht']
@@ -589,27 +364,11 @@ def start_iokerneld(experiment):
     proc = subprocess.Popen(cmd, shell=True, cwd=experiment['name'])
     time.sleep(10)
     proc.poll()
-
-    assert proc.returncode is None
-    return proc
-
-def start_corearbiter(experiment):
-    binary = binaries['corearbiter']['ht']
-    assert is_server()
-    assert not 'noht' in experiment
-    runcmd("sudo {}/scripts/setup_machine.sh || true".format(SDIR))
-    proc = subprocess.Popen("sudo numactl -N {} -m {} {} > corearbiter.{}.log 2>&1".format(
-        NIC_NUMA_NODE, NIC_NUMA_NODE, binary, THISHOST), shell=True, cwd=experiment['name'])
-    time.sleep(5)
-    proc.poll()
     assert proc.returncode is None
     return proc
 
 def start_cstate():
-    proc = subprocess.Popen(
-        "sudo {}/scripts/cstate 0".format(SDIR), shell=True)
-    return proc
-
+    return subprocess.Popen("sudo {}/scripts/cstate 0".format(SDIR), shell=True)
 
 def gen_conf(filename, experiment, mac=None, **kwargs):
     conf = [
@@ -620,91 +379,57 @@ def gen_conf(filename, experiment, mac=None, **kwargs):
         "runtime_guaranteed_kthreads {guaranteed}",
         "runtime_spinning_kthreads {spin}"
     ]
-    if mac:
-        conf.append("host_mac {mac}")
-
-    #HACK
-    if kwargs['guaranteed'] > 0:
-        conf.append("disable_watchdog true")
+    if mac: conf.append("host_mac {mac}")
+    if kwargs['guaranteed'] > 0:    conf.append("disable_watchdog true")    #HACK
 
     if experiment['system'] == "shenango":
-        for cfg in experiment['apps']:
-            if cfg['ip'] == kwargs['ip']:
-                continue
-            conf.append("static_arp {ip} {mac}".format(**cfg))
+        for host in experiment['apps']:
+            for cfg in experiment['apps'][host]:
+                if cfg['ip'] == kwargs['ip']:   continue
+                conf.append("static_arp {ip} {mac}".format(**cfg))
     else:
-        for host in SERVER_MACS:
-            conf.append("static_arp {ip} {mac}".format(ip=LNX_IPS[host], mac=SERVER_MACS[host]))
+        for host in MAC_MAP:
+            conf.append("static_arp {ip} {mac}".format(ip=IP_MAP[host], mac=MAC_MAP[host]))
     for client in experiment['clients']:
         for cfg in experiment['clients'][client]:
             if cfg['ip'] == kwargs['ip']:
                 continue
             conf.append("static_arp {ip} {mac}".format(**cfg))
-
     if OBSERVER:
-      conf.append("static_arp {} {}".format(OBSERVER_IP, OBSERVER_MAC))
-
+        conf.append("static_arp {} {}".format(OBSERVER_IP, OBSERVER_MAC))
     with open(filename, "w") as f:
         f.write("\n".join(conf).format(
             netmask=NETMASK, gw=GATEWAY, mac=mac, **kwargs) + "\n")
-
-def gen_ix_conf(filename, experiment, **kwargs):
-    conf = [
-        "host_addr=\"{ip}/24\"",
-        "gateway_addr=\"{gw}\"",
-        "port={port}",
-        "devices=\"{device}\"",
-        "cpu={cpu_str}",
-        "batch={batch}",
-        "loader_path=\"/lib64/ld-linux-x86-64.so.2\"",
-    ]
-
-    # sc2-hs2-b1630/sc2-hs2-b1640 SPECIFIC! #
-    assert THISHOST in ["sc2-hs2-b1630", "sc2-hs2-b1640"]
-
-    if 'noht' in experiment:
-        cpu_list = list(range(0,24,2))
-    else:
-        cpu_list = [core for pair in zip(range(0,24,2), range(24,48,2)) for core in pair]
-
-    cpus = sorted(cpu_list[:kwargs['threads']])
-
-    with open(filename, "w") as f:
-        f.write("\n".join(conf).format(
-            gw=GATEWAY, device=NIC_PCI, cpu_str=str(cpus), batch=64, **kwargs) + "\n")
-
-def configure_dns_environment(cfg, experiment):
-    with open(experiment['name'] + "/config", "w") as f:
-        if experiment['system'] != "shenango":
-            f.write(
-                "options => {{listen => {{0.0.0.0:{port} => {{udp_threads = {threads}}}}}}}".format(**cfg))
-    zfdir = binaries['gdnsd']['linux'].rsplit(
-        "/", 1)[0] + "/../etc/gdnsd/zones/"
-    runcmd("ln -s {} {}/".format(zfdir, experiment['name']))
 
 
 def launch_shenango_program(cfg, experiment):
     assert 'args' in cfg
 
     if not 'binary' in cfg:
-        cfg['binary'] = binaries[cfg['app']]['shenango']
+        cfg['binary'] = binaries[cfg['app']]
 
     cwd = os.getcwd()
     os.chdir(experiment['name'])
-    assert os.access(cfg['binary'].split()[0], os.F_OK), cfg[
-        'binary'].split()[0]
+    assert os.access(cfg['binary'].split()[0], os.F_OK), cfg['binary'].split()[0]
     os.chdir(cwd)
 
-    gen_conf(
-        "{}/{}.config".format(experiment['name'], cfg['name']), experiment, **cfg)
-
+    gen_conf( "{}/{}.config".format(experiment['name'], cfg['name']), experiment, **cfg)
     args = cfg['args'].format(**cfg)
-    print(args)
+    # print(args)
 
-    fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err"
-    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)
-    print "Running", fullcmd
-    # time.sleep(3000)
+    if "kona" in cfg:
+        print("Wait some time for kona controller and server to be properly setup")
+        time.sleep(30)
+        params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
+        params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr}".format(**cfg["kona"])
+        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} > {name}.out 2> {name}.err".format(
+            params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
+    else:
+        fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(
+            numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)
+    print("Running " + fullcmd)
+    # fullcmd = "sleep 3000"
+    if stopat == 2:     time.sleep(3000)
 
     ### HACK
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
@@ -717,85 +442,17 @@ def launch_shenango_program(cfg, experiment):
     assert not proc.returncode
     return proc
 
-def launch_zygos_program(cfg, experiment):
-    assert 'args' in cfg
-
-    if not 'binary' in cfg:
-        cfg['binary'] = binaries[cfg['app']]['zygos']
-
-    cwd = os.getcwd()
-    os.chdir(experiment['name'])
-    assert os.access(cfg['binary'].split()[0], os.F_OK), cfg[
-        'binary'].split()[0]
-    os.chdir(cwd)
-
-    prio = ""
-    if cfg['nice'] >= 0:
-        prio = "nice -n {}".format(cfg['nice'])
-
-    cnf_name = "{}/{}.config".format(experiment['name'], cfg['name'])
-    gen_ix_conf(cnf_name, experiment, **cfg)
-
-    print cfg
-    args = cfg['args'].format(**cfg)
-
-    ix = "{}/zygos/dp/ix".format(BASE_DIR)
-    fullcmd = "sudo numactl -N {numa} -m {numa} {prio} {ix} -c {cnf} -- {bin} {args} > {name}.out 2>&1"
-    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE,prio=prio, ix=ix, bin=cfg['binary'], name=cfg['name'], cnf=os.path.abspath(cnf_name), args=args)
-    print "Running", fullcmd
-
-    proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
-    time.sleep(20)
-    proc.poll()
-    assert proc.returncode is None
-    return proc
-
 
 def launch_linux_program(cfg, experiment):
     assert 'args' in cfg
     assert 'nice' in cfg
-    assert cfg['ip'] == LNX_IPS[THISHOST]
+    assert cfg['ip'] == IP_MAP[THISHOST]
 
-    binary = cfg.get('binary', binaries[cfg['app']][experiment['system']])
+    cwd = os.getcwd()
+    os.chdir(experiment['name'])
+    binary = cfg.get('binary', binaries[cfg['app']])
     assert os.access(binary, os.F_OK), binary
-    name = cfg['name']
-
-    prio = ""
-    if cfg['nice'] >= 0:
-        prio = "chrt --idle 0"
-        #prio = "nice -n {}".format(cfg['nice'])
-
-    args = cfg['args'].format(**cfg)
-
-    # cpu_list = [str(i) for a in range(0, 24, 2) for i in [a, a + 24]]
-    # assert cfg['threads'] <= len(cpu_list)
-    cpu_bind = "-C " + USABLE_CPUS_STR #-C " + ",".join(cpu_list[:cfg['threads']])
-
-    fullcmd = "numactl -N {numa} -m {numa} {bind} {prio} {bin} {args} > {name}.out 2>&1"
-    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE,bind=cpu_bind, bin=binary,
-                             name=name, args=args, prio=prio)
-    print "Running", fullcmd
-    proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
-
-    if cfg['nice'] < 0:
-        time.sleep(2)
-        pid = proc.pid
-        with open("/proc/{pid}/task/{pid}/children".format(pid=pid)) as f:
-            for line in f:
-                runcmd(
-                    "sudo renice -n {} -p $(ls /proc/{}/task)".format(cfg['nice'], line.strip()))
-
-    proc.poll()
-    assert proc.returncode is None
-    return proc
-
-
-def launch_arachne_program(cfg, experiment):
-    assert 'args' in cfg
-    assert cfg['ip'] == LNX_IPS[THISHOST]
-
-    binary = cfg.get('binary', binaries[cfg['app']]['arachne'])
-    assert os.access(binary, os.F_OK), str(binary)
+    os.chdir(cwd)
     name = cfg['name']
 
     prio = ""
@@ -805,37 +462,53 @@ def launch_arachne_program(cfg, experiment):
 
     args = cfg['args'].format(**cfg)
     fullcmd = "numactl -N {numa} -m {numa} {prio} {bin} {args} > {name}.out 2>&1"
-    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE,bin=binary, prio=prio,
-                             name=name, args=args)
-    print "Running", fullcmd
+    fullcmd = fullcmd.format(numa=NIC_NUMA_NODE, bin=binary, name=name, args=args, prio=prio)
+    print("Running", fullcmd)
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
+    time.sleep(3)
 
+    if cfg['nice'] < 0:
+        time.sleep(2)
+        pid = proc.pid
+        with open("/proc/{pid}/task/{pid}/children".format(pid=pid)) as f:
+            for line in f:
+                runcmd("sudo renice -n {} -p $(ls /proc/{}/task)".format(cfg['nice'], line.strip()))
     proc.poll()
     assert proc.returncode is None
     return proc
 
-
 def launch_apps(experiment):
-    launcher = {
-        'shenango': launch_shenango_program,
-        'linux': launch_linux_program,
-        'arachne': launch_arachne_program,
-        'zygos': launch_zygos_program,
-        'linux-floating': launch_linux_program,
-    }.get(experiment['system'])
-
     procs = []
-    for cfg in experiment['apps']:
+    for cfg in experiment['apps'][THISHOST]:
         print(cfg)
         if 'before' in cfg:
             for cmd in cfg['before']:
                 eval(cmd)(cfg, experiment)
+        launcher = {
+            'shenango': launch_shenango_program,
+            'linux': launch_linux_program,
+        }.get(cfg['system'] if 'system' in cfg else experiment['system'])
         procs.append(launcher(cfg, experiment))
         if 'after' in cfg:
             for cmd in cfg['after']:
                 eval(cmd)(cfg, experiment)
     return procs
 
+def go_app(experiment_directory):
+    assert os.access(experiment_directory, os.F_OK)
+    with open(experiment_directory + "/config.json") as f:
+        experiment = json.loads(f.read())
+    if not "apps" in experiment or not THISHOST in experiment["apps"]:
+        print("No apps found for this host!")
+        return
+    apps = experiment["apps"][THISHOST]
+    if any([a['system'] == 'shenango' for a in apps]):
+        iokerneld = start_iokerneld(experiment)
+        cs = start_cstate()
+    procs = launch_apps(experiment)
+    for p in procs:
+        p.wait()
+    return 
 
 def go_client(experiment_directory):
     assert os.access(experiment_directory, os.F_OK)
@@ -854,126 +527,75 @@ def go_observer(experiment_directory):
     assert os.access(experiment_directory, os.F_OK)
     with open(experiment_directory + "/config.json") as f:
         experiment = json.loads(f.read())
-
-    if experiment['system'] != "shenango":
-        return
-
     procs = []
-    for app in experiment['apps'] + [app for client in experiment['clients'] for app in experiment['clients'][client]]:
+    apps = [app for host in experiment['apps'] for app in experiment['apps'][host]]
+    clients = [app for host in experiment['clients'] for app in experiment['clients'][host]]
+    # for app in apps + clients:
+    for app in clients:
         fullcmd = "sudo arp -d {ip} || true; "
         fullcmd += "go run rstat.go {ip} 1 "
         fullcmd += "| ts %s > rstat.{name}.log"
         procs.append(subprocess.Popen(fullcmd.format(**app), shell=True,cwd=experiment['name']))
-
     for p in procs:
         p.wait()
 
-
 def go_server(experiment):
     procs = []
-
-    # Create directory
-    try:
-        os.mkdir(experiment['name'])
-    except:
-        pass
-    # Copy ourselves for posterity
-    runcmd("cp {} {}/".format(__file__, experiment['name']))
-
-    conf_fn = experiment['name'] + "/config.json"
-    with open(conf_fn, "w") as f:
-        f.write(json.dumps(experiment))
-
-    # Record status of local git repo
-    runcmd("(cd {}; git status; git diff) > {}/gitstatus.$(hostname -s).log".format(SDIR,
-                                                                                    experiment['name']))
-
-    # Start mpstat
     procs.append(subprocess.Popen("mpstat 1 -N 0,1 2>&1| ts %s > mpstat.{}.log".format(
-                                  THISHOST), shell=True, cwd=experiment['name']))
-
-    # Start cstate
+        THISHOST), shell=True, cwd=experiment['name']))
     procs.append(start_cstate())
-
-    # Run iokernel or dune
-    if experiment['system'] == "shenango":
-        procs.append(start_iokerneld(experiment))
-    elif experiment['system'] == "zygos":
-        switch_to_zygos()
-    else:
-        switch_to_linux()
-
-    if experiment['system'] == "arachne":
-        procs.append(start_corearbiter(experiment))
-
-    # Start each server app
-    procs += launch_apps(experiment)
-
+    procs.append(start_iokerneld(experiment))   # iokernel
+    procs += launch_apps(experiment)            # run apps
     return procs
-
-
-def assemble_synthetic(system, thr, dist="exponential", spin=False, noht=False, bg=None,
-                       time=10, samples=40, mpps=1.6, target_us=10, transport="tcp", min_mpps=0.0, nconns=1200):
-    assert system in ["shenango", "linux", "arachne", "zygos", "linux-floating"]
-    assert transport in ["udp", "tcp"]
-    x = new_experiment(system)
-    x['name'] += "-synthetic-" + dist
-    if bg:
-        x['name'] += "-" + bg
-    x['name'] + "-" + transport
-    x['transport'] = transport
-
-    mean = get_mean(target_us, system, noht)
-
-    if noht:
-        x['noht'] = True
-
-    synth_handle = new_synthetic_server(thr, x, transport=transport)
-
-    if spin:
-        x['name'] += '-spin'
-        synth_handle['spin'] = synth_handle['threads']
-    if bg == "swaptions":
-        new_swaptions_inst(len(USABLE_CPUS), x)
-
-    new_measurement_instances(
-        len(CLIENT_SET), synth_handle, mpps, x, mean=mean, distribution=dist, nconns=nconns, start_mpps=min_mpps)
-    finalize_measurement_cohort(x, samples, time)
-
-    return x
-
-
-def assemble_pps_exper(thr):
-    x = new_experiment("shenango")
-    x['name'] += '-pps'
-    x['noht'] = True
-
-    synth_handle = new_synthetic_server(thr, "synth", x)
-
-    new_measurement_instances(len(CLIENT_SET), synth_handle, 8, x, mean=0)
-    finalize_measurement_cohort(x, 16, 10)
-    return x
-
 
 def verify_dates(host_list):
     for i in range(3): # try a few extra times
         while True:
             dates = set(runremote("date +%s", host_list).splitlines())
-            if dates:
-                break
-            else:
-                print "retrying verify dates"
-        if len(dates) == 1:
-            return
+            if dates:   break
+            else:       print("retrying verify dates")
+        if len(dates) == 1: return
         # Not more than one second off
         if len(dates) == 2:
             d1 = int(dates.pop())
             d2 = int(dates.pop())
-            if (d1 - d2)**2 == 1:
-                return
+            print(d1, d2)
+            if (d1 - d2)**2 == 1:   return
         time.sleep(1)
     assert False
 
+def setup_and_run_apps(experiment):
+    print("Setting up apps on other servers")
+    procs = []
+    servers = [s for s in experiment['apps'].keys() if s != THISHOST]
+    # verify_dates(servers + [OBSERVER])
+    if servers:
+        runremote("mkdir -p {}".format(experiment['name']), servers)
+        conf_fn = experiment['name'] + "/config.json"
+        for i in experiment['app_files'] + [conf_fn, RSTAT]:
+            runpara("scp {binary} {{}}:{dest}/".format(binary=i,dest=experiment['name']), servers)
+        try: 
+            for host in servers:
+                outfile = "{dir}/py.{host}.log".format(dir=experiment['name'], host=host)
+                cmd = "exec ssh -t -t {host} 'python {dir}/{script} -r app -n {dir} > {out} 2>&1'".format(
+                    host=host, dir=experiment['name'], script=os.path.basename(__file__), out=outfile)
+                print(cmd)
+                if stopat == 1:     time.sleep(3000)
+                proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                time.sleep(10)
+                # TODO: Returncode doesn't seem to be working without ssh -t -t. CHECK!
+                assert not proc.returncode, "Apps on {} failed, check {}".format(host, outfile)
+
+                # If any of the apps are linux-based on the remote server, set an arp entry
+                if any([a['system'] == 'linux' for a in experiment['apps'][host]]):
+                    runcmd("sudo arp -s {ip} {mac}".format(ip=IP_MAP[host], mac=MAC_MAP[host]))
+                procs.append(proc)
+        except:
+            for p in procs:
+                p.terminate()
+                p.wait()
+            raise
+    return procs
 
 def setup_clients(experiment):
     print("Setting up clients")
@@ -983,76 +605,60 @@ def setup_clients(experiment):
         experiment['name']), servers + [OBSERVER])
     conf_fn = experiment['name'] + "/config.json"
     for i in experiment['client_files'] + [conf_fn, RSTAT]:
-        runpara("scp {binary} {{}}:{dest}/".format(binary=i,
-                                                   dest=experiment['name']), servers + [OBSERVER])
+        runpara("scp {binary} {{}}:{dest}/".format(
+            binary=i,dest=experiment['name']), servers + [OBSERVER])
 
-def collect_clients(experiment):
-    runpara("scp {{}}:{exp}/*.log {exp}/ || true".format(exp=experiment['name']), experiment['clients'].keys() + [OBSERVER])
-    runpara("scp {{}}:{exp}/*.out {exp}/ || true".format(exp=experiment['name']), experiment['clients'].keys())
-    runpara("scp {{}}:{exp}/*.err {exp}/ || true".format(exp=experiment['name']), experiment['clients'].keys())
-    runremote(
-        "rm -rf {}".format(experiment['name']), experiment['clients'].keys() + [OBSERVER])
+def setup_observer(experiment):
+    observer = None
+    observer_cmd = "exec ssh -t -t {observer} 'python {dir}/{script} -r observer -n {dir} > {dir}/py.{observer}.log 2>&1'".format(
+        observer=OBSERVER, dir=experiment['name'], script=os.path.basename(__file__))
+    print(observer_cmd)
+    observer = subprocess.Popen(observer_cmd, shell=True)
+    time.sleep(3)
+    assert not observer.returncode, "Observer process failed, check {dir}/py.{observer}.log".format(
+        observer=OBSERVER, dir=experiment['name'])
+    return observer
+
+def collect_logs(experiment, success):
+    servers = list(set(experiment['clients'].keys() + experiment['apps'].keys()))
+    runpara("scp {{}}:{exp}/*.log {exp}/ || true".format(exp=experiment['name']), servers + [OBSERVER])
+    runpara("scp {{}}:{exp}/*.out {exp}/ || true".format(exp=experiment['name']), servers)
+    runpara("scp {{}}:{exp}/*.err {exp}/ || true".format(exp=experiment['name']), servers)
+    runremote("rm -rf {}".format(experiment['name']), servers + [OBSERVER])
+    if success: 
+        if not os.path.exists('data'):  os.makedirs('data')
+        runcmd("mv {exp} data/".format(exp=experiment['name']))
     return
 
-def execute_experiment_noclients(experiment):
-    assert len(experiment['clients']) == 0
-    procs = go_server(experiment)
-    done = False
-    while not done:
-        for p in procs:
-            if p.poll() != None:
-                done = True
-                break
-        time.sleep(3)
-    for p in procs:
-        try:
-            p.terminate()
-        except:
-            pass
-        p.wait()
-        del p
-    exitfn()
-
 def execute_experiment(experiment):
-    procs = go_server(experiment)
-    setup_clients(experiment)
-    time.sleep(10)
-    observer = None
+    if not os.path.exists(experiment['name']):    os.mkdir(experiment['name'])
+    runcmd("cp {} {}/".format(__file__, experiment['name']))    # save a copy of this file
+    conf_fn = experiment['name'] + "/config.json"
+    with open(conf_fn, "w") as f:
+        f.write(json.dumps(experiment))
+    
+    procs = []
+    error = False
     try:
-        observer_cmd = "exec ssh -t -t {observer} 'python {dir}/{script} observer {dir} > {dir}/py.{observer}.log 2>&1'".format(
-            observer=OBSERVER, dir=experiment['name'], script=os.path.basename(__file__))
-        if OBSERVER: 
-            print(observer_cmd)
-            observer = subprocess.Popen(observer_cmd, shell=True)
-            time.sleep(3)
-            assert not observer.returncode, "Observer process failed, check {dir}/py.{observer}.log".format(
-                observer=OBSERVER, dir=experiment['name'])
-        # time.sleep(3000)
-
-        runremote("ulimit -S -c unlimited; python {dir}/{script} client {dir} > {dir}/py.{{}}.log 2>&1".format(dir=experiment[
-                  'name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
+        procs += setup_and_run_apps(experiment)
+        procs += go_server(experiment)
+        setup_clients(experiment)
+        time.sleep(10)              # WHY?
+        if OBSERVER: procs.append(setup_observer(experiment)) 
+        if stopat == 3:     time.sleep(3000)
+        runremote("ulimit -S -c unlimited; python {dir}/{script} -r client -n {dir} > {dir}/py.{{}}.log 2>&1".format(
+            dir=experiment['name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
+    except:
+        error = True
+        raise
     finally:
-        print("finally")
-        collect_clients(experiment)
-        if observer:
-            observer.terminate()
-            observer.wait()
-    for p in procs:
-        p.terminate()
-        p.wait()
-        del p
-    exitfn()
+        collect_logs(experiment, not error)
+        for p in procs:
+            p.terminate()
+            p.wait()
+            del p
+        cleanup()
     return experiment
-
-
-# runs one experiment per sample-point.
-# mainly needed for zygos which doesn't seem to support closing TCP connections.
-def rep_external(fn, mpps, samples, *args, **kwargs):
-    for i in range(1, samples + 1):
-        mpps_local = float(mpps * i) / float(samples)
-        xp = fn(*args, mpps=mpps_local, samples=1, **kwargs)
-        xp['name'] += '-{}mpps'.format(mpps_local)
-        execute_experiment(xp)
 
 def go_replay(exp_folder):
     assert is_server()
@@ -1067,120 +673,53 @@ def go_replay(exp_folder):
     exp['name'] += "-replay"
     execute_experiment(exp)
 
+def main():
+    atexit.register(cleanup)
 
-def run_balancer_experiment(interval):
-    subprocess.check_call("git diff --exit-code iokernel/main.c > /dev/null", shell=True, cwd=SDIR)
-    try:
-        subprocess.check_call("sed 's/define CORES_ADJUST_INTERVAL_US.*/define CORES_ADJUST_INTERVAL_US {}/g' -i iokernel/main.c".format(interval), shell=True, cwd=SDIR)
-        subprocess.check_call("make", shell=True, cwd=SDIR)
-        x = assemble_synthetic("shenango", 14, dist="exponential", mpps=1.4, bg="swaptions", samples=20)
-        x['name'] += "-{}us_balancer".format(interval)
-        execute_experiment(x)
-    finally:
-        subprocess.check_call("git checkout iokernel/main.c", shell=True, cwd=SDIR)
-        subprocess.check_call("make", shell=True, cwd=SDIR)
+    parser = argparse.ArgumentParser("Makes concurrent requests to lambda URLs")
+    parser.add_argument('-r', '--role', action='store', help='role', type=Role, choices=list(Role), default=Role.host)
+    parser.add_argument('-n', '--name', action='store', help='Custom name for this experiment, defaults to datetime')
+    parser.add_argument('-d', '--desc', action='store', help='Description/comments for this run', default="")
+    parser.add_argument('--start', action='store', help='starting rate (mpps) (exclusive)', type=float, default=DEFAULT_START_MPPS)
+    parser.add_argument('--finish', action='store', help='finish rate (mpps)', type=float, default=DEFAULT_MPPS)
+    parser.add_argument('--steps', action='store', help='steps from start to finish', type=int, default=DEFAULT_SAMPLES)
+    parser.add_argument('--time', action='store', help='duration for each step in secs', type=int, default=DEFAULT_RUNTIME_SECS)
+    parser.add_argument('-nk', '--nokona', action='store_true', help='Run without Kona', default=False)
+    parser.add_argument('-km', '--konamem', action='store', help='local mem for kona', type=int, default=DEFAULT_KONA_MEM)
+    parser.add_argument('-ket', '--konaet', action='store', help='kona evict threshold', type=float, default=DEFAULT_KONA_EVICT_THR)
+    parser.add_argument('-kedt', '--konaedt', action='store', help='kona evict done threshold', type=float, default=DEFAULT_KONA_EVICT_DONE_THR)
+    parser.add_argument('--stopat', action='store', help="stop program at a certain point (for debugging purposes)", type=int, default=0)
 
+    args = parser.parse_args()
 
-def run_cycle_counting_experiment():
-    subprocess.check_call("git diff --exit-code runtime/defs.h > /dev/null", shell=True, cwd=SDIR)
-    try:
-        subprocess.check_call("echo \"#define TCP_RX_STATS 1\" >> runtime/defs.h", shell=True, cwd=SDIR)
-        subprocess.check_call("make", shell=True, cwd=SDIR)
-        subprocess.check_call("cargo clean && cargo build --release", shell=True, cwd=SDIR + "/apps/synthetic/")
-        for nconns in [24, 1200]:
-            x = assemble_synthetic("shenango", 14, dist="exponential", mpps=1.4, bg="swaptions", samples=20, nconns=nconns)
-            x['name'] += "-{}conns-cycle_counted".format(nconns)
-            execute_experiment(x)
-    finally:
-        subprocess.check_call("git checkout runtime/defs.h", shell=True, cwd=SDIR)
-        subprocess.check_call("make", shell=True, cwd=SDIR)
-        subprocess.check_call("cargo clean && cargo build --release", shell=True, cwd=SDIR + "/apps/synthetic/")
+    global role, stopat
+    stopat = args.stopat
+    role = args.role
+    if role == Role.host:
+        assert is_server()
+        execute_experiment(bench_memcached(
+            "shenango", SERVER_CORES, 
+            name=args.name, desc=args.desc,
+            start_mpps=args.start, mpps=args.finish, samples=args.steps, time=args.time,
+            kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, kona_evict_done_thr=args.konaedt, 
+            nconns=100
+        ))
 
-def paper_experiments():
-    # load shift experiment
-    if False:
-        execute_experiment(loadshift("shenango"))
-        execute_experiment(loadshift("arachne"))
-
-    # local synthetic experiment
-    if False:
-        execute_experiment_noclients(
-            assemble_local_synth(0.8, 1, 10, time=10, samples=40))
-
-    # balancer interval experiment
-    if False:
-        for interval in [25, 50, 100]:
-            run_balancer_experiment(interval)
-
-    # memcached experiments
-    if True:
-        # Shenango, 1 MPPS at a time
-        for start_mpps in range(1,2):
-            # execute_experiment(bench_memcached(
-            #     "shenango", 12, start_mpps=start_mpps, mpps=start_mpps+1, bg="swaptions", samples=10))
-            execute_experiment(bench_memcached(
-                "shenango", 24, start_mpps=start_mpps, mpps=start_mpps+1, bg=None, samples=10))
-            time.sleep(10)  # leave some time b/w experiments
-
-        # # Linux, higher sample rate below 1.6
-        # execute_experiment(bench_memcached(
-        #     "linux", 16, mpps=1.6, samples=32, bg="swaptions"))
-        # execute_experiment(bench_memcached(
-        #     "linux", 16, mpps=3.0, samples=14, bg="swaptions", start_mpps=1.6))
-
-        # # Arachne, higher sample rate below 1.6
-        # execute_experiment(bench_memcached(
-        #     "arachne", 15, mpps=1.6, samples=32, bg="swaptions"))
-        # execute_experiment(bench_memcached(
-        #     "arachne", 15, mpps=3.0, samples=14, bg="swaptions", start_mpps=1.6))
-
-    # DNS experiments
-    if False:
-        execute_experiment(bench_dns(
-            "shenango", mpps=6.0, thr=6, samples=60, bg="swaptions"))
-
-        execute_experiment(bench_dns(
-            "linux", mpps=2.0, thr=16, samples=20, bg="swaptions"))
-
-    # synthetic graph
-    if False:
-        for sys, mpps in [("shenango", 1.4), ("linux-floating", 1.0), ("arachne", 1.0)]:
-            for dist in ["exponential", "bimodal1", "constant"]:
-                execute_experiment(assemble_synthetic(sys, 14, dist=dist, mpps=mpps, bg="swaptions"))
-
-    # few connections experiments
-    if False:
-        x = assemble_synthetic("shenango", 14, dist="exponential", mpps=1.4, bg="swaptions", nconns=24)
-        x['name'] += "-24conns"
-        execute_experiment(x)
-
-        run_cycle_counting_experiment()
-
-    # zygos graphs
-    if False:
-        rep_external(bench_memcached, 6.5, 65, "zygos", 16)
-
-        for dist in ["exponential", "bimodal1", "constant"]:
-            rep_external(assemble_synthetic, 1.4, 40, "zygos", 16, dist=dist)
-
-        rep_external(assemble_synthetic, 1.4, 40, "zygos", 16, dist="exponential", nconns=24)
-
+    elif role == role.app:
+        assert args.name
+        cleanup(pre=True)    # HACK for kona cleanup.
+        time.sleep(2)
+        go_app(args.name)
+    elif role == role.client:
+        assert args.name
+        go_client(args.name)
+    elif role == Role.observer:
+        assert args.name
+        go_observer(args.name)
+    elif role == Role.replay:
+        role = Role.host
+        assert args.name
+        go_replay(args.name)
 
 if __name__ == '__main__':
-    atexit.register(exitfn)
-    if len(sys.argv) < 2 or sys.argv[1] == "server":
-        assert is_server()
-
-        paper_experiments()
-
-    elif sys.argv[1] == "client":
-        assert len(sys.argv) == 3
-        go_client(sys.argv[2])
-    elif sys.argv[1] == "observer":
-        assert len(sys.argv) == 3
-        go_observer(sys.argv[2])
-    elif sys.argv[1] == "replay":
-        assert len(sys.argv) == 3
-        go_replay(sys.argv[2])
-    else:
-        assert False, 'bad arg'
+    main()

@@ -527,9 +527,9 @@ def main():
                 # markerfacecolor=(None if args.nomarker else colors[cidx]))
 
             # Add a line at mode (TODO: make this a command line option)
-            mode = scstats.mode(xc).mode[0]
-            if not args.vlines:     args.vlines = []
-            args.vlines.append(mode)        
+            # mode = scstats.mode(xc).mode[0]
+            # if not args.vlines:     args.vlines = []
+            # args.vlines.append(mode)        
             ylabel = "CDF"
 
         if args.colormarkerincr:

@@ -6,6 +6,7 @@ import os
 import sys
 from collections import defaultdict
 import re
+import argparse
 
 DISPLAYED_RSTAT_FIELDS = ["parks", "p_rx_ooo", "p_reorder_time"]
 
@@ -62,10 +63,8 @@ def parse_loadgen_output(filename):
         dat = f.read()
 
     samples = []
-
     line_starts = ["Latencies: ", "Trace: ", "zero, ","exponential, ",
                    "bimodal1, ", "constant, "]
-
 
     def get_line_start(line):
         for l in line_starts:
@@ -138,7 +137,7 @@ def merge_sample_sets(a, b):
             newexp['tracepoints'] = ea['tracepoints'] + eb['tracepoints']
         samples.append(newexp)
         assert set(ea.keys()) == set(newexp.keys())
-    print(len(samples))
+    # print(len(samples))
     return samples
 
 def except_none(func):
@@ -214,6 +213,7 @@ def parse_iokernel_log(dirn, experiment):
                 if stat_name == "BATCH_TOTAL:": stats['IOK_SATURATION'].append((tm, RX_P / float(stat_val)))
     return stats
 
+
 @except_none
 def parse_utilization(dirn, experiment):
     fname = "{dirn}/mpstat.{server_hostname}.log".format(
@@ -232,7 +232,6 @@ def parse_utilization(dirn, experiment):
     assert "CPU" in headerln or "NODE" in headerln
 
     cols = {h: pos for pos, h in enumerate(headerln)}
-
     data = map(lambda l: l.split(), data)
     data = filter(lambda l: "%iowait" not in l and len(l) > 1, data[4:])
 
@@ -241,14 +240,10 @@ def parse_utilization(dirn, experiment):
     else:
         assert all(lambda l: l[cols['CPU']] == 'all', data)
 
-# % usr
-
-# 100.0 - %idle
+# % usr 100.0 - %idle
     data = map(lambda l: (int(l[0]), 100. - float(l[-1])), data)
-
     if not "NODE" in headerln:
         data = map(lambda a, b: a, 2 * b, data)
-
     return data
 
 def parse_rstat(app, directory):
@@ -295,13 +290,11 @@ def parse_rstat(app, directory):
         assert False, line
     return stat_vec
 
-def extract_window(datapoints, wct_start, duration_sec):
 
+def extract_window(datapoints, wct_start, duration_sec):
     window_start = wct_start + int(duration_sec * 0.1)
     window_end = wct_start + int(duration_sec * 0.9)
-
-    datapoints = filter(lambda l: l[0] >= window_start and l[
-        0] <= window_end, datapoints)
+    datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
 
     # Weight any gaps in reporting
     try:
@@ -314,35 +307,36 @@ def extract_window(datapoints, wct_start, duration_sec):
         avgmids = total / nsecs
     except:
         avgmids = None
-
     return avgmids
 
 
 def load_loadgen_results(experiment, dirname):
     insts = [i for host in experiment['clients'] for i in experiment['clients'][host]]
-    if not insts:
-         insts = [i for i in experiment['apps'] if i.get('protocol') == 'synthetic'] # local synth;
-         print insts, [i for i in insts]
-         experiment['clients'][experiment['server_hostname']] = insts #[i for i in insts if i.get('protocol') == 'synthetic'] #experiment['apps'] #semicorrect
-    for inst in insts: #host in experiment['clients']:
- #       for inst in experiment['clients'][host]:
-            filename = "{}/{}.out".format(dirname, inst['name'])
-            assert os.access(filename, os.F_OK)
-            print("Parsing " + filename)
-            data = parse_loadgen_output(filename)
-           # assert len(data) == inst['samples'], filename
-            if inst['name'] != "localsynth":
-	            server_handle = inst['name'].split(".")[1] 
-        	    app = next(app for app in experiment['apps'] if app['name'] == server_handle)
-            else:
-                    app = inst #local
-            if not 'loadgen' in app:
-                app['loadgen'] = data
-            else:
-                app['loadgen'] = merge_sample_sets(app['loadgen'], data)
-    print(len(app["loadgen"]))
+    apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
 
-    for app in experiment['apps']:
+    if not insts:
+        print(insts)
+        insts = [i for i in apps if i.get('protocol') == 'synthetic'] # local synth;
+        experiment['clients'][experiment['server_hostname']] = insts #[i for i in insts if i.get('protocol') == 'synthetic'] #experiment['apps'] #semicorrect
+    for inst in insts: #host in experiment['clients']:
+#       for inst in experiment['clients'][host]:
+        filename = "{}/{}.out".format(dirname, inst['name'])
+        assert os.access(filename, os.F_OK)
+        print("Parsing " + filename)
+        data = parse_loadgen_output(filename)
+        # assert len(data) == inst['samples'], filename
+        if inst['name'] != "localsynth":
+            server_handle = inst['name'].split(".")[1] 
+            app = next(app for app in apps if app['name'] == server_handle)
+        else:
+                app = inst #local
+        if not 'loadgen' in app:
+            app['loadgen'] = data
+        else:
+            app['loadgen'] = merge_sample_sets(app['loadgen'], data)
+        # print(len(app["loadgen"]))
+
+    for app in apps:
         if not 'loadgen' in app: continue
         for sample in app['loadgen']:
             latd = sample['latencies']
@@ -351,34 +345,37 @@ def load_loadgen_results(experiment, dirname):
             sample['p99'] = percentile(latd, 0.99)
             sample['p999'] = percentile(latd, 0.999)
             sample['p9999'] = percentile(latd, 0.9999)
-            del sample['latencies']
+            # del sample['latencies']
             sample['app'] = app
+
 
 def parse_dir(dirname):
     files = os.listdir(dirname)
     assert "config.json" in files
     with open(dirname + "/config.json") as f:
-         experiment = json.loads(f.read())
+        experiment = json.loads(f.read())
 
     load_loadgen_results(experiment, dirname)
 
-    start_time = min(sample['time'] for app in experiment['apps'] for sample in app.get('loadgen', []))
+    apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
+    start_time = min(sample['time'] for app in apps for sample in app.get('loadgen', []))
 
-    for app in experiment['apps']:
+    for app in apps:
         app['output'] = load_app_output(app, dirname, start_time)
         app['rstat'] = parse_rstat(app, dirname)
 
     experiment['mpstat'] = parse_utilization(dirname, experiment)
     experiment['ioklog'] = parse_iokernel_log(dirname, experiment)
-
+    # experiment['konalog'] = parse_kona_log(dirname, experiment)   TODO
     return experiment
+
 
 def arrange_2d_results(experiment):
     # per start time: the 1 background app of choice, aggregate throughtput,  
     # 1 line per start time per server application
-
-    by_time_point = zip(*(app['loadgen'] for app in experiment['apps'] if 'loadgen' in app))
-    bgs = [app for app in experiment['apps'] if app['output']]
+    apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
+    by_time_point = zip(*(app['loadgen'] for app in apps if 'loadgen' in app))
+    bgs = [app for app in apps if app['output']]
     # TODO support multiple bg apps
     assert len(bgs) <= 1
     bg = bgs[0] if bgs else None
@@ -391,22 +388,21 @@ def arrange_2d_results(experiment):
               "totalcpu"] #, "localcpu", "ioksaturation"]
 
     header = header1 + header2 + header3 + DISPLAYED_RSTAT_FIELDS
-
     lines = [header]
     ncons = 0
     for list_pm in experiment['clients'].itervalues():
-        for i in list_pm: ncons += i['client_threads']
-#    nconns = sum(
+        for i in list_pm: 
+            ncons += i['client_threads']
 
     for time_point in by_time_point:
         times = set(t['time'] for t in time_point)
         #assert len(times) == 1 # all start times are the same
         time = times.pop()
-	if len(times) == 1: assert abs(times.pop() - time) <= 1
-	else: assert len(times) == 0
+        if len(times) == 1: assert abs(times.pop() - time) <= 1
+        else:   assert len(times) == 0
         bgbaseline = bg['output']['recorded_baseline'] if bg else 0
         bgtput = extract_window(bg['output']['recorded_samples'], time, runtime) if bg else 0
-	if bgtput is None: bgtput = 0
+        if bgtput is None:  bgtput = 0
         cpu = extract_window(experiment['mpstat'], time, runtime) if experiment['mpstat'] else None
         total_offered = sum(t['offered'] for t in time_point)
         total_achieved = sum(t['achieved'] for t in time_point)
@@ -421,11 +417,11 @@ def arrange_2d_results(experiment):
                 out.append(None)
             out.append(iok_saturation)"""
             for field in DISPLAYED_RSTAT_FIELDS:
-		if point['app']['rstat']:
-			out.append(extract_window(point['app']['rstat'][field], time, runtime))
-		else:
-			out.append(None)
-            lines.append(out)
+                if point['app']['rstat']:
+                    out.append(extract_window(point['app']['rstat'][field], time, runtime))
+                else:
+                    out.append(None)
+                lines.append(out)
         for bgl in bgs:
             continue; out = [experiment['system'], bgl['app'], bg['app'] if bg else None, 
                     None, bgl['spin'] > 1]
@@ -444,9 +440,7 @@ def arrange_2d_results(experiment):
                 else:
                         out.append(None)
             lines.append(out)
-
     return lines
-
 
 
 def rotate(output_lines):
@@ -459,30 +453,48 @@ def rotate(output_lines):
 
 def print_res(res):
     for line in res:
-        print ",".join([str(x) for x in line])
+        print(",".join([str(x) for x in line]))
 
-def do_it_all(dirname):
 
+def do_it_all(dirname, save_lat=False):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
-
     bycol = rotate(stats)
 
     STAT_F = "{}/stats/".format(dirname)
     os.system("mkdir -p " + STAT_F)
-
     with open(STAT_F + "stat.csv", "w") as f:
         for line in stats:
             x = ",".join([str(x) for x in line])
-            print x
+            print(x)
             f.write(x + '\n')
+
+    # Write latencies too
+    if save_lat:
+        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
+        for app in apps:
+            if not 'loadgen' in app: continue
+            for i, sample in enumerate(app['loadgen']):
+                latfile = STAT_F + "latencies_{}".format(i)
+                print("Writing latencies to " + latfile)
+                with open(latfile, "w") as f:
+                    f.write("Latencies\n")
+                    for k,v in sample['latencies'][0].items():
+                        f.writelines([str(k) + "\n"] * v)
 
     return bycol
 
+
 def main():
-    all_res = []
-    for d in sys.argv[1:]:
-        do_it_all(d)
+    parser = argparse.ArgumentParser("Summarizes exp results")
+    parser.add_argument('-n', '--name', action='store', help='Exp (directory) name', required=True)
+    parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
+    parser.add_argument('-l', '--lat', action='store_true', help='save latencies to file', default=False)
+    args = parser.parse_args()
+
+    dirname = os.path.join(args.dir, args.name)
+    do_it_all(dirname, save_lat=args.lat)
+
 
 if __name__ == '__main__':
     main()
