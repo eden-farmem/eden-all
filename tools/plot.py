@@ -409,11 +409,12 @@ def main():
     matplotlib.rcParams['pdf.fonttype'] = 42        # required for latex embedded figures
 
     fig, axmain = plt.subplots(1, 1, figsize=(8,4))
-    fig.suptitle(args.ptitle if args.ptitle else '')
+    fig.suptitle(args.ptitle if args.ptitle else '',y=0)
+    plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
     #plt.ylim(0, 1000)
 
     if args.xlog:
-        axmain.set_xscale('log', basex=2)
+        axmain.set_xscale('log', basex=10)
     if args.ylog:
         axmain.set_yscale('log')
 

@@ -72,7 +72,7 @@ KONA_MEM_SERVER_PORT = 9200
 DEFAULT_START_MPPS = 0
 DEFAULT_MPPS = 1
 DEFAULT_SAMPLES = 1
-DEFAULT_RUNTIME_SECS = 10
+DEFAULT_RUNTIME_SECS = 20
 DEFAULT_KONA_MEM = 1E9
 DEFAULT_KONA_EVICT_THR = 0.8
 DEFAULT_KONA_EVICT_DONE_THR = 0.8
@@ -233,7 +233,8 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'app': 'synthetic',
             'serverip': server_handle['ip'],
             'serverport': server_handle['port'],
-            'output': kwargs.get('output', "buckets"),
+            # 'output': kwargs.get('output', "buckets"),
+            'output': kwargs.get('output', "normal"),       # don't print latencies
             'mpps': float(mpps) / count,
             'protocol': server_handle['protocol'],
             'transport': server_handle['transport'],
@@ -680,6 +681,8 @@ def main():
     parser.add_argument('-r', '--role', action='store', help='role', type=Role, choices=list(Role), default=Role.host)
     parser.add_argument('-n', '--name', action='store', help='Custom name for this experiment, defaults to datetime')
     parser.add_argument('-d', '--desc', action='store', help='Description/comments for this run', default="")
+    parser.add_argument('-p', '--prot', action='store', help='Transport protocol (tcp/udp), default to tcp', default="tcp")
+    parser.add_argument('-nc', '--nconns', action='store', help='Number of client TCP connections, defaults to 100',type=int, default=100)
     parser.add_argument('--start', action='store', help='starting rate (mpps) (exclusive)', type=float, default=DEFAULT_START_MPPS)
     parser.add_argument('--finish', action='store', help='finish rate (mpps)', type=float, default=DEFAULT_MPPS)
     parser.add_argument('--steps', action='store', help='steps from start to finish', type=int, default=DEFAULT_SAMPLES)
@@ -702,7 +705,7 @@ def main():
             name=args.name, desc=args.desc,
             start_mpps=args.start, mpps=args.finish, samples=args.steps, time=args.time,
             kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, kona_evict_done_thr=args.konaedt, 
-            nconns=100
+            transport=args.prot, nconns=args.nconns
         ))
 
     elif role == role.app:

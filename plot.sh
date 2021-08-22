@@ -4,6 +4,7 @@
 PLOTEXT=pdf
 PLOTDIR=plots/
 HOST="sc2-hs2-b1630"
+CLIENT="sc2-hs2-b1607"
 
 usage="\n
 -f, --force \t\t force re-summarize results\n
@@ -24,59 +25,51 @@ case $i in
 esac
 done
 
-
-for exp in `ls -d1 data/run-08-19-00*`; do
+PREFIX=08-21-1[8-9]
+for exp in `ls -d1 data/run-${PREFIX}*`; do
     # echo $f
     name=`basename $exp`
     cfg="$exp/config.json"
-    konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
-    if [ $konamem == "null" ]; then    klabel="No_Kona";
-    else    klabel=`echo $konamem | awk '{ printf "%-4d_MB", $1/1000000 }'`;     fi
-    # echo $klabel
+    # konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
+    # if [ $konamem == "null" ]; then    klabel="No_Kona";
+    # else    klabel=`echo $konamem | awk '{ printf "%-4d_MB", $1/1000000 }'`;     fi
+    # label=$klabel
+    prot=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .protocol' $cfg`
+    nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`
+    label=${nconns}_conns
+    desc=`jq '.desc' $cfg`
 
     # summarize results
     statsdir=$exp/stats
     if [[ $FORCE ]] || [ ! -d $statsdir ]; then
         python summary.py -n $name --lat 
-        break
     fi
 
     # aggregate across runs
     statfile=$statsdir/stat.csv
-    header=`cat $statfile | awk 'NR==1'`,konamem
-    curstats=`cat $statfile | awk 'NR==2'`,$konamem      #remove header
+    header=`cat $statfile | awk 'NR==1'`,nconns
+    curstats=`cat $statfile | awk 'NR==2'`,$nconns      #remove header
     stats="$stats\n$curstats"
     latfiles="$latfiles -d $statsdir/latencies_0 -l $klabel"
 done
 
 # Xput plot
 echo -e "$header$stats" > temp_xput
-plotname=${PLOTDIR}/kona_xput.$PLOTEXT
+plotname=${PLOTDIR}/memcached_xput_${PREFIX}.$PLOTEXT
 python3 tools/plot.py -d temp_xput      \
-    -xc konamem  -xl "Local Memory (MB)" --xmul 1e-6    \
+    -xc nconns  -xl "Num TCP Connections/Client Threads"\
     -yc achieved -yl "Mpps" -l "Xput"   --ymul 1e-6     \
-    --vline 1920                                        \
-    -fs 14 -of $PLOTEXT -o $plotname
+    -fs 14 -of $PLOTEXT -o $plotname -t "$desc"
 gv $plotname &
 rm temp_xput
 # --twin -yc totalcpu -tyl "CPU %"  -l "CPU Usage"          \
 
-# Latencies plot
-plotname=${PLOTDIR}/kona_latencies.$PLOTEXT
-python3 tools/plot.py -z cdf  -yc "Latencies"  ${latfiles}  \
-    -xl  "Latencies (micro-sec)"    --xlog                  \
-    -fs 11  -of $PLOTEXT  -o $plotname
-gv $plotname &  
-
-
-
-
-
-
-
-
-
-
+# # Latencies plot
+# plotname=${PLOTDIR}/kona_latencies_${PREFIX}.$PLOTEXT
+# python3 tools/plot.py -z cdf  -yc "Latencies"  ${latfiles}  \
+#     -xl  "Latencies (micro-sec)"    --xlog                  \
+#     -fs 11  -of $PLOTEXT  -o $plotname
+# gv $plotname &  
 
 
 

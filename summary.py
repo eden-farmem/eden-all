@@ -1,12 +1,14 @@
 
 # usage: python summary.py <experiment directory>
 
+import enum
 import json
 import os
 import sys
 from collections import defaultdict
 import re
 import argparse
+import glob
 
 DISPLAYED_RSTAT_FIELDS = ["parks", "p_rx_ooo", "p_reorder_time"]
 
@@ -112,6 +114,16 @@ def parse_loadgen_output(filename):
                  'latencies': ({}, int(header_line[3])),
                  'time': int(header_line[5]),
             })
+    if len(samples) == 0 and header_line:
+        # If no latencies, just record xput
+        samples.append({
+            'distribution': header_line[0],
+            'offered': int(header_line[1]),
+            'achieved': int(header_line[2]),
+            'missed': int(header_line[4]),
+            'latencies': ({}, int(header_line[3])),
+            'time': int(header_line[10]),
+        })
     return samples
 
 
@@ -329,7 +341,7 @@ def load_loadgen_results(experiment, dirname):
             server_handle = inst['name'].split(".")[1] 
             app = next(app for app in apps if app['name'] == server_handle)
         else:
-                app = inst #local
+            app = inst #local
         if not 'loadgen' in app:
             app['loadgen'] = data
         else:
@@ -421,7 +433,7 @@ def arrange_2d_results(experiment):
                     out.append(extract_window(point['app']['rstat'][field], time, runtime))
                 else:
                     out.append(None)
-                lines.append(out)
+            lines.append(out)
         for bgl in bgs:
             continue; out = [experiment['system'], bgl['app'], bg['app'] if bg else None, 
                     None, bgl['spin'] > 1]
@@ -487,14 +499,20 @@ def do_it_all(dirname, save_lat=False):
 
 def main():
     parser = argparse.ArgumentParser("Summarizes exp results")
-    parser.add_argument('-n', '--name', action='store', help='Exp (directory) name', required=True)
+    parser.add_argument('-n', '--name', action='store', help='Exp (directory) name')
     parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
     parser.add_argument('-l', '--lat', action='store_true', help='save latencies to file', default=False)
     args = parser.parse_args()
 
-    dirname = os.path.join(args.dir, args.name)
-    do_it_all(dirname, save_lat=args.lat)
+    expname = args.name
+    if not expname:  
+        subfolders = glob.glob(args.dir + "/*/")
+        latest = max(subfolders, key=os.path.getctime)
+        expname = os.path.basename(os.path.split(latest)[0])
+    dirname = os.path.join(args.dir, expname)
 
+    print("Summarizing exp run: " + expname)
+    do_it_all(dirname, save_lat=args.lat)
 
 if __name__ == '__main__':
     main()
