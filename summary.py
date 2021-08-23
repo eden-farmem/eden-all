@@ -226,6 +226,37 @@ def parse_iokernel_log(dirn, experiment):
                 if stat_name == "BATCH_TOTAL:": stats['IOK_SATURATION'].append((tm, RX_P / float(stat_val)))
     return stats
 
+@except_none
+def parse_kona_log(dirn, experiment):
+    fname = "{dirn}/memcached.out".format(dirn=dirn, **experiment)
+    with open(fname) as f:
+        data = f.read().splitlines()
+        int(data[0].split()[0])
+
+    header_list = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
+    "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
+    "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
+    "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
+    "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
+    "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
+    COL_IDX = {k: v for v, k in enumerate(header_list)}
+    COLS_INCLUDE = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "malloc_size", "mem_pressure"]
+
+    stats = defaultdict(list)
+    for line in data:
+        if "counters," in line:
+            dats = line.split()
+            time = int(dats[0])
+            # print(dats[1])
+            values = dats[1].split(",")
+            assert len(values) == 31, "unexpected kona log format"
+            if header_list[1] == values[1]:     continue    #header
+            for c in COLS_INCLUDE:  stats[c].append((time, int(values[COL_IDX[c]])))            
+            stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']])))
+    print("Reading columns: " + str(stats.keys()))
+    return stats
+
 
 @except_none
 def parse_utilization(dirn, experiment):
@@ -322,6 +353,19 @@ def extract_window(datapoints, wct_start, duration_sec):
         avgmids = None
     return avgmids
 
+def extract_window_diff(datapoints, wct_start, duration_sec):
+    window_start = wct_start + int(duration_sec * 0.1)
+    window_end = wct_start + int(duration_sec * 0.9)
+    datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
+    data = [v for k,v in datapoints]
+    return max(data) - min(data)
+
+def extract_window_max(datapoints, wct_start, duration_sec):
+    window_start = wct_start + int(duration_sec * 0.1)
+    window_end = wct_start + int(duration_sec * 0.9)
+    datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
+    data = [v for k,v in datapoints]
+    return max(data)
 
 def load_loadgen_results(experiment, dirname):
     insts = [i for host in experiment['clients'] for i in experiment['clients'][host]]
@@ -379,7 +423,7 @@ def parse_dir(dirname):
 
     experiment['mpstat'] = parse_utilization(dirname, experiment)
     experiment['ioklog'] = parse_iokernel_log(dirname, experiment)
-    # experiment['konalog'] = parse_kona_log(dirname, experiment)   TODO
+    experiment['konalog'] = parse_kona_log(dirname, experiment)
     return experiment
 
 
@@ -397,10 +441,10 @@ def arrange_2d_results(experiment):
 
     header1 = ["system", "app", "background", "transport", "spin", "nconns", "threads"]
     header2 = ["offered", "achieved", "p50", "p90", "p99", "p999", "p9999", "distribution"]
-    header3 = ["tput", "baseline", "totaloffered", "totalachieved",
-              "totalcpu"] #, "localcpu", "ioksaturation"]
+    header3 = ["tput", "baseline", "totaloffered", "totalachieved", "totalcpu"] #, "localcpu", "ioksaturation"]
+    header4 = ["rfaults","wfaults","netin", "netout","maxmem","maxpressure"]
 
-    header = header1 + header2 + header3 + DISPLAYED_RSTAT_FIELDS
+    header = header1 + header2 + header3 + header4 + DISPLAYED_RSTAT_FIELDS
     lines = [header]
     ncons = 0
     for list_pm in experiment['clients'].itervalues():
@@ -420,10 +464,21 @@ def arrange_2d_results(experiment):
         total_offered = sum(t['offered'] for t in time_point)
         total_achieved = sum(t['achieved'] for t in time_point)
         iok_saturation = extract_window(experiment['ioklog']['IOK_SATURATION'], time, runtime) if experiment['ioklog'] else None
+        # Kona (header4) stuff
+        rfaults = extract_window_diff(experiment['konalog']['n_faults_r'], time, runtime) if experiment['konalog'] else None
+        wfaults = extract_window_diff(experiment['konalog']['n_faults_w'], time, runtime) if experiment['konalog'] else None
+        tfaults = extract_window_diff(experiment['konalog']['n_faults'], time, runtime) if experiment['konalog'] else None
+        netin = extract_window_diff(experiment['konalog']['n_net_page_in'], time, runtime) if experiment['konalog'] else None
+        netout = extract_window_diff(experiment['konalog']['n_net_page_out'], time, runtime) if experiment['konalog'] else None
+        maxmem = extract_window_max(experiment['konalog']['malloc_size'], time, runtime) if experiment['konalog'] else None
+        maxpressure = extract_window(experiment['konalog']['mem_pressure'], time, runtime) if experiment['konalog'] else None
+
         for point in time_point:
             out = [experiment['system'], point['app']['app'], bg['app'] if bg else None, point['app'].get('transport', None), point['app']['spin'] > 1, ncons, point['app']['threads']]
             out += [point[k] for k in header2]
             out += [bgtput, bgbaseline, total_offered, total_achieved, cpu]
+            out += [rfaults, wfaults, netin, netin, netout, maxmem, maxpressure]
+            # header4
             """if point['app']['rstat']:
                 out.append(extract_window(point['app']['rstat']['cpupct'], time, runtime))
             else:
