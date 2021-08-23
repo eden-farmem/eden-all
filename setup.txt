@@ -90,6 +90,9 @@ is built for another kernel version)
                     server sc2-hs2-b1640.eng.vmware.com iburst
             sudo systemctl restart ntp
             sudo systemctl status ntp
+            sudo systemctl stop ntp
+            sudo ntpd -gq               # force sync the times, ntp doesn't remove initial offset
+            sudo systemctl start ntp
             ntpq -pn    # CHECK!
 
     4.4. Install `go` on the observer machine. 
@@ -99,6 +102,12 @@ is built for another kernel version)
     python experiment.py
     function logdir { dir=$(ls . | grep run | tail -n1); echo $dir; }   # latest log dir
     function ioklog { dir=$(ls . | grep run | tail -n1); log=$dir/iokernel.`hostname`.log; echo $log; cat $log; }   # latest iokernel log
+
+6. Set cpu scaling governor to performance and freq to 2.2GHz.
+    Turned off turboboost.
+    https://askubuntu.com/questions/523640/how-i-can-disable-cpu-frequency-scaling-and-set-the-system-to-performance
+
+
 
 
 MISC COMMANDS

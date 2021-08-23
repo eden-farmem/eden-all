@@ -233,8 +233,8 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'app': 'synthetic',
             'serverip': server_handle['ip'],
             'serverport': server_handle['port'],
-            # 'output': kwargs.get('output', "buckets"),
-            'output': kwargs.get('output', "normal"),       # don't print latencies
+            'output': kwargs.get('output', "buckets"),
+            # 'output': kwargs.get('output', "normal"),       # don't print latencies
             'mpps': float(mpps) / count,
             'protocol': server_handle['protocol'],
             'transport': server_handle['transport'],
@@ -550,6 +550,7 @@ def go_server(experiment):
     return procs
 
 def verify_dates(host_list):
+    # TIP: Use ntp to sync times
     for i in range(3): # try a few extra times
         while True:
             dates = set(runremote("date +%s", host_list).splitlines())
@@ -569,7 +570,7 @@ def setup_and_run_apps(experiment):
     print("Setting up apps on other servers")
     procs = []
     servers = [s for s in experiment['apps'].keys() if s != THISHOST]
-    # verify_dates(servers + [OBSERVER])
+    verify_dates(servers + [OBSERVER])
     if servers:
         runremote("mkdir -p {}".format(experiment['name']), servers)
         conf_fn = experiment['name'] + "/config.json"

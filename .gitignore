@@ -1,6 +1,4 @@
-
-
-run.*
+run-*
 .vscode
 arxiv/
 data/

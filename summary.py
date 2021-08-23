@@ -10,6 +10,7 @@ import re
 import argparse
 import glob
 
+NUMA_NODE = 1
 DISPLAYED_RSTAT_FIELDS = ["parks", "p_rx_ooo", "p_reorder_time"]
 
 def percentile(latd, target):
@@ -248,7 +249,7 @@ def parse_utilization(dirn, experiment):
     data = filter(lambda l: "%iowait" not in l and len(l) > 1, data[4:])
 
     if "NODE" in headerln:
-        data = filter(lambda l: int(l[cols['NODE']]) == 0, data)
+        data = filter(lambda l: int(l[cols['NODE']]) == NUMA_NODE, data)
     else:
         assert all(lambda l: l[cols['CPU']] == 'all', data)
 
