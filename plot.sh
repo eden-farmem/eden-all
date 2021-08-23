@@ -33,7 +33,8 @@ done
 
 # SUFFIX_SIMPLE="08-22-1[012]"
 # SUFFIX_SIMPLE="08-22-14"
-SUFFIX_SIMPLE="08-23-0[0-6]"
+# SUFFIX_SIMPLE="08-23-0[0-6]"
+SUFFIX_SIMPLE="08-23-10-*"
 # SUFFIX_COMPLX="08-22-\(10.*\|11.[0-1].*\)"
 # SUFFIX_COMPLX="08-22-\(1[459].*\|20.*\)"
 if [[ $SUFFIX_SIMPLE ]]; then 
@@ -67,8 +68,9 @@ for exp in $LS_CMD; do
     fi
 
     # Separate runs by a specific label type
-    label=${prot}_${nconns}
-    label_str=Transport
+    # label=${prot}_${nconns}
+    label=$sthreads
+    label_str=ServerCores
     if [ "$label" != "$curlabel" ]; then 
         if [[ $curlabel ]]; then
             echo -e "$header$stats" > temp_xput_$curlabel
