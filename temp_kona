@@ -1,6 +1,0 @@
-system,app,background,transport,spin,nconns,threads,offered,achieved,p50,p90,p99,p999,p9999,distribution,tput,baseline,totaloffered,totalachieved,totalcpu,rfaults,wfaults,tfaults,netin,netout,maxmem,maxpressure,parks,p_rx_ooo,p_reorder_time,nconns,mpps,konamem
-shenango,memcached,None,udp,False,1000,12,3948815,57455,inf,inf,inf,inf,inf,zero,0,0,3948815,57455,24.211875,520367,31541,551644,551644,567342,1920991232,987931648,None,None,None,1000,4,1000000000
-shenango,memcached,None,udp,False,1000,12,3948561,54624,inf,inf,inf,inf,inf,zero,0,0,3948561,54624,26.454375,423074,22535,445344,445344,481173,1920991232,1062853888,None,None,None,1000,4,1100000000
-shenango,memcached,None,udp,False,1000,12,3946621,58434,inf,inf,inf,inf,inf,zero,0,0,3946621,58434,28.256875,300313,17516,317569,317569,360446,1920991232,1244993126,None,None,None,1000,4,1300000000
-shenango,memcached,None,udp,False,1000,12,3945738,63665,inf,inf,inf,inf,inf,zero,0,0,3945738,63665,31.615625,199363,3743,202885,202885,281025,1920991232,1469819904,None,None,None,1000,4,1600000000
-shenango,memcached,None,udp,False,1000,12,3906178,3740401,68,88,inf,inf,inf,zero,0,0,3906178,3740401,53.279375,545872,63174,609047,609047,608186,1920991232,1905549312,None,None,None,1000,4,2000000000

@@ -334,12 +334,16 @@ def parse_rstat(app, directory):
         assert False, line
     return stat_vec
 
-
-def extract_window(datapoints, wct_start, duration_sec):
+def extract_window_seq(datapoints, wct_start, duration_sec, accumulated=False):
     window_start = wct_start + int(duration_sec * 0.1)
     window_end = wct_start + int(duration_sec * 0.9)
     datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
+    if accumulated and len(datapoints) > 0:
+        return [(x[0] - datapoints[0][0], x[1] - datapoints[i - 1][1]) for i, x in enumerate(datapoints)][1:]
+    return datapoints
 
+def extract_window(datapoints, wct_start, duration_sec, accumulated=False):
+    datapoints = extract_window_seq(datapoints, wct_start, duration_sec, accumulated)
     # Weight any gaps in reporting
     try:
         total = 0
@@ -442,7 +446,7 @@ def arrange_2d_results(experiment):
     header1 = ["system", "app", "background", "transport", "spin", "nconns", "threads"]
     header2 = ["offered", "achieved", "p50", "p90", "p99", "p999", "p9999", "distribution"]
     header3 = ["tput", "baseline", "totaloffered", "totalachieved", "totalcpu"] #, "localcpu", "ioksaturation"]
-    header4 = ["rfaults","wfaults","netin", "netout","maxmem","maxpressure"]
+    header4 = ["rfaults","wfaults", "tfaults", "netin", "netout","maxmem","maxpressure"]
 
     header = header1 + header2 + header3 + header4 + DISPLAYED_RSTAT_FIELDS
     lines = [header]
@@ -465,11 +469,11 @@ def arrange_2d_results(experiment):
         total_achieved = sum(t['achieved'] for t in time_point)
         iok_saturation = extract_window(experiment['ioklog']['IOK_SATURATION'], time, runtime) if experiment['ioklog'] else None
         # Kona (header4) stuff
-        rfaults = extract_window_diff(experiment['konalog']['n_faults_r'], time, runtime) if experiment['konalog'] else None
-        wfaults = extract_window_diff(experiment['konalog']['n_faults_w'], time, runtime) if experiment['konalog'] else None
-        tfaults = extract_window_diff(experiment['konalog']['n_faults'], time, runtime) if experiment['konalog'] else None
-        netin = extract_window_diff(experiment['konalog']['n_net_page_in'], time, runtime) if experiment['konalog'] else None
-        netout = extract_window_diff(experiment['konalog']['n_net_page_out'], time, runtime) if experiment['konalog'] else None
+        rfaults = extract_window(experiment['konalog']['n_faults_r'], time, runtime, accumulated=True) if experiment['konalog'] else None
+        wfaults = extract_window(experiment['konalog']['n_faults_w'], time, runtime, accumulated=True) if experiment['konalog'] else None
+        tfaults = extract_window(experiment['konalog']['n_faults'], time, runtime, accumulated=True) if experiment['konalog'] else None
+        netin = extract_window(experiment['konalog']['n_net_page_in'], time, runtime, accumulated=True) if experiment['konalog'] else None
+        netout = extract_window(experiment['konalog']['n_net_page_out'], time, runtime, accumulated=True) if experiment['konalog'] else None
         maxmem = extract_window_max(experiment['konalog']['malloc_size'], time, runtime) if experiment['konalog'] else None
         maxpressure = extract_window(experiment['konalog']['mem_pressure'], time, runtime) if experiment['konalog'] else None
 
@@ -477,7 +481,7 @@ def arrange_2d_results(experiment):
             out = [experiment['system'], point['app']['app'], bg['app'] if bg else None, point['app'].get('transport', None), point['app']['spin'] > 1, ncons, point['app']['threads']]
             out += [point[k] for k in header2]
             out += [bgtput, bgbaseline, total_offered, total_achieved, cpu]
-            out += [rfaults, wfaults, netin, netin, netout, maxmem, maxpressure]
+            out += [rfaults, wfaults, tfaults, netin, netout, maxmem, maxpressure]
             # header4
             """if point['app']['rstat']:
                 out.append(extract_window(point['app']['rstat']['cpupct'], time, runtime))
@@ -524,7 +528,7 @@ def print_res(res):
         print(",".join([str(x) for x in line]))
 
 
-def do_it_all(dirname, save_lat=False):
+def do_it_all(dirname, save_lat=False, save_kona=False):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
@@ -550,6 +554,25 @@ def do_it_all(dirname, save_lat=False):
                     for k,v in sample['latencies'][0].items():
                         f.writelines([str(k) + "\n"] * v)
 
+    if save_kona and 'konalog' in exp:
+        runtime = exp['clients'].itervalues().next()[0]['runtime']
+        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
+        for app in apps:
+            if not 'loadgen' in app: continue
+            for i, sample in enumerate(app['loadgen']):
+                start = sample['time']
+                print(start, runtime)
+                rfaults = extract_window_seq(exp['konalog']['n_faults_r'], start, runtime, accumulated=True)
+                wfaults = extract_window_seq(exp['konalog']['n_faults_w'], start, runtime, accumulated=True)
+                tfaults = extract_window_seq(exp['konalog']['n_faults'], start, runtime, accumulated=True)
+                # print(rfaults, wfaults, tfaults)
+                konafile = STAT_F + "konastats_{}".format(i)
+                print("Writing kona stats to " + konafile)
+                with open(konafile, "w") as f:
+                    f.write("time,rfaults,wfaults,tfaults\n")
+                    for i, (time, val) in enumerate(rfaults):
+                        f.write("{},{},{},{}\n".format(time, val, wfaults[i][1], tfaults[i][1]))
+
     return bycol
 
 
@@ -558,6 +581,7 @@ def main():
     parser.add_argument('-n', '--name', action='store', help='Exp (directory) name')
     parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
     parser.add_argument('-l', '--lat', action='store_true', help='save latencies to file', default=False)
+    parser.add_argument('-k', '--kona', action='store_true', help='save kona stats to file', default=False)
     args = parser.parse_args()
 
     expname = args.name
@@ -568,7 +592,7 @@ def main():
     dirname = os.path.join(args.dir, expname)
 
     print("Summarizing exp run: " + expname)
-    do_it_all(dirname, save_lat=args.lat)
+    do_it_all(dirname, save_lat=args.lat, save_kona=args.kona)
 
 if __name__ == '__main__':
     main()

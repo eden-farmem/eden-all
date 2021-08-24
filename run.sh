@@ -1,3 +1,10 @@
+
+# Sync times on machines before the run
+# Requires ntp setup with sc30 as root server
+echo "Syncing clocks"
+ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+
 # # Best of UDP Xput
 # conns=1000
 # for mpps in `seq 1 0.5 6`; do
@@ -17,8 +24,9 @@
 
 # # Vary kona memory
 conns=1000
-mpps=4.0
-for mem in `seq 1700 100 2000`; do
+mpps=2.0
+mem=1000
+for mem in 1800; do
     python experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps \
         -d "with kona ${mem} MB; 10M keys; udp; $mpps Mpps offered; 12 scores; 18 ccores; with lat"
     sleep 5
