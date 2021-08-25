@@ -423,7 +423,7 @@ def launch_shenango_program(cfg, experiment):
         time.sleep(30)
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr}".format(**cfg["kona"])
-        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} > {name}.out 2> {name}.err".format(
+        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
             params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
     else:
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(

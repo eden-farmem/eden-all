@@ -24,13 +24,14 @@ ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
 # # Vary kona memory
 conns=1000
-mpps=2.0
+mpps=6.0
 mem=1000
-for mem in 1800; do
+for mem in 2300 2500; do
     python experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps \
         -d "with kona ${mem} MB; 10M keys; udp; $mpps Mpps offered; 12 scores; 18 ccores; with lat"
     sleep 5
 done
+
 # for mem in `seq 1000 100 2000`; do
 #     python experiment.py -km ${mem}000000 -p tcp -nc $conns --start $mpps --finish $mpps \
 #         -d "with kona ${mem} MB; 10M keys; tcp; ${conns} conns; $mpps Mpps offered; 12 scores, 18 ccores"
