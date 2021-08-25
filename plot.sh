@@ -1,7 +1,7 @@
 #!/bin/bash
 # set -e 
 
-PLOTEXT=pdf
+PLOTEXT=png
 PLOTDIR=plots/
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
@@ -38,7 +38,8 @@ done
 # SUFFIX_SIMPLE="08-23-11-[2-5]"
 # SUFFIX_COMPLX="08-22-\(10.*\|11.[0-1].*\)"
 # SUFFIX_COMPLX="08-22-\(1[459].*\|20.*\)"
-SUFFIX_COMPLX="08-24-\(0[89].*\|10-5.*\)"
+# SUFFIX_COMPLX="08-24-\(0[89].*\|1[04].*\)"
+SUFFIX_COMPLX="08-24-\(0[89].*\|1[0-7].*\)"
 if [[ $SUFFIX_SIMPLE ]]; then 
     LS_CMD=`ls -d1 data/run-${SUFFIX_SIMPLE}*`
     SUFFIX=$SUFFIX_SIMPLE
@@ -48,54 +49,77 @@ elif [[ $SUFFIX_COMPLX ]]; then
 fi
 
 numplots=0
-for exp in $LS_CMD; do
-    # echo $f
-    name=`basename $exp`
-    cfg="$exp/config.json"
-    sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
-    konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
-    if [ $konamem == "null" ]; then    klabel="No_Kona";
-    else    klabel=`echo $konamem | awk '{ printf "%-4d_MB", $1/1000000 }'`;     fi
-    label=$klabel
-    prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
-    nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`
-    mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $cfg`
-    desc=`jq '.desc' $cfg`
+# for exp in $LS_CMD; do
+#     # echo $f
+#     name=`basename $exp`
+#     cfg="$exp/config.json"
+#     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
+#     konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
+#     if [ $konamem == "null" ]; then    klabel="No_Kona";
+#     else    klabel=`echo $konamem | awk '{ printf "%-4d_MB", $1/1000000 }'`;     fi
+#     label=$klabel
+#     prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
+#     nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`
+#     mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $cfg`
+#     desc=`jq '.desc' $cfg`
 
-    # summarize results
-    statsdir=$exp/stats
-    statfile=$statsdir/stat.csv
-    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-        python summary.py -n $name --lat --kona
-    fi
+#     # summarize results
+#     statsdir=$exp/stats
+#     statfile=$statsdir/stat.csv
+#     if [[ $FORCE ]] || [ ! -d $statsdir ]; then
+#         python summary.py -n $name --lat --kona
+#     fi
 
-    # Separate runs by a specific label type
-    label=${prot}
-    label_str=KonaMemory
-    if [ "$label" != "$curlabel" ]; then 
-        if [[ $curlabel ]]; then
-            echo -e "$header$stats" > temp_xput_$curlabel
-            plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel achieved"
-            numplots=$((numplots+1))
-            if [[ $SHOWCPU ]]; then
-                cpuplots="$cpuplots -l ${curlabel} -dyc temp_xput_$curlabel totalcpu"
-                numplots=$((numplots+1))
-            fi
-            stats=
-        fi
-        curlabel=$label
-    fi
+#     # Separate runs by a specific label type
+#     label=${mpps}_Mops
+#     label_str=OfferedLoad
+#     if [ "$label" != "$curlabel" ]; then 
+#         if [[ $curlabel ]]; then
+#             # echo -e "$header$stats" > temp_xput_$curlabel
+#             tmpfile=temp_xput_$curlabel
+#             echo -e "$stats" > $tmpfile
+#             sort -k3 -n -t, $tmpfile -o $tmpfile    #sort by konamem
+#             sed -i "1s/^/$header/" $tmpfile
+#             # plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel achieved"
+#             plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel tfaults"
+#             numplots=$((numplots+1))
+#             if [[ $SHOWCPU ]]; then
+#                 cpuplots="$cpuplots -l ${curlabel} -dyc temp_xput_$curlabel totalcpu"
+#                 numplots=$((numplots+1))
+#             fi
+#             stats=
+#         fi
+#         curlabel=$label
+#     fi
     
-    # aggregate across runs
-    header=nconns,mpps,konamem,`cat $statfile | awk 'NR==1'`
-    curstats=`cat $statfile | awk 'NR==2'`
-    if ! [[ $curstats ]]; then    curstats=$prevstats;  fi      #HACK!
-    stats="$stats\n$nconns,$mpps,$konamem,$curstats"
-    prevstats=$curstats
-    latfiles="$latfiles -d $statsdir/latencies_0 -l $klabel"
-    konafiles="$konafiles -d $statsdir/konastats_0 -l $klabel"
-    sed -i '8,$d' $statsdir/konastats_0     #HACK: make all files have same no of datapoints
-done
+#     # aggregate across runs
+#     header=nconns,mpps,konamem,`cat $statfile | awk 'NR==1'`
+#     curstats=`cat $statfile | awk 'NR==2'`
+#     if ! [[ $curstats ]]; then    curstats=$prevstats;  fi      #HACK!
+#     stats="$stats\n$nconns,$mpps,$konamem,$curstats"
+#     prevstats=$curstats
+#     latfiles="$latfiles -d $statsdir/latencies_0 -l $klabel"
+#     konafiles="$konafiles -d $statsdir/konastats_0 -l $klabel"
+#     sed -i '8,$d' $statsdir/konastats_0     #HACK: make all files have same no of datapoints
+# done
+
+# # Xput plot over kona mem size by offered load
+# tmpfile=temp_xput_$curlabel
+# echo -e "$stats" > $tmpfile
+# sort -k3 -n -t, $tmpfile -o $tmpfile
+# sed -i "1s/^/$header/" $tmpfile
+# # plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel achieved"
+# plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel tfaults"
+# plotname=${PLOTDIR}/konafaults_${SUFFIX}.$PLOTEXT
+# python3 tools/plot.py ${plots}                      \
+#     -xc konamem -xl "Kona Mem (MB)" --xmul 1e-6     \
+#     -yl "Kilo faults/sec" --ymul 1e-3               \
+#     -fs 14 -of $PLOTEXT -o $plotname -ltitle $label_str
+# display $plotname &
+# rm $tmpfile
+#-yl "Million Ops/sec" --ymul 1e-6               \
+
+
 
 # # Xput plot over kona mem size
 # tmpfile=temp_xput_$curlabel
@@ -141,17 +165,13 @@ done
 #     -fs 11  -of $PLOTEXT  -o $plotname
 # gv $plotname &  
 
-# Kona faults plot
-plotname=${PLOTDIR}/kona_faults_${SUFFIX}.$PLOTEXT
-python3 tools/plot.py ${konafiles}          \
-    -yc "tfaults" -yl "Fault Count"         \
-    -xc time -xl  "Time (secs)"             \
-    -fs 12  -of $PLOTEXT  -o $plotname
-gv $plotname &  
-
-
-
-
+# # Kona faults plot
+# plotname=${PLOTDIR}/kona_faults_${SUFFIX}.$PLOTEXT
+# python3 tools/plot.py ${konafiles}          \
+#     -yc "tfaults" -yl "Fault Count"         \
+#     -xc time -xl  "Time (secs)"             \
+#     -fs 12  -of $PLOTEXT  -o $plotname
+# gv $plotname &  
 
 
 ############# ARCHIVED ##############################
@@ -182,5 +202,19 @@ gv $plotname &
 #     -yl "Latency (micro-sec)" --ymin 0 --ymax 500   \
 #     -of $PLOTEXT -o $plotname -s
 # gv $plotname &
+
+# ZIPF
+for N in 10000 1000000 10000000; do 
+    plots=
+    for ALPHA in 0.1 0.5 1 10; do 
+        plots="$plots -d zipf_${N}_$ALPHA -l alpha=$ALPHA"
+    done
+    plotname=${PLOTDIR}/zipf_cdf_${N}.$PLOTEXT
+    python tools/plot.py $plots -z cdf  \
+        -yc count -yl PDF --ylog        \
+        -xl "N" --ltitle "Zipf N=$N"    \
+        -of $PLOTEXT -o $plotname
+    display $plotname &
+done
 
 

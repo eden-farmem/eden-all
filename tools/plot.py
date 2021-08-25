@@ -20,17 +20,10 @@
 # TODO 
 #
 
-import sys
+
 import os
-import re
-import math
-from datetime import datetime
-from datetime import timedelta
-import time
-import random
 import matplotlib
 import matplotlib.pyplot as plt
-from collections import Counter, defaultdict
 import argparse
 import pandas as pd
 import numpy as np
@@ -125,8 +118,7 @@ def parse_args():
         
     parser.add_argument('-xc', '--xcol', 
         action='store', 
-        help='X column name from csv file. Defaults to row index if not provided.', 
-        required=False)
+        help='X column name from csv file. Defaults to row index if not provided.')
 
     parser.add_argument('-yc', '--ycol', 
         action='append', 
@@ -135,15 +127,13 @@ def parse_args():
     parser.add_argument('-dxc', '--dfilexcol', 
         nargs=2,
         action='store', 
-        help='X column  from a specific csv file. Defaults to row index if not provided.', 
-        required=False)
+        help='X column  from a specific csv file. Defaults to row index if not provided.')
 
     parser.add_argument('-dyc', '--dfileycol',          # (recommended way to specify data)
         nargs=2,
         action='append',
         metavar=('datafile', 'ycol'),
         help='Y column from a specific file that is included with this argument')
-
 
     # PLOT STYLE
     parser.add_argument('-z', '--ptype', 
@@ -360,22 +350,19 @@ def main():
         (args.datafile and len(args.datafile) > 1) and \
         (args.ycol and len(args.ycol) > 1):
         parser.error("Only one of datafile or ycolumn arguments can provide multiple values. Use -dyc style if this doesn't work for you.")
+    
+    if args.xcol and args.dfilexcol:
+        parser.error("Use either the -dxc or -xc to specify xcol, not both!")
 
     # Infer data files, xcols and ycols from args
     num_plots = 0
-    dfile_xcol = None
     dfile_ycol_map = []     #Maintain the input order
     if args.dfileycol:
-        dfilexcol = args.dfilexcol
         for (dfile, ycol) in args.dfileycol:
-            if args.xcol and not dfile_xcol:
-                dfile_xcol = (dfile, args.xcol)
             dfile_ycol_map.append((dfile, ycol))
             num_plots += 1
     else:
         for dfile in args.datafile:
-            if args.xcol and not dfile_xcol:
-                dfile_xcol = (dfile, args.xcol)
             for ycol in args.ycol:
                 dfile_ycol_map.append((dfile, ycol))
                 num_plots += 1  
@@ -410,7 +397,7 @@ def main():
 
     fig, axmain = plt.subplots(1, 1, figsize=(8,4))
     fig.suptitle(args.ptitle if args.ptitle else '',y=0)
-    plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
+    # plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
     #plt.ylim(0, 1000)
 
     if args.xlog:
@@ -419,15 +406,14 @@ def main():
         axmain.set_yscale('log')
 
     xcol = None
-    if dfile_xcol:
-        df = pd.read_csv(dfile_xcol[0],skipinitialspace=True)
-        xcol = df[dfile_xcol[1]]
+    if args.dfilexcol:
+        df = pd.read_csv(args.dfilexcol[0],skipinitialspace=True)
+        xcol = df[args.dfilexcol[1]]
 
     plot_num = 0
     lns = []
     ax = axmain
     ymul = args.ymul
-    twin = False
     base_dataset = None     
     for (datafile, ycol) in dfile_ycol_map:
 
@@ -436,7 +422,6 @@ def main():
             ax = axmain.twinx()
             ylabel = args.tylabel if args.tylabel else ycol
             ymul = args.tymul
-            twin = True
 
         if not os.path.exists(datafile):
             print("Datafile {0} does not exist".format(datafile))
@@ -444,17 +429,16 @@ def main():
 
         df = pd.read_csv(datafile,skipinitialspace=True)
         if args.print_:
-            for ycol in ycols:
-                label = "{0}:{1}".format(datafile, ycol)
-                print(label, df[ycol].mean(), df[ycol].std())
+            label = "{0}:{1}".format(datafile, ycol)
+            print(label, df[ycol].mean(), df[ycol].std())
             continue
- 
+
         if args.plabel:                 label = args.plabel[labelidx] if args.labelincr else args.plabel[plot_num]
         elif len(args.datafile) == 1:   label = ycol
         else:                           label = datafile
 
-        if xcol is None:
-            xcol = df.index
+        if not args.dfilexcol:
+            xcol = df[args.xcol] if args.xcol else df.index
 
         if args.ptype == PlotType.line:
             xc = xcol
@@ -500,7 +484,17 @@ def main():
             raise NotImplementedError("hist")
 
         elif args.ptype == PlotType.cdf:
-            xc, yc = gen_cdf(df[ycol], 100000)
+            # xc, yc = gen_cdf(df[ycol], 100000)
+            #compress buckets
+            bsize = int(len(df[ycol]) / 100000)
+            xc = []
+            yc = []
+            if bsize == 0:   bsize = 1 
+            for i, count in enumerate(df[ycol]):
+                if i % bsize == 0:
+                    xc.append(i)
+                    yc.append(yc[-1] if yc else 0)
+                yc[-1] += count
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
