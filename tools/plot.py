@@ -291,6 +291,16 @@ def parse_args():
         type=float,
         help='Custom y-axis upper limit')
 
+    parser.add_argument('--tymin', 
+        action='store', 
+        type=float,
+        help='Custom twin y-axis lower limit')
+
+    parser.add_argument('--tymax', 
+        action='store', 
+        type=float,
+        help='Custom twin y-axis upper limit')
+
     parser.add_argument('-nt', '--notail',  
         action='store', 
         help='eliminate last x%% tail from CDF. Defaults to 1%%', 
@@ -395,8 +405,8 @@ def main():
     matplotlib.rc('figure', autolayout=True)
     matplotlib.rcParams['pdf.fonttype'] = 42        # required for latex embedded figures
 
-    fig, axmain = plt.subplots(1, 1, figsize=(8,4))
-    fig.suptitle(args.ptitle if args.ptitle else '',y=0)
+    fig, axmain = plt.subplots(1, 1, figsize=(6,3))
+    fig.suptitle(args.ptitle if args.ptitle else '')
     # plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
     #plt.ylim(0, 1000)
 
@@ -414,6 +424,8 @@ def main():
     lns = []
     ax = axmain
     ymul = args.ymul
+    ymin = args.ymin
+    ymax = args.ymax
     base_dataset = None     
     for (datafile, ycol) in dfile_ycol_map:
 
@@ -422,6 +434,11 @@ def main():
             ax = axmain.twinx()
             ylabel = args.tylabel if args.tylabel else ycol
             ymul = args.tymul
+            ymin = args.tymin
+            ymax = args.tymax
+            # if args.tymin and args.tymax: ax.set_ylim(ymin=args.tymin,ymax=args.tymax)
+            # elif args.tymin:    ax.set_ylim(ymin=args.tymin)
+            # elif args.tymax:    ax.set_ylim(ymax=args.tymax)
 
         if not os.path.exists(datafile):
             print("Datafile {0} does not exist".format(datafile))
@@ -484,17 +501,17 @@ def main():
             raise NotImplementedError("hist")
 
         elif args.ptype == PlotType.cdf:
-            # xc, yc = gen_cdf(df[ycol], 100000)
+            xc, yc = gen_cdf(df[ycol], 100000)
             #compress buckets
-            bsize = int(len(df[ycol]) / 100000)
-            xc = []
-            yc = []
-            if bsize == 0:   bsize = 1 
-            for i, count in enumerate(df[ycol]):
-                if i % bsize == 0:
-                    xc.append(i)
-                    yc.append(yc[-1] if yc else 0)
-                yc[-1] += count
+            # bsize = int(len(df[ycol]) / 100000)
+            # xc = []
+            # yc = []
+            # if bsize == 0:   bsize = 1 
+            # for i, count in enumerate(df[ycol]):
+            #     if i % bsize == 0:
+            #         xc.append(i)
+            #         yc.append(yc[-1] if yc else 0)
+            #     yc[-1] += count
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
@@ -541,15 +558,15 @@ def main():
         
 
         plot_num += 1
-        if args.ymin and args.ymac: ax.set_ylim(ymin=args.ymin,ymax=args.ymax)
-        elif args.ymin:    ax.set_ylim(ymin=args.ymin)
-        elif args.ymax:    ax.set_ylim(ymax=args.ymax)
+        if ymin is not None and ymax is not None: ax.set_ylim(ymin=ymin,ymax=ymax)
+        elif ymin is not None:    ax.set_ylim(ymin=ymin)
+        elif ymax is not None:    ax.set_ylim(ymax=ymax)
         ax.set_ylabel(ylabel)
 
     # print(args.xmin, args.xmax)
     if args.xmin is not None:   axmain.set_xlim(xmin=args.xmin)
     if args.xmax is not None:   axmain.set_xlim(xmax=args.xmax)
-    plt.ylim(args.ymin, args.ymax)
+    # plt.ylim(args.ymin, args.ymax)
 
     axmain.set_xlabel(xlabel)
     # axmain.set_ylabel(ylabel)

@@ -36,9 +36,10 @@ done
 # SUFFIX_SIMPLE="08-23-0[0-6]"
 # SUFFIX_SIMPLE="08-23-10"
 # SUFFIX_SIMPLE="08-23-11-[2-5]"
+SUFFIX_SIMPLE="08-25-[01]"
 # SUFFIX_COMPLX="08-22-\(10.*\|11.[0-1].*\)"
 # SUFFIX_COMPLX="08-22-\(1[459].*\|20.*\)"
-# SUFFIX_COMPLX="08-24-\(0[89].*\|1[04].*\)"
+# # SUFFIX_COMPLX="08-24-\(0[89].*\|1[04].*\)"
 SUFFIX_COMPLX="08-24-\(0[89].*\|[12].*\)"
 if [[ $SUFFIX_SIMPLE ]]; then 
     LS_CMD=`ls -d1 data/run-${SUFFIX_SIMPLE}*`
@@ -55,7 +56,7 @@ for exp in $LS_CMD; do
     cfg="$exp/config.json"
     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
     konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
-    if [ $konamem == "null" ]; then    klabel="No_Kona";
+    if [ $konamem == "null" ]; then    klabel="No_Kona";    konamem=0;
     else    klabel=`echo $konamem | awk '{ printf "%-4d_MB", $1/1000000 }'`;     fi
     label=$klabel
     prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
@@ -117,8 +118,7 @@ python3 tools/plot.py ${plots}                      \
     -fs 14 -of $PLOTEXT -o $plotname --ltitle $label_str
 display $plotname &
 rm temp_xput*
-#-yl "Million Ops/sec" --ymul 1e-6               \
-
+# #-yl "Million Ops/sec" --ymul 1e-6               \
 
 
 # # Xput plot over kona mem size
@@ -127,6 +127,7 @@ rm temp_xput*
 # sort -k3 -n -t, $tmpfile -o $tmpfile
 # sed -i "1s/^/$header/" $tmpfile
 # plots="$plots -d $tmpfile"
+# cat $tmpfile
 # plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
 # python3 tools/plot.py ${plots}  \
 #     -yc achieved -l "Throughput" -ls solid          \

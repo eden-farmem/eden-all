@@ -12,6 +12,8 @@ import glob
 
 NUMA_NODE = 1
 DISPLAYED_RSTAT_FIELDS = ["parks", "p_rx_ooo", "p_reorder_time"]
+KONA_FIELDS = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "malloc_size", "mem_pressure"]
+KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "n_faults"]
 
 def percentile(latd, target):
     # latd: ({microseconds: count}, number_dropped)
@@ -103,7 +105,7 @@ def parse_loadgen_output(filename):
                 'time': int(header_line[10]),
             })
         else:
-            print(header_line)
+            # print(header_line)
             header_line = line.strip().split(", ")
             assert len(header_line) > 10 or len(header_line) == 6, line
             if len(header_line) == 6:
@@ -204,34 +206,11 @@ def load_app_output(app, directory, first_sample_time):
         'recorded_samples': datapoints
     }
 
-@except_none
-def parse_iokernel_log(dirn, experiment):
-    fname = "{dirn}/iokernel.{server_hostname}.log".format(
-        dirn=dirn, **experiment)
-    with open(fname) as f:
-        data = f.read()
-        int(data.split()[0])
-
-    stats = defaultdict(list)
-    data = data.split(" Stats:")[1:]
-    for d in data:
-        RX_P = None
-        for line in d.strip().splitlines():
-            if "eth stats for port" in line: continue
-            dats = line.split()
-            tm = int(dats[0])
-            for stat_name, stat_val in zip(dats[1::2], dats[2::2]):
-                stats[stat_name.replace(":", "")].append((tm, int(stat_val)))
-                if stat_name == "RX_PULLED:": RX_P = float(stat_val)
-                if stat_name == "BATCH_TOTAL:": stats['IOK_SATURATION'].append((tm, RX_P / float(stat_val)))
-    return stats
-
-@except_none
 def parse_kona_log(dirn, experiment):
+
     fname = "{dirn}/memcached.out".format(dirn=dirn, **experiment)
     with open(fname) as f:
         data = f.read().splitlines()
-        int(data[0].split()[0])
 
     header_list = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
     "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
@@ -241,22 +220,19 @@ def parse_kona_log(dirn, experiment):
     "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
     "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
     COL_IDX = {k: v for v, k in enumerate(header_list)}
-    COLS_INCLUDE = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "malloc_size", "mem_pressure"]
 
     stats = defaultdict(list)
     for line in data:
         if "counters," in line:
             dats = line.split()
             time = int(dats[0])
-            # print(dats[1])
             values = dats[1].split(",")
             assert len(values) == 31, "unexpected kona log format"
             if header_list[1] == values[1]:     continue    #header
-            for c in COLS_INCLUDE:  stats[c].append((time, int(values[COL_IDX[c]])))            
+            for c in KONA_FIELDS:  stats[c].append((time, int(values[COL_IDX[c]])))            
             stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']])))
     print("Reading columns: " + str(stats.keys()))
-    return stats
-
+    return dict(stats)
 
 @except_none
 def parse_utilization(dirn, experiment):
@@ -290,46 +266,106 @@ def parse_utilization(dirn, experiment):
         data = map(lambda a, b: a, 2 * b, data)
     return data
 
-def parse_rstat(app, directory):
-    fname = "{}/rstat.{}.log".format(directory, app['name'])
-    try:
-        with open(fname) as f:
-            data = f.read().splitlines()
-        int(data[0].split()[0])
-    except:
+def parse_iokernel_log(dirn, experiment):
+    fname = "{dirn}/iokernel.{server_hostname}.log".format(
+        dirn=dirn, **experiment)
+    with open(fname) as f:
+        data = f.read()
+        int(data.split()[0])
+
+    stats = defaultdict(list)
+    data = data.split(" Stats:")[1:]
+    for d in data:
+        RX_P = None
+        for line in d.strip().splitlines():
+            if "eth stats for port" in line: continue
+            dats = line.split()
+            tm = int(dats[0])
+            for stat_name, stat_val in zip(dats[1::2], dats[2::2]):
+                stats[stat_name.replace(":", "")].append((tm, int(stat_val)))
+                if stat_name == "RX_PULLED:": RX_P = float(stat_val)
+                if stat_name == "BATCH_TOTAL:": stats['IOK_SATURATION'].append((tm, RX_P / float(stat_val)))
+    return stats
+
+def parse_runtime_log(app, dirn):
+    if app['name'] != 'memcached':
         return None
 
+    fname = "{dirn}/{name}.out".format(dirn=dirn, **app)
+    with open(fname) as f:
+        data = f.read().splitlines()
+
+    pattern = ("(\d+).*STATS>reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
+    "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
+    "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
+    "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
+    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),cycles_per_us:(\d+)")
+
     stat_vec = defaultdict(list)
-
-    float_match = "([+-]*\d+.\d+|NaN|[+-]Inf)"
-    netln_match = "(\d+) net: RX {f} pkts, {f} bytes \| TX {f} pkts, {f} bytes \| {f} drops \| {f}% rx out of order \({f}% reorder time\)".format(f=float_match)
-    schedln_match = "(\d+) sched: {f} rescheds \({f}% sched time, {f}% local\), {f} softirqs \({f}% stolen\), {f} %CPU, {f} parks \({f}% migrated\), {f} preempts \({f} stolen\)".format(f=float_match)
-
+    oldts = None
+    values_old = None
     for line in data:
-        match = re.match(netln_match, line)
+        if "STATS>" not in line:    continue
+        match = re.match(pattern, line)
         if match:
-            ts = int(match.group(1))
-            stat_vec['rxpkt'].append((ts, float(match.group(2))))
-            stat_vec['rxbytes'].append((ts, float(match.group(3))))
-            stat_vec['txpkt'].append((ts, float(match.group(4))))
-            stat_vec['txbytes'].append((ts, float(match.group(5))))
-            stat_vec['drops'].append((ts, float(match.group(6))))
-            stat_vec['p_rx_ooo'].append((ts, float(match.group(7))))
-            stat_vec['p_reorder_time'].append((ts, float(match.group(8))))
-            continue
-        match = re.match(schedln_match, line)
-        if match:
-            ts = int(match.group(1))
-            stat_vec['rescheds'].append((ts, float(match.group(2))))
-            stat_vec['schedtimepct'].append((ts, float(match.group(3))))
-            stat_vec['localschedpct'].append((ts, float(match.group(4))))
-            stat_vec['softirqs'].append((ts, float(match.group(5))))
-            stat_vec['stolenirqpct'].append((ts, float(match.group(6))))
-            stat_vec['cpupct'].append((ts, float(match.group(7))))
-            stat_vec['parks'].append((ts, float(match.group(8))))
-            stat_vec['migratedpct'].append((ts, float(match.group(9))))
-            stat_vec['preempts'].append((ts, float(match.group(10))))
-            stat_vec['stolenpct'].append((ts, float(match.group(11))))
+            assert len(match.groups()) == 20
+            values = [int(match.group(i+1)) for i in range(20)]
+            if not values_old:
+                values_old = values
+                continue        #ignore first value
+            diff = [x - y for x, y in zip(values, values_old)] 
+            values_old = values
+
+            ts = int(values[0])
+            if oldts and ts <= oldts:
+                # HACK: ts with memcached is not attaching timestamps properly
+                # some rows are getting older timestamps
+                ts = oldts + 1
+            oldts = ts
+
+            reschedules = diff[1]
+            sched_cycles = diff[2]
+            program_cycles = diff[3]
+            threads_stolen = diff[4]
+            softirqs_stolen = diff[5]
+            softirqs_local = diff[6]
+            parks = diff[7]
+            preemptions = diff[8]
+            preemptions_stolen = diff[9]
+            core_migrations = diff[10]
+            rx_bytes = diff[11]
+            rx_packets = diff[12]
+            tx_bytes = diff[13]
+            tx_packets = diff[14]
+            drops = diff[15]
+            rx_tcp_in_order = diff[16]
+            rx_tcp_out_of_order = diff[17]
+            rx_tcp_text_cycles = diff[18]
+            cycles_per_us = values[19]
+            # print(values)
+            # print(diff)
+
+            stat_vec['rescheds'].append((ts, reschedules))
+            stat_vec['schedtimepct'].append((ts, sched_cycles / (sched_cycles + program_cycles) * 100 
+                if (sched_cycles + program_cycles) else 0))
+            stat_vec['localschedpct'].append((ts, (1 - threads_stolen / reschedules) * 100 if reschedules else 0))
+            stat_vec['softirqs'].append((ts, softirqs_local + softirqs_stolen))
+            stat_vec['stolenirqpct'].append((ts, (softirqs_stolen / (softirqs_local + softirqs_stolen)) * 100 
+                if (softirqs_local + softirqs_stolen) else 0))
+            stat_vec['cpupct'].append((ts, (sched_cycles + program_cycles) * 100 /(float(cycles_per_us) * 1000000)))
+            stat_vec['parks'].append((ts, parks))
+            stat_vec['migratedpct'].append((ts, core_migrations * 100 / parks if parks else 0))
+            stat_vec['preempts'].append((ts, preemptions))
+            stat_vec['stolenpct'].append((ts, preemptions_stolen))
+            stat_vec['rxpkt'].append((ts, rx_packets))
+            stat_vec['rxbytes'].append((ts, rx_bytes))
+            stat_vec['txpkt'].append((ts, tx_packets))
+            stat_vec['txbytes'].append((ts,tx_bytes ))
+            stat_vec['drops'].append((ts, drops))
+            stat_vec['p_rx_ooo'].append((ts, rx_tcp_out_of_order / (rx_tcp_in_order + rx_tcp_out_of_order) * 100
+                if (rx_tcp_in_order + rx_tcp_out_of_order) else 0))
+            stat_vec['p_reorder_time'].append((ts, rx_tcp_text_cycles / (sched_cycles + program_cycles) * 100
+                if (sched_cycles + program_cycles) else 0))
             continue
         assert False, line
     return stat_vec
@@ -339,7 +375,7 @@ def extract_window_seq(datapoints, wct_start, duration_sec, accumulated=False):
     window_end = wct_start + int(duration_sec * 0.9)
     datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
     if accumulated and len(datapoints) > 0:
-        return [(x[0] - datapoints[0][0], x[1] - datapoints[i - 1][1]) for i, x in enumerate(datapoints)][1:]
+        return [(x[0], x[1] - datapoints[i - 1][1]) for i, x in enumerate(datapoints)][1:]
     return datapoints
 
 def extract_window(datapoints, wct_start, duration_sec, accumulated=False):
@@ -423,7 +459,7 @@ def parse_dir(dirname):
 
     for app in apps:
         app['output'] = load_app_output(app, dirname, start_time)
-        app['rstat'] = parse_rstat(app, dirname)
+        app['rstat'] = parse_runtime_log(app, dirname)
 
     experiment['mpstat'] = parse_utilization(dirname, experiment)
     experiment['ioklog'] = parse_iokernel_log(dirname, experiment)
@@ -469,13 +505,13 @@ def arrange_2d_results(experiment):
         total_achieved = sum(t['achieved'] for t in time_point)
         iok_saturation = extract_window(experiment['ioklog']['IOK_SATURATION'], time, runtime) if experiment['ioklog'] else None
         # Kona (header4) stuff
-        rfaults = extract_window(experiment['konalog']['n_faults_r'], time, runtime, accumulated=True) if experiment['konalog'] else None
-        wfaults = extract_window(experiment['konalog']['n_faults_w'], time, runtime, accumulated=True) if experiment['konalog'] else None
-        tfaults = extract_window(experiment['konalog']['n_faults'], time, runtime, accumulated=True) if experiment['konalog'] else None
-        netin = extract_window(experiment['konalog']['n_net_page_in'], time, runtime, accumulated=True) if experiment['konalog'] else None
-        netout = extract_window(experiment['konalog']['n_net_page_out'], time, runtime, accumulated=True) if experiment['konalog'] else None
-        maxmem = extract_window_max(experiment['konalog']['malloc_size'], time, runtime) if experiment['konalog'] else None
-        maxpressure = extract_window(experiment['konalog']['mem_pressure'], time, runtime) if experiment['konalog'] else None
+        rfaults = extract_window(experiment['konalog']['n_faults_r'], time, runtime, accumulated=True) if 'n_faults_r' in experiment['konalog'] else 0
+        wfaults = extract_window(experiment['konalog']['n_faults_w'], time, runtime, accumulated=True) if 'n_faults_w' in experiment['konalog'] else 0
+        tfaults = extract_window(experiment['konalog']['n_faults'], time, runtime, accumulated=True) if 'n_faults' in experiment['konalog'] else 0
+        netin = extract_window(experiment['konalog']['n_net_page_in'], time, runtime, accumulated=True) if 'n_net_page_in' in experiment['konalog'] else 0
+        netout = extract_window(experiment['konalog']['n_net_page_out'], time, runtime, accumulated=True) if 'n_net_page_out' in experiment['konalog'] else 0
+        maxmem = extract_window_max(experiment['konalog']['malloc_size'], time, runtime) if 'malloc_size' in experiment['konalog'] else None
+        maxpressure = extract_window(experiment['konalog']['mem_pressure'], time, runtime) if 'mem_pressure' in experiment['konalog'] else None
 
         for point in time_point:
             out = [experiment['system'], point['app']['app'], bg['app'] if bg else None, point['app'].get('transport', None), point['app']['spin'] > 1, ncons, point['app']['threads']]
@@ -528,7 +564,7 @@ def print_res(res):
         print(",".join([str(x) for x in line]))
 
 
-def do_it_all(dirname, save_lat=False, save_kona=False):
+def do_it_all(dirname, save_lat=False, save_kona=False, save_iok=False, save_rstat=False):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
@@ -553,25 +589,64 @@ def do_it_all(dirname, save_lat=False, save_kona=False):
                     f.write("Latencies\n")
                     for k,v in sample['latencies'][0].items():
                         f.writelines([str(k) + "\n"] * v)
+                print(sample['offered'], sample['achieved'])
 
-    if save_kona and 'konalog' in exp:
+    if save_rstat:
+        runtime = exp['clients'].itervalues().next()[0]['runtime']
+        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
+        for app in apps:
+            if not app['rstat']: continue
+            if not 'loadgen' in app: continue
+            for i, sample in enumerate(app['loadgen']):
+                start = sample['time']
+                # print(start, runtime)
+                rstatfile = STAT_F + "rstat_{}_{}".format(app['name'], i)
+                print("Writing runtime stats to " + rstatfile)
+                with open(rstatfile, "w") as f:
+                    trimmed = { k:extract_window_seq(v, start, runtime) for k,v in app['rstat'].items()}
+                    # print(trimmed.keys())
+                    f.write("time," + ",".join(trimmed.keys()) + "\n")
+                    for i, (time, _) in enumerate(trimmed["rescheds"]):
+                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                        f.write(",".join(values) + "\n")
+    
+    if save_iok and exp['ioklog']:
         runtime = exp['clients'].itervalues().next()[0]['runtime']
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
         for app in apps:
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
                 start = sample['time']
-                print(start, runtime)
-                rfaults = extract_window_seq(exp['konalog']['n_faults_r'], start, runtime, accumulated=True)
-                wfaults = extract_window_seq(exp['konalog']['n_faults_w'], start, runtime, accumulated=True)
-                tfaults = extract_window_seq(exp['konalog']['n_faults'], start, runtime, accumulated=True)
-                # print(rfaults, wfaults, tfaults)
+                # print(start, runtime)
+                iokfile = STAT_F + "iokstats_{}".format(i)
+                print("Writing iok stats to " + iokfile)
+                with open(iokfile, "w") as f:
+                    trimmed = { k:extract_window_seq(v, start, runtime) for k,v in exp['ioklog'].items()}
+                    # print(trimmed.keys())
+                    f.write("time," + ",".join(trimmed.keys()) + "\n")
+                    for i, (time, _) in enumerate(trimmed["RX_PULLED"]):
+                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                        f.write(",".join(values) + "\n")
+
+    if save_kona and exp['konalog']:
+        runtime = exp['clients'].itervalues().next()[0]['runtime']
+        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
+        for app in apps:
+            if not 'loadgen' in app: continue
+            for i, sample in enumerate(app['loadgen']):
+                start = sample['time']
+                # print(start, runtime)
                 konafile = STAT_F + "konastats_{}".format(i)
                 print("Writing kona stats to " + konafile)
                 with open(konafile, "w") as f:
-                    f.write("time,rfaults,wfaults,tfaults\n")
-                    for i, (time, val) in enumerate(rfaults):
-                        f.write("{},{},{},{}\n".format(time, val, wfaults[i][1], tfaults[i][1]))
+                    # FIXME: Some columns might not be cumulative
+                    trimmed = { k:extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
+                                for k,v in exp['konalog'].items()}
+                    # print(trimmed)
+                    f.write("time," + ",".join(trimmed.keys()) + "\n")
+                    for i, (time, _) in enumerate(trimmed["n_faults_r"]):
+                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                        f.write(",".join(values) + "\n")
 
     return bycol
 
@@ -580,8 +655,10 @@ def main():
     parser = argparse.ArgumentParser("Summarizes exp results")
     parser.add_argument('-n', '--name', action='store', help='Exp (directory) name')
     parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
-    parser.add_argument('-l', '--lat', action='store_true', help='save latencies to file', default=False)
-    parser.add_argument('-k', '--kona', action='store_true', help='save kona stats to file', default=False)
+    parser.add_argument('-sl', '--lat', action='store_true', help='save latencies to file', default=False)
+    parser.add_argument('-sk', '--kona', action='store_true', help='save kona stats to file', default=False)
+    parser.add_argument('-si', '--iok', action='store_true', help='save iok stats to file', default=False)
+    parser.add_argument('-sa', '--app', action='store_true', help='save app runtime stats to file', default=False)
     args = parser.parse_args()
 
     expname = args.name
@@ -592,7 +669,8 @@ def main():
     dirname = os.path.join(args.dir, expname)
 
     print("Summarizing exp run: " + expname)
-    do_it_all(dirname, save_lat=args.lat, save_kona=args.kona)
+    do_it_all(dirname, save_lat=args.lat, save_kona=args.kona, 
+        save_iok=args.iok, save_rstat=args.app)
 
 if __name__ == '__main__':
     main()
