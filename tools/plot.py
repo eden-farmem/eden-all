@@ -466,6 +466,8 @@ def main():
             lns += ax.plot(xc, yc, label=label, color=colors[cidx],
                 marker=(None if args.nomarker else markers[midx]),
                 markerfacecolor=(None if args.nomarker else colors[cidx]))
+            # if args.xstr:   ax.set_xticks(xc)
+            # if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 
         elif args.ptype == PlotType.scatter:
             xc = xcol
@@ -475,6 +477,8 @@ def main():
             ax.scatter(xc, yc, label=label, color=colors[cidx],
                 marker=(None if args.nomarker else markers[midx]),
                 markerfacecolor=(None if args.nomarker else colors[cidx]))
+            if args.xstr:   ax.set_xticks(xc)
+            if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 
         elif args.ptype == PlotType.bar:
             xc = xcol
@@ -592,7 +596,7 @@ def main():
     if args.vlines:
         for vline in args.vlines:
             plt.axvline(x=vline, ls='dashed')
-            plt.text(vline, 0.5, str(vline), transform=axmain.get_xaxis_transform(), 
+            plt.text(vline, 0.1, str(vline), transform=axmain.get_xaxis_transform(), 
                 color='black', fontsize='small',rotation=90)
 
     # plt.savefig(args.output, format="eps")

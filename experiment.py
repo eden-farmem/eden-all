@@ -51,8 +51,8 @@ IFNAME_MAP = {
 SERVER = "sc2-hs2-b1630"
 # CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
 CLIENT_SET = ["sc2-hs2-b1607"]
-CLIENT_MACHINE_NCORES = 18
-SERVER_CORES = 12
+CLIENT_MACHINE_NCORES = 12
+SERVER_CORES = 4
 NEXT_CLIENT_ASSIGN = 0
 NIC_NUMA_NODE = 1
 NIC_PCI = NIC_PCIE_MAP[THISHOST]
@@ -425,6 +425,9 @@ def launch_shenango_program(cfg, experiment):
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr}".format(**cfg["kona"])
         fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
             params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
+    elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
+        fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
+            numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)  
     else:
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)

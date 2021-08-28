@@ -1,9 +1,9 @@
 
 # Sync times on machines before the run
 # Requires ntp setup with sc30 as root server
-echo "Syncing clocks"
-ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
-ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+# echo "Syncing clocks"
+# ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+# ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
 # # Best of UDP Xput
 # conns=1000
@@ -24,20 +24,28 @@ ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
 # # Vary kona memory
 conns=1000
-mpps=4.0
+mpps=2.0
 mem=1000
-# bash build.sh -m -s -k -mk
-for incr in `seq 0 20 100`; do
-    mem=$((1900-incr))
-    python experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps \
-        -d "with kona ${mem} MB; 10M keys; udp; $mpps Mpps; 12 scores; 18 ccores; with lat&stats"
-    sleep 5
-done
 
-# bash build.sh -s -m 
-# python experiment.py --nokona -p udp -nc $conns --start $mpps --finish $mpps \
-#     -d "no kona; 10M keys; udp; $mpps Mpps offered; 4 scores; 12 ccores; with lat&stats"
-# sleep 5
+bash build.sh -s -m 
+echo "Syncing clocks"
+ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+python experiment.py --nokona -p udp -nc $conns --start $mpps --finish $mpps \
+    -d "no kona; 10M keys; udp; $mpps Mpps offered; 4 scores; 12 ccores; with lat&stats"
+sleep 5
+
+# # bash build.sh -m -s -k -mk
+# for mem in `seq 1600 200 2600`; do
+#     echo "Syncing clocks"
+#     ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+#     ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+
+#     python experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps \
+#         -d "with kona ${mem} MB; 10M keys; udp; $mpps Mpps; 4 scores; 12 ccores; with lat&stats"
+#     sleep 5
+# done
+
 
 # for mem in `seq 1000 100 2000`; do
 #     python experiment.py -km ${mem}000000 -p tcp -nc $conns --start $mpps --finish $mpps \

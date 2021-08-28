@@ -36,22 +36,24 @@ done
 # SUFFIX_SIMPLE="08-23-0[0-6]"
 # SUFFIX_SIMPLE="08-23-10"
 # SUFFIX_SIMPLE="08-23-11-[2-5]"
-SUFFIX_SIMPLE="08-25-[01]"
+# SUFFIX_SIMPLE="08-25-[01]"
+# SUFFIX_SIMPLE="08-25-2"
 # SUFFIX_COMPLX="08-22-\(10.*\|11.[0-1].*\)"
 # SUFFIX_COMPLX="08-22-\(1[459].*\|20.*\)"
-# # SUFFIX_COMPLX="08-24-\(0[89].*\|1[04].*\)"
-SUFFIX_COMPLX="08-24-\(0[89].*\|[12].*\)"
+SUFFIX_COMPLX="08-24-\(0[89].*\|1[0-7].*\)"
+# SUFFIX_COMPLX="08-24-\(0[89].*\|[12].*\)"
+# SUFFIX_COMPLX="08-\(25-2.*\|26-09.*\)"
 if [[ $SUFFIX_SIMPLE ]]; then 
-    LS_CMD=`ls -d1 data/run-${SUFFIX_SIMPLE}*`
+    LS_CMD=`ls -d1 data/run-${SUFFIX_SIMPLE}*/`
     SUFFIX=$SUFFIX_SIMPLE
 elif [[ $SUFFIX_COMPLX ]]; then
-    LS_CMD=`ls -d1 data/* | grep -e "$SUFFIX_COMPLX"`
+    LS_CMD=`ls -d1 data/*/ | grep -e "$SUFFIX_COMPLX"`
     SUFFIX=$SUFFIX_COMPLX
 fi
 
 numplots=0
 for exp in $LS_CMD; do
-    # echo $f
+    echo "Parsing $exp"
     name=`basename $exp`
     cfg="$exp/config.json"
     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
@@ -115,7 +117,7 @@ plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
 python3 tools/plot.py ${plots}                      \
     -xc konamem -xl "Kona Mem (MB)" --xmul 1e-6     \
     -yl "Million ops/sec" --ymul 1e-6               \
-    -fs 14 -of $PLOTEXT -o $plotname --ltitle $label_str
+    -fs 14 -of $PLOTEXT -o $plotname --ltitle $label_str --vline 1880
 display $plotname &
 rm temp_xput*
 # #-yl "Million Ops/sec" --ymul 1e-6               \
