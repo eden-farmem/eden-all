@@ -13,7 +13,7 @@ import glob
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
 KONA_DISPLAY_FIELDS = ["n_faults", "n_net_page_in", "n_net_page_out", "malloc_size", "mem_pressure", "n_poller_copy_fail"]
-KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "n_faults", "n_poller_copy_fail"]
+KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "n_faults"]
 RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", "localschedpct", "parks", "rescheds"]
 
 def percentile(latd, target):
@@ -580,10 +580,13 @@ def print_res(res):
         print(",".join([str(x) for x in line]))
 
 
-def do_it_all(dirname, save_lat=False, save_kona=False, save_iok=False, save_rstat=False):
+def do_it_all(dirname, save_lat=False, save_kona=False, 
+    save_iok=False, save_rstat=False):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
+    START_OFFSET = 0
+    runtime = exp['clients'].itervalues().next()[0]['runtime'] + START_OFFSET
 
     STAT_F = "{}/stats/".format(dirname)
     os.system("mkdir -p " + STAT_F)
@@ -592,6 +595,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False, save_iok=False, save_rst
             x = ",".join([str(x) for x in line])
             print(x)
             f.write(x + '\n')
+
 
     # Write latencies too
     if save_lat:
@@ -608,13 +612,12 @@ def do_it_all(dirname, save_lat=False, save_kona=False, save_iok=False, save_rst
                 print(sample['offered'], sample['achieved'])
 
     if save_rstat:
-        runtime = exp['clients'].itervalues().next()[0]['runtime']
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
         for app in apps:
             if not app['rstat']: continue
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
-                start = sample['time']
+                start = sample['time'] - START_OFFSET
                 print(start, runtime)
                 rstatfile = STAT_F + "rstat_{}_{}".format(app['name'], i)
                 print("Writing runtime stats to " + rstatfile)
@@ -627,12 +630,11 @@ def do_it_all(dirname, save_lat=False, save_kona=False, save_iok=False, save_rst
                         f.write(",".join(values) + "\n")
     
     if save_iok and exp['ioklog']:
-        runtime = exp['clients'].itervalues().next()[0]['runtime']
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
         for app in apps:
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
-                start = sample['time']
+                start = sample['time'] - START_OFFSET
                 print(start, runtime)
                 iokfile = STAT_F + "iokstats_{}".format(i)
                 print("Writing iok stats to " + iokfile)
@@ -645,12 +647,11 @@ def do_it_all(dirname, save_lat=False, save_kona=False, save_iok=False, save_rst
                         f.write(",".join(values) + "\n")
 
     if save_kona and exp['konalog']:
-        runtime = exp['clients'].itervalues().next()[0]['runtime']
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
         for app in apps:
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
-                start = sample['time']
+                start = sample['time'] - START_OFFSET
                 print(start, runtime)
                 konafile = STAT_F + "konastats_{}".format(i)
                 print("Writing kona stats to " + konafile)

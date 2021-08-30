@@ -50,6 +50,7 @@ done
 # Some previous runs
 # CSUFFIX="08-25-\(09*\|10.*\|11.[12].*\)"              # Runs with 4 server cores
 # SUFFIX="08-27-1[89]"                                  # Runs with 4 server cores (latest)
+# SUFFIX="08-28-10"                                     # Runs with 12 server cores
 
 
 if [[ $SUFFIX ]]; then 
@@ -83,17 +84,18 @@ for exp in $LS_CMD; do
     fi
     
     # aggregate across runs
-    header=nconns,mpps,konamem,`cat $statfile | awk 'NR==1'`
+    header=nconns,mpps,konamem,scores,`cat $statfile | awk 'NR==1'`
     curstats=`cat $statfile | awk 'NR==2'`
     # if ! [[ $curstats ]]; then    curstats=$prevstats;  fi      #HACK!
-    stats="$stats\n$nconns,$mpps,$konamem_mb,$curstats"
+    stats="$stats\n$nconns,$mpps,$konamem_mb,$sthreads,$curstats"
     prevstats=$curstats
 done
 
 # Data in one file
 tmpfile=temp_xput_$curlabel
 echo -e "$stats" > $tmpfile
-sort -k3 -n -t, $tmpfile -o $tmpfile
+# sort -k3 -n -t, $tmpfile -o $tmpfile
+sort -k4 -n -t, $tmpfile -o $tmpfile
 sed -i "1s/^/$header/" $tmpfile
 sed -i "s/$SOME_BIG_NUMBER/NoKona/" $tmpfile
 plots="$plots -d $tmpfile"
@@ -105,7 +107,7 @@ plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
     python3 tools/plot.py -d ${datafile}                \
         -yc achieved -l "Throughput" -ls solid          \
-        -xc konamem -xl "Kona Mem (MB)" --xstr          \
+        -xc scores -xl "Server Cores" --xstr          \
         -yl "Million Ops/sec" --ymul 1e-6               \
         -fs 12 -of $PLOTEXT -o $plotname
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
@@ -123,7 +125,7 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
         -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
         -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
         -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
-        -xc konamem -xl "Kona Mem (MB)" --xstr              \
+        -xc scores -xl "Server Cores" --xstr              \
         -yl "Count (x1000)" --ymul 1e-3 --ymin 0            \
         --twin 4  -tyl "Size (MB)" --tymul 1e-6 --tymin 0   \
         -fs 12  -of $PLOTEXT  -o $plotname -t "Kona"    
@@ -139,7 +141,7 @@ python3 tools/plot.py -d ${datafile}                        \
     -yc "RX_PULLED" -l "To Runtime" -ls solid               \
     -yc "RX_UNICAST_FAIL" -l "To Runtime (Failed)" -ls solid      \
     -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed    \
-    -xc konamem -xl "Kona Mem (MB)" --xstr                  \
+    -xc scores -xl "Server Cores" --xstr                  \
     -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
     --twin 4  -tyl "Saturation %" --tymul 100 --tymin 0 --tymax 110   \
     -fs 12 -of $PLOTEXT  -o $plotname -t "Shenango I/O Core"
@@ -155,7 +157,7 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
         -yc "txpkt" -l "To I/O Core" -ls solid                  \
         -yc "drops" -l "Pkt drops" -ls solid                    \
         -yc "cpupct" -l "CPU Utilization" -ls dashed            \
-        -xc konamem -xl "Kona Mem (MB)" --xstr                  \
+        -xc scores -xl "Server Cores" --xstr                  \
         -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
         --twin 4  -tyl "CPU Cores" --tymul 1e-2 --tymin 0       \
         -fs 12  -of $PLOTEXT  -o $plotname -t "Shenango Resources"
@@ -171,7 +173,7 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
         -yc "localschedpct" -l "Core Local Work %" -ls solid    \
         -yc "rescheds" -l "Reschedules" -ls dashed              \
         -yc "parks" -l "KThread Parks" -ls dashed               \
-        -xc konamem -xl "Kona Mem (MB)" --xstr                  \
+        -xc scores -xl "Server Cores" --xstr                  \
         -yl "Percent" --ymin 0 --ymax 110                       \
         --twin 4  -tyl "Million Times" --tymul 1e-6 --tymin 0   \
         -fs 12  -of $PLOTEXT  -o $plotname -t "Shenango Scheduler" 
