@@ -61,12 +61,34 @@ if [ -f $datafile ]; then
         -yc "n_faults" -l "Total Faults" -ls solid          \
         -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
         -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
+        -yc "n_madvise_try" -l "Num Madvise" -ls solid      \
         -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
         -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
         -xc "time" -xl  "Time (secs)" -yl "Count (x1000)"   \
-        --twin 4  -tyl "Size (GB)" --tymul 1e-9 --ymul 1e-3 \
+        --twin 5  -tyl "Size (GB)" --tymul 1e-9 --ymul 1e-3 \
         --ymin 0 --tymin 0 -t "Kona"   \
         -fs 12  -of $PLOTEXT  -o $plotname
+    files="$files $plotname"
+    # display $plotname &  
+fi
+
+datafile=$statsdir/konastats_extended_$SAMPLE
+if [ -f $datafile ]; then 
+    plotname=${PLOTDIR}/${name}_konastats_extended.$PLOTEXT
+    python3 tools/plot.py -d ${datafile}                            \
+        -yc "PERF_EVICT_TOTAL" -l "Total Eviction" -ls solid        \
+        -yc "PERF_EVICT_WP" -l "Eviction WP" -ls solid              \
+        -yc "PERF_RDMA_WRITE" -l "Issue Write" -ls solid            \
+        -yc "PERF_POLLER_READ" -l "Handle Read" -ls dashed          \
+        -yc "PERF_POLLER_UFFD_COPY" -l "UFFD Copy" -ls dashed       \
+        -yc "PERF_HANDLER_RW" -l "Handle Fault" -ls dashed          \
+        -yc "PERF_PAGE_READ" -l "RDMA Read" -ls dashed              \
+        -yc "PERF_EVICT_WRITE" -l "Issue Write 2" -ls dashed        \
+        -yc "PERF_HANDLER_FAULT" -l "Handle Fault 2" -ls dashed     \
+        -yc "PERF_EVICT_MADVISE" -l "Evict Madvise" -ls dashed      \
+        -xc "time" -xl  "Time (secs)"                       \
+        -yl "Micro-secs" --ymin 0 --ymul 1e-3               \
+        -fs 10  -of $PLOTEXT  -o $plotname -t "Kona Op Latencies"
     files="$files $plotname"
     # display $plotname &  
 fi

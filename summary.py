@@ -12,9 +12,16 @@ import glob
 
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
-KONA_DISPLAY_FIELDS = ["n_faults", "n_net_page_in", "n_net_page_out", "malloc_size", "mem_pressure", "n_poller_copy_fail"]
-KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "n_faults"]
-RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", "localschedpct", "parks", "rescheds"]
+KONA_DISPLAY_FIELDS = ["n_faults", "n_net_page_in", "n_net_page_out", "malloc_size", 
+    "mem_pressure", "n_poller_copy_fail", "n_madvise_try"]
+KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
+    "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
+    "PERF_EVICT_WRITE", "PERF_HANDLER_FAULT", "PERF_EVICT_MADVISE", "PERF_HANDLER_MADV_NOTIF",
+    "PERF_HANDLER_FAULT_Q"]
+KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
+    "n_faults", "n_madvise_try", "n_rw_fault_q"]
+RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", 
+    "localschedpct", "parks", "rescheds"]
 
 def percentile(latd, target):
     # latd: ({microseconds: count}, number_dropped)
@@ -207,8 +214,7 @@ def load_app_output(app, directory, first_sample_time):
         'recorded_samples': datapoints
     }
 
-def parse_kona_log(dirn, experiment):
-
+def parse_kona_accounting_log(dirn, experiment):
     fname = "{dirn}/memcached.out".format(dirn=dirn, **experiment)
     with open(fname) as f:
         data = f.read().splitlines()
@@ -228,10 +234,44 @@ def parse_kona_log(dirn, experiment):
             dats = line.split()
             time = int(dats[0])
             values = dats[1].split(",")
-            assert len(values) == 31, "unexpected kona log format"
+            assert len(values) == len(header_list), "unexpected kona log format"
             if header_list[1] == values[1]:     continue    #header
             for c in header_list[1:]:  stats[c].append((time, int(values[COL_IDX[c]])))            
             stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']])))
+
+    # Correct timestamps: A bunch of logs may get the same timestamp 
+    # due to stdout flushing at irregular intervals. Assume that the 
+    # last log with a particular timestamp has the correct one and work backwards
+    for data in stats.values():
+        oldts = None
+        for i, (ts, val) in reversed(list(enumerate(data))):
+            if oldts and ts >= oldts:   ts = oldts - 1
+            data[i] = (ts, val)
+            oldts = ts
+
+    return dict(stats)
+
+def parse_kona_profiler_log(dirn, experiment):
+    fname = "{dirn}/memcached.out".format(dirn=dirn, **experiment)
+    with open(fname) as f:
+        data = f.read().splitlines()
+
+    header_list = ("profiler,PERF_HANDLER_FAULT,PERF_HANDLER_MADV_NOTIF,PERF_HANDLER_UFFD_WP,"
+        "PERF_HANDLER_RW,PERF_HANDLER_UFFD_COPY,PERF_HANDLER_UFFD_WP_Q,PERF_HANDLER_FAULT_Q,"
+        "PERF_RDMA_WRITE,PERF_EVICT_TOTAL,PERF_EVICT_WP,PERF_EVICT_CL_DIFF,PERF_EVICT_MEMCPY,"
+        "PERF_EVICT_WRITE,PERF_EVICT_CLEAN_CPY,PERF_EVICT_MADVISE,PERF_POLLER_ZP,PERF_POLLER_READ,"
+        "PERF_POLLER_UFFD_COPY,PERF_POLLER_CLEAN_CPY,PERF_PAGE_READ").split(",")
+    COL_IDX = {k: v for v, k in enumerate(header_list)}
+
+    stats = defaultdict(list)
+    for line in data:
+        if "profiler," in line:
+            dats = line.split()
+            time = int(dats[0])
+            values = dats[1].split(",")
+            assert len(values) == len(header_list), "unexpected kona profiler log format"
+            if header_list[1] == values[1]:     continue    #header
+            for c in header_list[1:]:  stats[c].append((time, int(values[COL_IDX[c]])))            
 
     # Correct timestamps: A bunch of logs may get the same timestamp 
     # due to stdout flushing at irregular intervals. Assume that the 
@@ -489,7 +529,8 @@ def parse_dir(dirname):
 
     experiment['mpstat'] = parse_utilization(dirname, experiment)
     experiment['ioklog'] = parse_iokernel_log(dirname, experiment)
-    experiment['konalog'] = parse_kona_log(dirname, experiment)
+    experiment['konalog'] = parse_kona_accounting_log(dirname, experiment)
+    experiment['konalogext'] = parse_kona_profiler_log(dirname, experiment)
     return experiment
 
 
@@ -509,7 +550,7 @@ def arrange_2d_results(experiment):
     header2 = ["offered", "achieved", "p50", "p90", "p99", "p999", "p9999", "distribution"]     # app
     # header3 = ["tput", "baseline", "totaloffered", "totalachieved", "totalcpu"] #, "localcpu", "ioksaturation"]
 
-    header = header1 + header2 + IOK_DISPLAY_FIELDS + KONA_DISPLAY_FIELDS + RSTAT_DISPLAY_FIELDS
+    header = header1 + header2 + IOK_DISPLAY_FIELDS + KONA_DISPLAY_FIELDS + ["outstanding"] + KONA_DISPLAY_FIELDS_EXTENDED + RSTAT_DISPLAY_FIELDS
     lines = [header]
     ncons = 0
     for list_pm in experiment['clients'].itervalues():
@@ -537,11 +578,16 @@ def arrange_2d_results(experiment):
             for field in IOK_DISPLAY_FIELDS:
                 if experiment['ioklog']:   out.append(extract_window(experiment['ioklog'][field], time, runtime))
                 else:   out.append(None)
-            lines.append(out)
             for field in KONA_DISPLAY_FIELDS:
                 if experiment['konalog']:   out.append(extract_window(experiment['konalog'][field], time, runtime, 
                                                 accumulated=(field in KONA_FIELDS_ACCUMULATED)))
                 else:   out.append(None)
+            out.append(extract_window_max(experiment['konalog']["n_poller_copy_fail"], time, runtime))
+            for field in KONA_DISPLAY_FIELDS_EXTENDED:
+                if experiment['konalogext']:   out.append(extract_window(experiment['konalogext'][field], time, runtime, 
+                                                accumulated=(field in KONA_FIELDS_ACCUMULATED)))
+                else:   out.append(None)
+            lines.append(out)
             for field in RSTAT_DISPLAY_FIELDS:
                 if point['app']['rstat']:   out.append(extract_window(point['app']['rstat'][field], time, runtime))
                 else:   out.append(None)
@@ -585,7 +631,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
-    START_OFFSET = 0
+    START_OFFSET = 50
     runtime = exp['clients'].itervalues().next()[0]['runtime'] + START_OFFSET
 
     STAT_F = "{}/stats/".format(dirname)
@@ -625,7 +671,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
                     trimmed = { k:extract_window_seq(v, start, runtime) for k,v in app['rstat'].items()}
                     # print(trimmed.keys())
                     f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed["rescheds"]):
+                    for i, (time, _) in enumerate(trimmed.values()[0]):
                         values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
                         f.write(",".join(values) + "\n")
     
@@ -642,7 +688,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
                     trimmed = { k:extract_window_seq(v, start, runtime) for k,v in exp['ioklog'].items()}
                     # print(trimmed.keys())
                     f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed["RX_PULLED"]):
+                    for i, (time, _) in enumerate(trimmed.values()[0]):
                         values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
                         f.write(",".join(values) + "\n")
 
@@ -650,18 +696,38 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
         for app in apps:
             if not 'loadgen' in app: continue
-            for i, sample in enumerate(app['loadgen']):
+            for sample_id, sample in enumerate(app['loadgen']):
                 start = sample['time'] - START_OFFSET
                 print(start, runtime)
-                konafile = STAT_F + "konastats_{}".format(i)
+                konafile = STAT_F + "konastats_{}".format(sample_id)
                 print("Writing kona stats to " + konafile)
                 with open(konafile, "w") as f:
                     # FIXME: Some columns might not be cumulative
-                    trimmed = { k:extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
-                                for k,v in exp['konalog'].items()}
+                    trimmed = {}
+                    for k,v in exp['konalog'].items():
+                        trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
+                        # ignore first row for non-accumulated ones
+                        if k not in KONA_FIELDS_ACCUMULATED:
+                            trimmed[k] = trimmed[k][1:] 
+
                     # print(trimmed)
                     f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed["n_faults_r"]):
+                    for i, (time, _) in enumerate(trimmed.values()[0]):
+                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                        f.write(",".join(values) + "\n")
+                
+                konafile = STAT_F + "konastats_extended_{}".format(sample_id)
+                print("Writing kona extended stats to " + konafile)
+                with open(konafile, "w") as f:
+                    trimmed = {}
+                    for k,v in exp['konalogext'].items():
+                        trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
+                        # ignore first row for non-accumulated ones
+                        if k not in KONA_FIELDS_ACCUMULATED:
+                            trimmed[k] = trimmed[k][1:] 
+                    # print(trimmed)
+                    f.write("time," + ",".join(trimmed.keys()) + "\n")
+                    for i, (time, _) in enumerate(trimmed.values()[0]):
                         values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
                         f.write(",".join(values) + "\n")
 

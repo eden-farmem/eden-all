@@ -24,7 +24,7 @@
 
 # # Vary kona memory
 conns=1000
-mpps=2.0
+mpps=2
 mem=1500
 scores=4
 
@@ -38,7 +38,7 @@ scores=4
 
 bash build.sh -m -s -k -mk
 # for mem in `seq 1000 200 2600`; do
-for scores in 2 4 6 8 10 12; do
+for scores in 1 2 4 6 8 10; do
     echo "Syncing clocks"
     ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
     ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"

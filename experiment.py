@@ -245,10 +245,6 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'args': "{serverip}:{serverport} {warmup} --output={output} --protocol {protocol} --mode runtime-client --threads {client_threads} --runtime {runtime} --barrier-peers {npeers} --barrier-leader {leader}  --mean={mean} --distribution={distribution} --mpps={mpps} --samples={samples} --transport {transport} --start_mpps {start_mpps}"
         }
         warmup = kwargs.get('warmup')
-        if warmup is None:
-            if experiment['system'] not in ["arachne", "zygos"]:
-                warmup = True
-
         x["warmup"] = "--warmup" if warmup else ""
         if kwargs.get('rampup', False):
             x['args'] += " --rampup={rampup}"
@@ -688,6 +684,7 @@ def main():
     parser.add_argument('-p', '--prot', action='store', help='Transport protocol (tcp/udp), default to tcp', default="tcp")
     parser.add_argument('-nc', '--nconns', action='store', help='Number of client TCP connections, defaults to 100',type=int, default=100)
     parser.add_argument('-sc', '--scores', action='store', help='Number of server cores, defaults to 4',type=int, default=SERVER_CORES)
+    parser.add_argument('-w', '--warmup', action='store_true', help='Warm up the server before the experiment',type=int, default=False)
     parser.add_argument('--start', action='store', help='starting rate (mpps) (exclusive)', type=float, default=DEFAULT_START_MPPS)
     parser.add_argument('--finish', action='store', help='finish rate (mpps)', type=float, default=DEFAULT_MPPS)
     parser.add_argument('--steps', action='store', help='steps from start to finish', type=int, default=DEFAULT_SAMPLES)
@@ -709,8 +706,9 @@ def main():
             "shenango", args.scores, 
             name=args.name, desc=args.desc,
             start_mpps=args.start, mpps=args.finish, samples=args.steps, time=args.time,
-            kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, kona_evict_done_thr=args.konaedt, 
-            transport=args.prot, nconns=args.nconns
+            kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, 
+            kona_evict_done_thr=args.konaedt, transport=args.prot, nconns=args.nconns,
+            warmup=args.warmup
         ))
 
     elif role == role.app:

@@ -123,15 +123,37 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
         -yc "n_faults" -l "Total Faults" -ls solid          \
         -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
         -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
-        -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
-        -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
+        -yc "outstanding"   -l "Max Concurrent Reads" -ls dashed \
         -xc scores -xl "Server Cores" --xstr              \
         -yl "Count (x1000)" --ymul 1e-3 --ymin 0            \
-        --twin 4  -tyl "Size (MB)" --tymul 1e-6 --tymin 0   \
+        --twin 4  -tyl "Count" --tymin 0   \
         -fs 12  -of $PLOTEXT  -o $plotname -t "Kona"    
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
+        # -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
+        # -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
+
+plotname=${PLOTDIR}/konastats_extended_${SUFFIX}.$PLOTEXT
+# if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+# if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+    python3 tools/plot.py -d ${datafile}                            \
+        -yc "PERF_HANDLER_FAULT_Q" -l "1.0 Fault Queue Wait"        \
+        -yc "PERF_HANDLER_RW" -l "1.1 Handle Fault" -ls solid       \
+        -yc "PERF_PAGE_READ" -l "1.2 RDMA Read" -ls dashed          \
+        -yc "PERF_HANDLER_MADV_NOTIF" -l "1.3 Handle Notif " -ls dashed     \
+        -yc "PERF_POLLER_READ" -l "2   Handle Read" -ls solid       \
+        -yc "PERF_POLLER_UFFD_COPY" -l "2.1 UFFD Copy" -ls dashed   \
+        -yc "PERF_EVICT_TOTAL" -l "3   Evict Total" -ls solid       \
+        -yc "PERF_EVICT_WP" -l "3.1 Evict WP" -ls dashed            \
+        -yc "PERF_EVICT_WRITE" -l "3.2 Issue Write" -ls dashed      \
+        -yc "PERF_EVICT_MADVISE" -l "3.3 Madvise" -ls dashed        \
+        -xc scores -xl "Server Cores" --xstr                        \
+        -yl "Micro-secs" --ymin 0 --ymax 300 --ymul 454e-6           \
+        -fs 10  -of $PLOTEXT  -o $plotname -t "Kona Op Latencies"
+    files="$files $plotname"
+    display $plotname &  
+# fi
 
 # Plot iok stats
 plotname=${PLOTDIR}/iokstats_${SUFFIX}.$PLOTEXT

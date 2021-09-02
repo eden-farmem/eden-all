@@ -405,7 +405,7 @@ def main():
     matplotlib.rc('figure', autolayout=True)
     matplotlib.rcParams['pdf.fonttype'] = 42        # required for latex embedded figures
 
-    fig, axmain = plt.subplots(1, 1, figsize=(6,3))
+    fig, axmain = plt.subplots(1, 1, figsize=(8,4))
     fig.suptitle(args.ptitle if args.ptitle else '')
     # plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
     #plt.ylim(0, 1000)
