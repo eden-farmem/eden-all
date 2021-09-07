@@ -684,7 +684,7 @@ def main():
     parser.add_argument('-p', '--prot', action='store', help='Transport protocol (tcp/udp), default to tcp', default="tcp")
     parser.add_argument('-nc', '--nconns', action='store', help='Number of client TCP connections, defaults to 100',type=int, default=100)
     parser.add_argument('-sc', '--scores', action='store', help='Number of server cores, defaults to 4',type=int, default=SERVER_CORES)
-    parser.add_argument('-w', '--warmup', action='store_true', help='Warm up the server before the experiment',type=int, default=False)
+    parser.add_argument('-w', '--warmup', action='store_true', help='Warm up the server before the experiment', default=False)
     parser.add_argument('--start', action='store', help='starting rate (mpps) (exclusive)', type=float, default=DEFAULT_START_MPPS)
     parser.add_argument('--finish', action='store', help='finish rate (mpps)', type=float, default=DEFAULT_MPPS)
     parser.add_argument('--steps', action='store', help='steps from start to finish', type=int, default=DEFAULT_SAMPLES)

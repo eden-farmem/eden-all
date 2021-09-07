@@ -82,33 +82,33 @@ cat $tmpfile
 datafile=$tmpfile
 
 if [ "$PLOTSET" -eq 1 ]; then
-    # Plot memcached xput
-    # plotname=${PLOTDIR}/talk_scores_xput_${SUFFIX}.$PLOTEXT
-    # python3 tools/plot.py -d ${datafile}                \
-    #     -yc achieved -l "Throughput" -ls solid          \
-    #     -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}       \
-    #     -yl "Million Ops/sec" --ymul 1e-6  --ymax .3    \
-    #     -fs 15 -of $PLOTEXT -o $plotname
-    # display $plotname &  
+    Plot memcached xput
+    plotname=${PLOTDIR}/talk_scores_xput_${SUFFIX}.$PLOTEXT
+    python3 tools/plot.py -d ${datafile}                \
+        -yc achieved -l "Throughput" -ls solid          \
+        -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}       \
+        -yl "Million Ops/sec" --ymul 1e-6  --ymax .3    \
+        -fs 15 -of $PLOTEXT -o $plotname
+    display $plotname &  
 
-    # plotname=${PLOTDIR}/talk_scores_xput2_${SUFFIX}.$PLOTEXT
-    # python3 tools/plot.py -d ${datafile}                \
-    #     -yc achieved -l "Throughput" -ls solid          \
-    #     -yc "n_faults" -l "Page Faults" -ls dashed      \
-    #     -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}       \
-    #     -yl "Million Ops/sec" --ymul 1e-6  --ymax .3    \
-    #     --twin 2 -tyl "Count x 1000" --tymul 1e-3 --tymin 0 --tymax 50  \
-    #     -fs 15 -of $PLOTEXT -o $plotname
-    # display $plotname &  
+    plotname=${PLOTDIR}/talk_scores_xput2_${SUFFIX}.$PLOTEXT
+    python3 tools/plot.py -d ${datafile}                \
+        -yc achieved -l "Throughput" -ls solid          \
+        -yc "n_faults" -l "Page Faults" -ls dashed      \
+        -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}       \
+        -yl "Million Ops/sec" --ymul 1e-6  --ymax .3    \
+        --twin 2 -tyl "Count x 1000" --tymul 1e-3 --tymin 0 --tymax 50  \
+        -fs 15 -of $PLOTEXT -o $plotname
+    display $plotname &  
 
-    # # Plot kona 
-    # plotname=${PLOTDIR}/talk_scores_kona1_${SUFFIX}.$PLOTEXT
-    # python3 tools/plot.py -d ${datafile}                    \
-    #     -yc "PERF_HANDLER_FAULT_Q" -l "Eviction Queue Wait" \
-    #     -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}           \
-    #     -yl "µs" --ymin 0 --ymax 300 --ymul 454e-6          \
-    #     -fs 15  -of $PLOTEXT  -o $plotname  
-    # display $plotname &  
+    # Plot kona 
+    plotname=${PLOTDIR}/talk_scores_kona1_${SUFFIX}.$PLOTEXT
+    python3 tools/plot.py -d ${datafile}                    \
+        -yc "PERF_HANDLER_FAULT_Q" -l "Eviction Queue Wait" \
+        -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}           \
+        -yl "µs" --ymin 0 --ymax 300 --ymul 454e-6          \
+        -fs 15  -of $PLOTEXT  -o $plotname  
+    display $plotname &  
 
     plotname=${PLOTDIR}/talk_scores_kona2_${SUFFIX}.$PLOTEXT
     python3 tools/plot.py -d ${datafile}                    \
@@ -122,22 +122,22 @@ if [ "$PLOTSET" -eq 1 ]; then
         -fs 13  -of $PLOTEXT  -o $plotname  
     display $plotname &  
 
-    plotname=${PLOTDIR}/talk_scores_kona3_${SUFFIX}.$PLOTEXT
-    python3 tools/plot.py -d ${datafile}                    \
-        -yc "PERF_HANDLER_FAULT_Q" -l "Eviction Queue Wait" -ls solid   \
-        -yc "scores"   -l "Max Queue Size" -ls dashed                   \
-        -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}                       \
-        -yl "µs" --ymin 0 --ymax 250 --ymul 454e-6                      \
-        --twin 2  -tyl "Count"                                          \
-        -fs 13  -of $PLOTEXT  -o $plotname  
-    display $plotname &  
-    
     # plotname=${PLOTDIR}/talk_scores_kona3_${SUFFIX}.$PLOTEXT
     # python3 tools/plot.py -d ${datafile}                    \
-    #     -yc "scores"   -l "Max Outstanding Page Faults" \
-    #     -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}           \
-    #     -fs 15  -of $PLOTEXT  -o $plotname -yl "Count"   
+    #     -yc "PERF_HANDLER_FAULT_Q" -l "Eviction Queue Wait" -ls solid   \
+    #     -yc "scores"   -l "Max Queue Size" -ls dashed                   \
+    #     -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}                       \
+    #     -yl "µs" --ymin 0 --ymax 250 --ymul 454e-6                      \
+    #     --twin 2  -tyl "Count"                                          \
+    #     -fs 13  -of $PLOTEXT  -o $plotname  
     # display $plotname &  
+    
+    plotname=${PLOTDIR}/talk_scores_kona3_${SUFFIX}.$PLOTEXT
+    python3 tools/plot.py -d ${datafile}                    \
+        -yc "scores"   -l "Max Outstanding Page Faults" \
+        -xc ${XCOL} -xl "$XLABEL" ${XSTR} ${XMUL}           \
+        -fs 15  -of $PLOTEXT  -o $plotname -yl "Count"   
+    display $plotname &  
 
     # plotname=${PLOTDIR}/talk__${SUFFIX}.$PLOTEXT
     # python3 tools/plot.py -d ${datafile}                            \

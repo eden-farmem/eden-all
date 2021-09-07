@@ -36,16 +36,22 @@ scores=4
 #     -d "no kona; 10M keys; udp; $mpps Mpps offered; 12 scores; 12 ccores; with lat&stats"
 # sleep 5
 
-bash build.sh -m -s -k -mk
-# for mem in `seq 1000 200 2600`; do
-for scores in 1 2 4 6 8 10; do
-    echo "Syncing clocks"
-    ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
-    ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+for cfg in CONFIG_WP; do
+    bash build.sh -m -s -k -mk --kona-config=$cfg 
+    for warmup in "--warmup" ""; do 
+        # for mem in `seq 1000 200 2600`; do
+        for mem in 1500; do
+        # for scores in 1 2 4 6 8 10; do
+            echo "Syncing clocks"
+            ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+            ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-    python experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps --scores $scores \
-        -d "with kona ${mem} MB; 10M keys; udp; $mpps Mpps; $scores scores; PBMEM=CONFIG_NODIRTYTRACK"
-    sleep 5
+            python experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps --scores $scores \
+                -d "(testing) with kona ${mem} MB; 10M keys; udp; $mpps Mpps; $scores scores; PBMEM=${cfg} with $warmup" \
+                ${warmup}
+            sleep 5
+        done
+    done
 done
 
 

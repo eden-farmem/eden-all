@@ -13,13 +13,13 @@ import glob
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
 KONA_DISPLAY_FIELDS = ["n_faults", "n_net_page_in", "n_net_page_out", "malloc_size", 
-    "mem_pressure", "n_poller_copy_fail", "n_madvise_try"]
+    "mem_pressure", "n_poller_copy_fail", "n_madvise_try", "n_page_dirty"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
     "PERF_EVICT_WRITE", "PERF_HANDLER_FAULT", "PERF_EVICT_MADVISE", "PERF_HANDLER_MADV_NOTIF",
     "PERF_HANDLER_FAULT_Q"]
 KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
-    "n_faults", "n_madvise_try", "n_rw_fault_q"]
+    "n_faults", "n_madvise_try", "n_rw_fault_q", "n_page_dirty"]
 RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", 
     "localschedpct", "parks", "rescheds"]
 
@@ -437,8 +437,8 @@ def parse_runtime_log(app, dirn):
     return stat_vec
 
 def extract_window_seq(datapoints, wct_start, duration_sec, accumulated=False):
-    window_start = wct_start + int(duration_sec * 0.1)
-    window_end = wct_start + int(duration_sec * 0.9)
+    window_start = wct_start 
+    window_end = wct_start + duration_sec
     datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
     if accumulated and len(datapoints) > 0:
         return [(x[0], (x[1] - datapoints[i - 1][1]) / (x[0] - datapoints[i - 1][0])) for i, x in enumerate(datapoints)][1:]
@@ -627,12 +627,11 @@ def print_res(res):
 
 
 def do_it_all(dirname, save_lat=False, save_kona=False, 
-    save_iok=False, save_rstat=False):
+    save_iok=False, save_rstat=False, start_offset=0):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
-    START_OFFSET = 50
-    runtime = exp['clients'].itervalues().next()[0]['runtime'] + START_OFFSET
+    runtime = exp['clients'].itervalues().next()[0]['runtime'] + start_offset
 
     STAT_F = "{}/stats/".format(dirname)
     os.system("mkdir -p " + STAT_F)
@@ -663,7 +662,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             if not app['rstat']: continue
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
-                start = sample['time'] - START_OFFSET
+                start = sample['time'] - start_offset
                 print(start, runtime)
                 rstatfile = STAT_F + "rstat_{}_{}".format(app['name'], i)
                 print("Writing runtime stats to " + rstatfile)
@@ -680,13 +679,13 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
         for app in apps:
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
-                start = sample['time'] - START_OFFSET
+                start = sample['time'] - start_offset
                 print(start, runtime)
                 iokfile = STAT_F + "iokstats_{}".format(i)
                 print("Writing iok stats to " + iokfile)
                 with open(iokfile, "w") as f:
                     trimmed = { k:extract_window_seq(v, start, runtime) for k,v in exp['ioklog'].items()}
-                    # print(trimmed.keys())
+                    # print(trimmed['TX_PULLED'])
                     f.write("time," + ",".join(trimmed.keys()) + "\n")
                     for i, (time, _) in enumerate(trimmed.values()[0]):
                         values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
@@ -697,7 +696,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
         for app in apps:
             if not 'loadgen' in app: continue
             for sample_id, sample in enumerate(app['loadgen']):
-                start = sample['time'] - START_OFFSET
+                start = sample['time'] - start_offset
                 print(start, runtime)
                 konafile = STAT_F + "konastats_{}".format(sample_id)
                 print("Writing kona stats to " + konafile)
@@ -742,6 +741,7 @@ def main():
     parser.add_argument('-sk', '--kona', action='store_true', help='save kona stats to file', default=False)
     parser.add_argument('-si', '--iok', action='store_true', help='save iok stats to file', default=False)
     parser.add_argument('-sa', '--app', action='store_true', help='save app runtime stats to file', default=False)
+    parser.add_argument('-so', '--strtofst', action='store', help='see results from this many seconds before the the actual start time of the sample', type=int, default=0)
     args = parser.parse_args()
 
     expname = args.name
@@ -753,7 +753,7 @@ def main():
 
     print("Summarizing exp run: " + expname)
     do_it_all(dirname, save_lat=args.lat, save_kona=args.kona, 
-        save_iok=args.iok, save_rstat=args.app)
+        save_iok=args.iok, save_rstat=args.app, start_offset=args.strtofst)
 
 if __name__ == '__main__':
     main()
