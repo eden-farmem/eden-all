@@ -2,10 +2,7 @@
 set -e
 
 #
-# Build Shenango and related app code
-#
-
-# Constants
+# Build Shenango, Kona and other related app code
 #
 
 usage="\n

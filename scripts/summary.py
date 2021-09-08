@@ -13,13 +13,13 @@ import glob
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
 KONA_DISPLAY_FIELDS = ["n_faults", "n_net_page_in", "n_net_page_out", "malloc_size", 
-    "mem_pressure", "n_poller_copy_fail", "n_madvise_try", "n_page_dirty"]
+    "mem_pressure", "n_poller_copy_fail", "n_madvise_try", "n_page_dirty", "n_faults_wp"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
     "PERF_EVICT_WRITE", "PERF_HANDLER_FAULT", "PERF_EVICT_MADVISE", "PERF_HANDLER_MADV_NOTIF",
     "PERF_HANDLER_FAULT_Q"]
 KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
-    "n_faults", "n_madvise_try", "n_rw_fault_q", "n_page_dirty"]
+    "n_faults", "n_madvise_try", "n_rw_fault_q", "n_page_dirty", "n_faults_wp"]
 RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", 
     "localschedpct", "parks", "rescheds"]
 
@@ -587,7 +587,6 @@ def arrange_2d_results(experiment):
                 if experiment['konalogext']:   out.append(extract_window(experiment['konalogext'][field], time, runtime, 
                                                 accumulated=(field in KONA_FIELDS_ACCUMULATED)))
                 else:   out.append(None)
-            lines.append(out)
             for field in RSTAT_DISPLAY_FIELDS:
                 if point['app']['rstat']:   out.append(extract_window(point['app']['rstat'][field], time, runtime))
                 else:   out.append(None)
