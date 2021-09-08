@@ -6,4 +6,8 @@
 	url = git@gitlab.eng.vmware.com:ayelam/shenango.git
 [submodule "kona"]
 	path = kona
-	url = git@gitlab.eng.vmware.com:kona/kona.git
+	url = git@gitlab.eng.vmware.com:kona/kona.git 
+# Activate it if/when needed (initial setup takes a lot of time)
+# [submodule "data"]
+# 	path = data
+# 	url = git@gitlab.eng.vmware.com:ayelam/rmem-scheduler-data.git

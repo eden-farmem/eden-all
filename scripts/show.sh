@@ -2,6 +2,7 @@
 # set -e
 #
 # Show info on past (good) runs
+# For previous data, activate "data" repo in git submodules (.gitmodules)
 #
 
 prefix=$1

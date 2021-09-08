@@ -2,4 +2,3 @@ run-*
 !run-*.png
 .vscode
 arxiv/
-data/
