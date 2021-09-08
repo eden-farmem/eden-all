@@ -57,15 +57,23 @@ datafile=$statsdir/stat.csv
 datafile=$statsdir/konastats_$SAMPLE
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_konastats.$PLOTEXT
+    # python3 tools/plot.py -d ${datafile}                    \
+    #     -yc "n_faults" -l "Total Faults" -ls solid          \
+    #     -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
+    #     -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
+    #     -yc "n_madvise_try" -l "Num Madvise" -ls solid      \
+    #     -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
+    #     -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
+    #     -xc "time" -xl  "Time (secs)" -yl "Count (x1000)"   \
+    #     --twin 5  -tyl "Size (GB)" --tymul 1e-9 --ymul 1e-3 \
+    #     --ymin 0 --tymin 0 -t "Kona"   \
+    #     -fs 12  -of $PLOTEXT  -o $plotname
     python3 tools/plot.py -d ${datafile}                    \
         -yc "n_faults" -l "Total Faults" -ls solid          \
-        -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
-        -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
-        -yc "n_madvise_try" -l "Num Madvise" -ls solid      \
-        -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
-        -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
-        -xc "time" -xl  "Time (secs)" -yl "Count (x1000)"   \
-        --twin 5  -tyl "Size (GB)" --tymul 1e-9 --ymul 1e-3 \
+        -yc "n_faults_r" -l "Read Faults" -ls solid         \
+        -yc "n_faults_w" -l "Write Faults" -ls solid        \
+        -yc "n_faults_wp" -l "Remove WP" -ls solid          \
+        -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
         --ymin 0 --tymin 0 -t "Kona"   \
         -fs 12  -of $PLOTEXT  -o $plotname
     files="$files $plotname"
