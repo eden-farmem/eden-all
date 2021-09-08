@@ -1,9 +1,9 @@
 [submodule "memcached"]
 	path = memcached
-	url = git@gitlab.eng.vmware.com:ayelam/memcached.git
+	url = git@gitlab.eng.vmware.com:kona/memcached.git
 [submodule "shenango"]
 	path = shenango
-	url = git@gitlab.eng.vmware.com:ayelam/shenango.git
+	url = git@gitlab.eng.vmware.com:kona/shenango.git
 [submodule "kona"]
 	path = kona
 	url = git@gitlab.eng.vmware.com:kona/kona.git
