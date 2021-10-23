@@ -1,15 +1,17 @@
 #!/bin/bash
 # set -e 
 
+# Miscellaneous plots
+
 PLOTEXT=png
 PLOTDIR=plots/
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
 CLIENT="sc2-hs2-b1607"
+SCRIPT_DIR=`dirname "$0"`
 
 usage="\n
 -f, --force \t\t force re-summarize results\n
--c, --cpu \t\t include cpu usage in xput plots\n
 -h, --help \t\t this usage information message\n"
 
 for i in "$@"
@@ -17,10 +19,6 @@ do
 case $i in
     -f|--force)
     FORCE=1
-    ;;
-    
-    -c|--cpu)
-    SHOWCPU=1
     ;;
 
     *)                      # unknown option
@@ -31,150 +29,50 @@ case $i in
 esac
 done
 
-# SUFFIX_SIMPLE="08-22-1[012]"
-# SUFFIX_SIMPLE="08-22-14"
-# SUFFIX_SIMPLE="08-23-0[0-6]"
-# SUFFIX_SIMPLE="08-23-10"
-# SUFFIX_SIMPLE="08-23-11-[2-5]"
-# SUFFIX_SIMPLE="08-25-[01]"
-# SUFFIX_SIMPLE="08-25-2"
-# SUFFIX_COMPLX="08-22-\(10.*\|11.[0-1].*\)"
-# SUFFIX_COMPLX="08-22-\(1[459].*\|20.*\)"
-SUFFIX_COMPLX="08-24-\(0[89].*\|1[0-7].*\)"
-# SUFFIX_COMPLX="08-24-\(0[89].*\|[12].*\)"
-# SUFFIX_COMPLX="08-\(25-2.*\|26-09.*\)"
-if [[ $SUFFIX_SIMPLE ]]; then 
-    LS_CMD=`ls -d1 data/run-${SUFFIX_SIMPLE}*/`
-    SUFFIX=$SUFFIX_SIMPLE
-elif [[ $SUFFIX_COMPLX ]]; then
-    LS_CMD=`ls -d1 data/*/ | grep -e "$SUFFIX_COMPLX"`
-    SUFFIX=$SUFFIX_COMPLX
-fi
+# # MEMCACHED MEM ACCESS
+# expname="run-10-17-21-19"     # .001 Mpps
+expname="run-10-19-13-22"       # 2 Mpps
+python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname}
 
-numplots=0
-for exp in $LS_CMD; do
-    echo "Parsing $exp"
-    name=`basename $exp`
-    cfg="$exp/config.json"
-    sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
-    konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
-    if [ $konamem == "null" ]; then    klabel="No_Kona";    konamem=0;
-    else    klabel=`echo $konamem | awk '{ printf "%-4d_MB", $1/1000000 }'`;     fi
-    label=$klabel
-    prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
-    nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`
-    mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $cfg`
-    desc=`jq '.desc' $cfg`
+DATADIR=data/$expname/addrs/
+PLOTDIR=data/$expname/plots
+mkdir -p $PLOTDIR
 
-    # summarize results
-    statsdir=$exp/stats
-    statfile=$statsdir/stat.csv
-    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-        python summary.py -n $name --lat --kona
-    fi
+# datafile=${DATADIR}/rfaults
+# plotname=${PLOTDIR}/rfaults.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
+#     -yc addr -yl "Address" -xc "time"               \
+#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
 
-    # Separate runs by a specific label type
-    label=${mpps}_Mops
-    label_str=OfferedLoad
-    if [ "$label" != "$curlabel" ]; then 
-        if [[ $curlabel ]]; then
-            # echo -e "$header$stats" > temp_xput_$curlabel
-            tmpfile=temp_xput_$curlabel
-            echo -e "$stats" > $tmpfile
-            sort -k3 -n -t, $tmpfile -o $tmpfile    #sort by konamem
-            sed -i "1s/^/$header/" $tmpfile
-            plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel achieved"
-            # plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel tfaults"
-            numplots=$((numplots+1))
-            if [[ $SHOWCPU ]]; then
-                cpuplots="$cpuplots -l ${curlabel} -dyc temp_xput_$curlabel totalcpu"
-                numplots=$((numplots+1))
-            fi
-            stats=
-        fi
-        curlabel=$label
-    fi
-    
-    # aggregate across runs
-    header=nconns,mpps,konamem,`cat $statfile | awk 'NR==1'`
-    curstats=`cat $statfile | awk 'NR==2'`
-    if ! [[ $curstats ]]; then    curstats=$prevstats;  fi      #HACK!
-    stats="$stats\n$nconns,$mpps,$konamem,$curstats"
-    prevstats=$curstats
-    latfiles="$latfiles -d $statsdir/latencies_0 -l $klabel"
-    konafiles="$konafiles -d $statsdir/konastats_0 -l $klabel"
-    sed -i '8,$d' $statsdir/konastats_0     #HACK: make all files have same no of datapoints
-done
+# datafile=${DATADIR}/wfaults
+# plotname=${PLOTDIR}/wfaults.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
+#     -yc addr -yl "Address" -xc "time"               \
+#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
 
-# Xput plot over kona mem size by offered load
-tmpfile=temp_xput_$curlabel
-echo -e "$stats" > $tmpfile
-sort -k3 -n -t, $tmpfile -o $tmpfile
-sed -i "1s/^/$header/" $tmpfile
-plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel achieved"
-# plots="$plots -l ${curlabel} -dyc temp_xput_$curlabel tfaults"
-plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
-python3 tools/plot.py ${plots}                      \
-    -xc konamem -xl "Kona Mem (MB)" --xmul 1e-6     \
-    -yl "Million ops/sec" --ymul 1e-6               \
-    -fs 14 -of $PLOTEXT -o $plotname --ltitle $label_str --vline 1880
+# datafile=${DATADIR}/rfaults
+# plotname=${PLOTDIR}/rfaults-offset.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
+#     -yc pgofst -yl "Offset in Page" -xc "time"      \
+#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
+
+# datafile=${DATADIR}/wfaults
+# plotname=${PLOTDIR}/wfaults-offset.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
+#     -yc pgofst -yl "Offset in Page" -xc "time"      \
+#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
+
+datafile=${DATADIR}/counts
+plotname=${PLOTDIR}/counts.${PLOTEXT}
+python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
+    -yc rfaults -yc wfaults -xc "time"              \
+    --size 8 4 -of $PLOTEXT -o $plotname --xmin 30 --xmax 90
 display $plotname &
-rm temp_xput*
-# #-yl "Million Ops/sec" --ymul 1e-6               \
 
-
-# # Xput plot over kona mem size
-# tmpfile=temp_xput_$curlabel
-# echo -e "$stats" > $tmpfile
-# sort -k3 -n -t, $tmpfile -o $tmpfile
-# sed -i "1s/^/$header/" $tmpfile
-# plots="$plots -d $tmpfile"
-# cat $tmpfile
-# plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
-# python3 tools/plot.py ${plots}  \
-#     -yc achieved -l "Throughput" -ls solid          \
-#     -yc tfaults  -l "Pg Faults (All)" -ls dashed    \
-#     -yc tfaults  -l "Pg Faults (Read)" -ls dashed   \
-#     -xc konamem -xl "Kona Mem (MB)" --xmul 1e-6     \
-#     -yl "Million Ops/sec" --ymul 1e-6               \
-#     --twin 2 -tyl "Kilo Faults/sec" --tymul 1e-3 \
-#     -fs 14 -of $PLOTEXT -o $plotname
-# gv $plotname &
-# rm $tmpfile
-
-# # Xput plot over mpps
-# echo -e "$header$stats" > temp_xput_$curlabel
-# plots="$plots -dyc temp_xput_$curlabel achieved -l ${curlabel} ";   numplots=$((numplots+1));
-# plots="$plots -yl Achieved --ymul 1e-6 "
-# plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
-# if [[ $SHOWCPU ]]; then
-#     cpuplots="$cpuplots -l ${curlabel} -dyc temp_xput_$curlabel totalcpu";   numplots=$((numplots+1));
-#     factor=`echo $HOST_CORES_PER_NODE | awk '{ print $1*1.0/100 }'`
-#     # cpuplots="$cpuplots --twin $((numplots/2+1)) -tyl CpuCores --tymul $factor"
-#     cpuplots="$cpuplots -yl CpuCores --ymul $factor"
-#     plots="$cpuplots"
-#     plotname=${PLOTDIR}/memcached_xput_cpu_${SUFFIX}.$PLOTEXT
-# fi
-# python3 tools/plot.py ${plots}       \
-#     -xc konamem  -xl "Local Memory (MB)" --xmul 1e-6 \
-#     -fs 14 -of $PLOTEXT -o $plotname --ltitle ${label_str}
-# gv $plotname &
-# rm temp_xput*
-
-# # Latencies plot
-# plotname=${PLOTDIR}/kona_latencies_${SUFFIX}.$PLOTEXT
-# python3 tools/plot.py -z cdf  -yc "Latencies"  ${latfiles}  \
-#     -xl  "Latencies (micro-sec)"    --xlog                  \
-#     -fs 11  -of $PLOTEXT  -o $plotname
-# gv $plotname &  
-
-# # Kona faults plot
-# plotname=${PLOTDIR}/kona_faults_${SUFFIX}.$PLOTEXT
-# python3 tools/plot.py ${konafiles}          \
-#     -yc "tfaults" -yl "Fault Count"         \
-#     -xc time -xl  "Time (secs)"             \
-#     -fs 12  -of $PLOTEXT  -o $plotname
-# gv $plotname &  
 
 
 ############# ARCHIVED ##############################
@@ -188,7 +86,7 @@ rm temp_xput*
 #     cat $f
     
 #     plotname=$dir/plot_p99.$PLOTEXT
-#     python3 tools/plot.py -d $f \
+#     python3 ${SCRIPT_DIR}/plot.py -d $f \
 #         -xc achieved -xl "Xput (Mpps)" --xmul 1e-6              \
 #         -yc p99 -yl "Latency (micro-sec)" --ymin 0 --ymax 500   \
 #         -of $PLOTEXT -o $plotname -s
@@ -200,7 +98,7 @@ rm temp_xput*
 
 # echo $plots
 # plotname=plots_p99.$PLOTEXT
-# python3 tools/plot.py $plots \
+# python3 ${SCRIPT_DIR}/plot.py $plots \
 #     -xc achieved -xl "Xput (Mpps)" --xmul 1e-6      \
 #     -yl "Latency (micro-sec)" --ymin 0 --ymax 500   \
 #     -of $PLOTEXT -o $plotname -s
@@ -213,7 +111,7 @@ rm temp_xput*
 #         plots="$plots -d zipf_${N}_$ALPHA -l alpha=$ALPHA"
 #     done
 #     plotname=${PLOTDIR}/zipf_cdf_${N}.$PLOTEXT
-#     python tools/plot.py $plots -z cdf  \
+#     python ${SCRIPT_DIR}/plot.py $plots -z cdf  \
 #         -yc count -yl PDF --ylog        \
 #         -xl "N" --ltitle "Zipf N=$N"    \
 #         -of $PLOTEXT -o $plotname

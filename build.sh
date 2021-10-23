@@ -67,6 +67,10 @@ case $i in
     kona_cfg="PBMEM_CONFIG=${i#*=}"
     ;;
 
+    -ko=*|--kona-opts=*)
+    kona_opts="${i#*=}"
+    ;;
+
     -mk|--with-kona)
     WITH_KONA=1
     ;;
@@ -135,8 +139,11 @@ if [[ $KONA ]]; then
     make je_clean
     make clean
     make je_jemalloc
-    core_opts="POLLER_CORE=$KONA_POLLER_CORE FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE EVICTION_CORE=$KONA_EVICTION_CORE ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE}"
-    make all -j $core_opts $kona_cfg
+    core_opts="POLLER_CORE=$KONA_POLLER_CORE "
+    core_opts+="FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE "
+    core_opts+="EVICTION_CORE=$KONA_EVICTION_CORE "
+    core_opts+="ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE} "
+    make all -j $core_opts $kona_cfg $kona_opts
     popd
 fi
 

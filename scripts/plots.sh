@@ -40,12 +40,13 @@ latest_dir_path=$(ls -td -- $DATADIR/*/ | head -n 1)
 name=${NAME:-$(basename $latest_dir_path)}
 echo "Working on experiment:" $name
 exp=$DATADIR/$name
+SCRIPT_DIR=`dirname "$0"`
 
 # summarize results
 statsdir=$exp/stats
 statfile=$statsdir/stat.csv
 if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-    python summary.py -n $name --lat --kona --iok --app
+    python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --iok --app -so 60
 fi
 ls $statsdir
 
@@ -57,25 +58,27 @@ datafile=$statsdir/stat.csv
 datafile=$statsdir/konastats_$SAMPLE
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_konastats.$PLOTEXT
-    python3 tools/plot.py -d ${datafile}                    \
-        -yc "n_faults" -l "Total Faults" -ls solid          \
-        -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
-        -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
-        -yc "n_madvise_try" -l "Num Madvise" -ls solid      \
-        -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
-        -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
-        -xc "time" -xl  "Time (secs)" -yl "Count (x1000)"   \
-        --twin 5  -tyl "Size (GB)" --tymul 1e-9 --ymul 1e-3 \
-        --ymin 0 --tymin 0 -t "Kona"   \
-        -fs 12  -of $PLOTEXT  -o $plotname
-    # python3 tools/plot.py -d ${datafile}                    \
+    # python3 ${SCRIPT_DIR}/plot.py -d ${datafile}            \
     #     -yc "n_faults" -l "Total Faults" -ls solid          \
-    #     -yc "n_faults_r" -l "Read Faults" -ls solid         \
-    #     -yc "n_faults_w" -l "Write Faults" -ls solid        \
-    #     -yc "n_faults_wp" -l "Remove WP" -ls solid          \
-    #     -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
+    #     -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
+    #     -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
+    #     -yc "n_madvise_try" -l "Num Madvise" -ls solid      \
+    #     -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
+    #     -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
+    #     -xc "time" -xl  "Time (secs)" -yl "Count (x1000)"   \
+    #     --twin 5  -tyl "Size (GB)" --tymul 1e-9 --ymul 1e-3 \
     #     --ymin 0 --tymin 0 -t "Kona"   \
     #     -fs 12  -of $PLOTEXT  -o $plotname
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}            \
+        -yc "n_faults" -l "Total Faults" -ls solid          \
+        -yc "n_faults_r" -l "Read Faults" -ls solid         \
+        -yc "n_faults_w" -l "Write Faults" -ls solid        \
+        -yc "n_faults_wp" -l "Remove WP" -ls solid          \
+        -yc "n_net_page_in" -l "Net In" -ls solid   \
+        -yc "n_net_page_out" -l "Net Out" -ls solid \
+        -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
+        --ymin 0 --tymin 0 -t "Kona"  --ymul 1e-3           \
+        -fs 12  -of $PLOTEXT  -o $plotname
     files="$files $plotname"
     # display $plotname &  
 fi
@@ -83,7 +86,7 @@ fi
 datafile=$statsdir/konastats_extended_$SAMPLE
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_konastats_extended.$PLOTEXT
-    python3 tools/plot.py -d ${datafile}                            \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                    \
         -yc "PERF_EVICT_TOTAL" -l "Total Eviction" -ls solid        \
         -yc "PERF_EVICT_WP" -l "Eviction WP" -ls solid              \
         -yc "PERF_RDMA_WRITE" -l "Issue Write" -ls solid            \
@@ -105,7 +108,7 @@ fi
 datafile=$statsdir/iokstats_$SAMPLE
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_iokstats.$PLOTEXT
-    python3 tools/plot.py -d ${datafile}                        \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
         -yc "TX_PULLED" -l "From Runtime" -ls solid             \
         -yc "RX_PULLED" -l "From NIC" -ls solid                 \
         -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed    \
@@ -121,7 +124,7 @@ fi
 datafile=$statsdir/rstat_memcached_$SAMPLE
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
-    python3 tools/plot.py -d ${datafile}                        \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
         -yc "rxpkt" -l "From I/O Core" -ls solid                \
         -yc "txpkt" -l "To I/O Core" -ls solid                  \
         -yc "drops" -l "Pkt drops" -ls solid                    \
@@ -134,7 +137,7 @@ if [ -f $datafile ]; then
     # display $plotname & 
 
     plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
-    python3 tools/plot.py -d ${datafile}                        \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
         -yc "stolenpct" -l "Stolen Work %" -ls solid            \
         -yc "migratedpct" -l "Core Migration %" -ls solid       \
         -yc "localschedpct" -l "Core Local Work %" -ls solid    \

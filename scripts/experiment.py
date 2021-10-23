@@ -8,6 +8,7 @@ import random
 from datetime import datetime
 from enum import Enum
 import argparse
+import signal
 
 # Requires password-less sudo and ssh
 # ts requires moreutils to be installed
@@ -419,10 +420,10 @@ def launch_shenango_program(cfg, experiment):
         time.sleep(30)
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr}".format(**cfg["kona"])
-        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
+        fullcmd = "ulimit -c unlimited; sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
             params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
     elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
-        fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
+        fullcmd = "ulimit -c unlimited; numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)  
     else:
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(
@@ -438,7 +439,7 @@ def launch_shenango_program(cfg, experiment):
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
     time.sleep(3)
     proc.poll()
-    print("returns code: " + str(proc.returncode))
+    print(str(proc.pid) + " returns code: " + str(proc.returncode))
     assert not proc.returncode
     return proc
 
@@ -639,16 +640,20 @@ def execute_experiment(experiment):
         f.write(json.dumps(experiment))
     
     procs = []
+    servers = None
     error = False
     try:
         procs += setup_and_run_apps(experiment)
-        procs += go_server(experiment)
+        servers = go_server(experiment)
+        procs += servers
         setup_clients(experiment)
         time.sleep(10)              # WHY?
         if OBSERVER: procs.append(setup_observer(experiment)) 
         if stopat == 3:     time.sleep(3000)
         runremote("ulimit -S -c unlimited; python {dir}/{script} -r client -n {dir} > {dir}/py.{{}}.log 2>&1".format(
             dir=experiment['name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
+        print("DUMP MEMCACHED NOW!")
+        if stopat == 4:     time.sleep(3000)
     except:
         error = True
         raise
@@ -658,6 +663,9 @@ def execute_experiment(experiment):
             p.terminate()
             p.wait()
             del p
+        # if servers: TODO: Find correct pid, there are multiple. Is ulimit even getting applied? 
+        #     os.kill(servers[0].pid, signal.SIGQUIT)
+        #     time.sleep(20)
         cleanup()
     return experiment
 

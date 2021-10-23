@@ -42,9 +42,21 @@ class PlotType(Enum):
     barstacked = 'barstacked'
     cdf = 'cdf'
     hist = 'hist'
-
     def __str__(self):
         return self.value
+
+class PlotSize(Enum):
+    xs = 'xs'
+    s = 's'
+    m = 'm'
+    l = 'l'
+    def __str__(self):
+        return self.value
+    def size_tuple(self):
+        if self.value == 'xs':      return (4,2)
+        if self.value == 's':       return (6,3)
+        if self.value == 'm':       return (8,4)
+        if self.value == 'l':       return (10,5)
 
 class LegendLoc(Enum):
     none = "none"
@@ -269,6 +281,13 @@ def parse_args():
         choices=list(LegendLoc), 
         default=LegendLoc.best)
 
+    parser.add_argument('-sz', '--size', 
+        nargs=2,
+        action='store',
+        metavar=('width', 'height'),
+        type=int,
+        help='Custom plot size, Takes two args: height width',
+        default=(8,4))
 
     # PLOT SCOPING (move around on the cartesian plane)
     parser.add_argument('--xmin', 
@@ -405,7 +424,7 @@ def main():
     matplotlib.rc('figure', autolayout=True)
     matplotlib.rcParams['pdf.fonttype'] = 42        # required for latex embedded figures
 
-    fig, axmain = plt.subplots(1, 1, figsize=(8,4))
+    fig, axmain = plt.subplots(1, 1, figsize=tuple(args.size))
     fig.suptitle(args.ptitle if args.ptitle else '')
     # plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
     #plt.ylim(0, 1000)

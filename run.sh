@@ -25,10 +25,14 @@
 #     done
 # done
 
-# # Vary kona memory
-cfg=CONFIG_NO_DIRTY_TRACK
-conns=1000
-mpps=2
+# # Vary kona memoryc
+# cfg=CONFIG_NO_DIRTY_TRACK
+cfg=CONFIG_WP
+kona_opts="PRINT_FAULT_ADDRS=1"
+# conns=1000
+# mpps=2
+conns=10
+mpps=1e-3
 mem=1500
 scores=4
 
@@ -40,18 +44,23 @@ scores=4
 #     -d "no kona; 10M keys; udp; $mpps Mpps offered; 12 scores; 12 ccores; with lat&stats"
 # sleep 5
 
-bash build.sh --shenango --kona --memcached -mk --kona-config=$cfg 
-for warmup in "--warmup" ""; do 
+bash build.sh --shenango --kona --memcached -mk --kona-config=$cfg --kona-opts=${kona_opts}
+for warmup in ""; do    #"--warmup" ""; do 
     # for mem in `seq 1000 200 2600`; do
-    for mem in 1500; do
+    # for mem in 1500; do
     # for scores in 1 2 4 6 8 10; do
+    for scores in 4; do
         echo "Syncing clocks"
         ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
         ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-        python scripts/experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps --finish $mpps --scores $scores \
-            -d "(testing) with kona ${mem} MB; 10M keys; udp; $mpps Mpps; $scores scores; PBMEM=${cfg} with $warmup" \
-            ${warmup}
+        python scripts/experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps \
+            --finish $mpps --scores $scores ${warmup} \
+            -d "(testing) 10M keys; PBMEM=${cfg} KonaOpts=${kona_opts}"
+
+        # python scripts/experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps \
+        #     --finish $mpps --scores $scores ${warmup} --stopat 4 \
+        #     -d "(testing) 10M keys; PBMEM=${cfg} KonaOpts=${kona_opts}"
         sleep 5
     done
 done

@@ -47,12 +47,6 @@ case $i in
 esac
 done
 
-# Some previous runs
-# CSUFFIX="08-25-\(09*\|10.*\|11.[12].*\)"              # Runs with 4 server cores
-# SUFFIX="08-27-1[89]"                                  # Runs with 4 server cores (latest)
-# SUFFIX="08-28-10"                                     # Runs with 12 server cores
-
-
 if [[ $SUFFIX ]]; then 
     LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
     SUFFIX=$SUFFIX
@@ -61,6 +55,7 @@ elif [[ $CSUFFIX ]]; then
     SUFFIX=$CSUFFIX
 fi
 
+SCRIPT_DIR=`dirname "$0"`
 numplots=0
 for exp in $LS_CMD; do
     echo "Parsing $exp"
@@ -80,7 +75,7 @@ for exp in $LS_CMD; do
     statsdir=$exp/stats
     statfile=$statsdir/stat.csv
     if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-        python summary.py -n $name --lat --kona --app --iok
+        python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --app --iok
     fi
     
     # aggregate across runs
@@ -105,7 +100,7 @@ datafile=$tmpfile
 # Plot memcached
 plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 tools/plot.py -d ${datafile}                \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
         -yc achieved -l "Throughput" -ls solid          \
         -xc scores -xl "Server Cores" --xstr          \
         -yl "Million Ops/sec" --ymul 1e-6               \
@@ -119,7 +114,7 @@ plotname=${PLOTDIR}/konastats_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
     datafile_kona="temp_kona"
     sed '/NoKona/d' $datafile > $datafile_kona      #remove nokona run
-    python3 tools/plot.py -d ${datafile_kona}               \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile_kona}               \
         -yc "n_faults" -l "Total Faults" -ls solid          \
         -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
         -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
@@ -135,9 +130,8 @@ files="$files $plotname"
         # -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
 
 plotname=${PLOTDIR}/konastats_extended_${SUFFIX}.$PLOTEXT
-# if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-# if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 tools/plot.py -d ${datafile}                            \
+if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                            \
         -yc "PERF_HANDLER_FAULT_Q" -l "1.0 Fault Queue Wait"        \
         -yc "PERF_HANDLER_RW" -l "1.1 Handle Fault" -ls solid       \
         -yc "PERF_PAGE_READ" -l "1.2 RDMA Read" -ls dashed          \
@@ -151,14 +145,14 @@ plotname=${PLOTDIR}/konastats_extended_${SUFFIX}.$PLOTEXT
         -xc scores -xl "Server Cores" --xstr                        \
         -yl "Micro-secs" --ymin 0 --ymax 300 --ymul 454e-6           \
         -fs 10  -of $PLOTEXT  -o $plotname -t "Kona Op Latencies"
-    files="$files $plotname"
-    display $plotname &  
-# fi
+    # display $plotname &  
+fi
+files="$files $plotname"
 
 # Plot iok stats
 plotname=${PLOTDIR}/iokstats_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-python3 tools/plot.py -d ${datafile}                        \
+python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
     -yc "TX_PULLED" -l "From Runtime" -ls solid             \
     -yc "RX_PULLED" -l "To Runtime" -ls solid               \
     -yc "RX_UNICAST_FAIL" -l "To Runtime (Failed)" -ls solid      \
@@ -174,7 +168,7 @@ files="$files $plotname"
 # Plot runtime stats
 plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 tools/plot.py -d ${datafile}                        \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
         -yc "rxpkt" -l "From I/O Core" -ls solid                \
         -yc "txpkt" -l "To I/O Core" -ls solid                  \
         -yc "drops" -l "Pkt drops" -ls solid                    \
@@ -189,7 +183,7 @@ files="$files $plotname"
 
 plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 tools/plot.py -d ${datafile}                        \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
         -yc "stolenpct" -l "Stolen Work %" -ls solid            \
         -yc "migratedpct" -l "Core Migration %" -ls solid       \
         -yc "localschedpct" -l "Core Local Work %" -ls solid    \
