@@ -9,6 +9,7 @@ from collections import defaultdict
 import re
 import argparse
 import glob
+import numpy as np
 
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
@@ -714,20 +715,29 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
                         values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
                         f.write(",".join(values) + "\n")
                 
+                # Write kona extended stats
+                trimmed = {}
+                for k,v in exp['konalogext'].items():
+                    trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
+                    # ignore first row for non-accumulated ones
+                    if k not in KONA_FIELDS_ACCUMULATED:
+                        trimmed[k] = trimmed[k][1:] 
+                # print(trimmed)
+
                 konafile = STAT_F + "konastats_extended_{}".format(sample_id)
                 print("Writing kona extended stats to " + konafile)
-                with open(konafile, "w") as f:
-                    trimmed = {}
-                    for k,v in exp['konalogext'].items():
-                        trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
-                        # ignore first row for non-accumulated ones
-                        if k not in KONA_FIELDS_ACCUMULATED:
-                            trimmed[k] = trimmed[k][1:] 
-                    # print(trimmed)
+                with open(konafile, "w") as f:                
                     f.write("time," + ",".join(trimmed.keys()) + "\n")
                     for i, (time, _) in enumerate(trimmed.values()[0]):
                         values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
                         f.write(",".join(values) + "\n")
+
+                konafile = STAT_F + "konastats_extended_aggregated_{}".format(sample_id)
+                print("Writing kona aggregated extended stats to " + konafile)
+                trimmed_avg = { k:np.nanmean([val if val != 0 else np.NaN for (_, val) in values ]) 
+                                for k,values in trimmed.items()}
+                with open(konafile, "w") as f:
+                    json.dump(trimmed_avg, f, sort_keys=True,indent=4)
 
     return bycol
 

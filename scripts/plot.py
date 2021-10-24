@@ -289,6 +289,12 @@ def parse_args():
         help='Custom plot size, Takes two args: height width',
         default=(8,4))
 
+    parser.add_argument('-bw', '--barwidth', 
+        action='store', 
+        help='Set custom width for bars in a bar plot. Default: .5 in',
+        type=float, 
+        default=0.5)
+
     # PLOT SCOPING (move around on the cartesian plane)
     parser.add_argument('--xmin', 
         action='store', 
@@ -445,7 +451,7 @@ def main():
     ymul = args.ymul
     ymin = args.ymin
     ymax = args.ymax
-    base_dataset = None     
+    base_dataset = None
     for (datafile, ycol) in dfile_ycol_map:
 
         if (plot_num + 1) == args.twin:
@@ -500,14 +506,16 @@ def main():
             if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 
         elif args.ptype == PlotType.bar:
-            xc = xcol
+            xstart = np.arange(len(xcol)) * (num_plots + 1) * args.barwidth
+            xc = xstart + plot_num * args.barwidth
             yc = df[ycol]
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
-            if args.xstr:   xc = [str(x) for x in xc]
-            ax.bar(xc, yc, label=label, color=colors[cidx])
-            if args.xstr:   ax.set_xticks(xc)
-            if args.xstr:   ax.set_xticklabels(xc, rotation='45')         
+            ax.bar(xc, yc, width=args.barwidth, label=label, color=colors[cidx])
+            if plot_num == num_plots - 1:
+                xticks = xstart + (num_plots - 1) * args.barwidth / 2
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xcol, rotation='45' if args.xstr else 0) 
 
         elif args.ptype == PlotType.barstacked:
             xc = xcol
@@ -516,8 +524,9 @@ def main():
             yc = np.array([y * ymul for y in yc])
             if args.xstr:   xc = [str(x) for x in xc]
             ax.bar(xc, yc, bottom=base_dataset, label=label, color=colors[cidx])
-            if args.xstr:   ax.set_xticks(xc)
-            if args.xstr:   ax.set_xticklabels(xc, rotation='45')
+            if plot_num == num_plots - 1:
+                ax.set_xticks(xc)
+                ax.set_xticklabels(xc, rotation='45' if args.xstr else 0)
             base_dataset = yc if base_dataset is None else base_dataset + yc
 
         elif args.ptype == PlotType.hist:
@@ -579,7 +588,6 @@ def main():
             if args.labelincr[plot_num] == 1:
                 labelidx = (labelidx + 1)
         
-
         plot_num += 1
         if ymin is not None and ymax is not None: ax.set_ylim(ymin=ymin,ymax=ymax)
         elif ymin is not None:    ax.set_ylim(ymin=ymin)

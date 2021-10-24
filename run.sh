@@ -28,11 +28,11 @@
 # # Vary kona memoryc
 # cfg=CONFIG_NO_DIRTY_TRACK
 cfg=CONFIG_WP
-kona_opts="PRINT_FAULT_ADDRS=1"
-# conns=1000
-# mpps=2
-conns=10
-mpps=1e-3
+# kona_opts="PRINT_FAULT_ADDRS=1"
+conns=1000
+mpps=2
+# conns=10
+# mpps=1e-3
 mem=1500
 scores=4
 
@@ -56,7 +56,7 @@ for warmup in ""; do    #"--warmup" ""; do
 
         python scripts/experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps \
             --finish $mpps --scores $scores ${warmup} \
-            -d "(testing) 10M keys; PBMEM=${cfg} KonaOpts=${kona_opts}"
+            -d "(testing) 10M keys; PBMEM=${cfg} KonaOpts=${kona_opts} with madvise notif"
 
         # python scripts/experiment.py -km ${mem}000000 -p udp -nc $conns --start $mpps \
         #     --finish $mpps --scores $scores ${warmup} --stopat 4 \
