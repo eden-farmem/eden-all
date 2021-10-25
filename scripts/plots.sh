@@ -157,7 +157,3 @@ plotname=${PLOTDIR}/${name}_all_1.$PLOTEXT
 montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
 cp ${plotname} $exp/
 display ${plotname} &
-
-
-
-

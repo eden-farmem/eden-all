@@ -10,7 +10,7 @@ import glob
 from collections import defaultdict
 
 PAGE_OFFSET = 12
-PATTERN = "(read|write) fault at ([a-z0-9]+) pid ([0-9]+)"
+PATTERN = "(read|write|eviction) fault at ([a-z0-9]+)"
 
 def main():
     parser = argparse.ArgumentParser("Visualize mem access patterns")
@@ -59,9 +59,11 @@ def main():
     # Write addresses to file
     writes = os.path.join(outdir, "wfaults")
     reads = os.path.join(outdir, "rfaults")
-    with open(writes, "w") as wf, open(reads, "w") as rf:
+    evicts = os.path.join(outdir, "evictions")
+    with open(writes, "w") as wf, open(reads, "w") as rf, open(evicts, "w") as ef:
         wf.write("time,addr,page,pgofst\n")
         rf.write("time,addr,page,pgofst\n")
+        ef.write("time,addr,page,pgofst\n")
         step = 0.0
         prev_time = -1
         for time, addr, type_ in zip(times, addrs, types):
@@ -71,34 +73,38 @@ def main():
             if type_ == "read":
                 rf.write("{},{},{},{}\n".format(float(time)+step, addr, 
                     addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1)))
-            else:
+            elif type_ == "write":
                 wf.write("{},{},{},{}\n".format(float(time)+step, addr, 
+                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1)))
+            else:
+                ef.write("{},{},{},{}\n".format(float(time)+step, addr, 
                     addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1)))
             prev_time = time
 
     # Count and write stats
     tidx = min(times)
-    rcount = wcount = 0
+    rcount = wcount = ecount = 0
     counts = []
     for t1, type_ in zip(times, types):
         if tidx < t1:
-            counts.append((tidx, rcount, wcount))
-            rcount = wcount = 0
+            counts.append((tidx, rcount, wcount, ecount))
+            rcount = wcount = ecount = 0
             tidx += 1
             while tidx < t1:
-                counts.append((tidx, 0, 0))
+                counts.append((tidx, 0, 0, 0))
                 tidx += 1
         if tidx == t1:
             if type_ == "read":     rcount += 1
-            else:                   wcount += 1
+            elif type_ == "write":  wcount += 1
+            else:                   ecount += 1
             continue
         assert tidx > t1, "Shouldn't be the case!"
 
     outfile = os.path.join(outdir, "counts")
     with open(outfile, "w") as f:
-        f.write("time,rfaults,wfaults\n")
-        for time, rcount, wcount in counts:
-            f.write("{},{},{}\n".format(time, rcount, wcount))
+        f.write("time,rfaults,wfaults,evictions\n")
+        for time, rcount, wcount, ecount in counts:
+            f.write("{},{},{},{}\n".format(time, rcount, wcount, ecount))
 
 if __name__ == '__main__':
     main()
