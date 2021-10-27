@@ -1,5 +1,5 @@
 #!/bin/bash
-# set -e 
+# set -e
 
 # Miscellaneous plots
 
@@ -61,62 +61,62 @@ done
 # plotname=${PLOTDIR}/eviction_breakdown.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -d ${tmpfile} -z bar      \
 #     -xc "METRIC" -xl "Eviction Breakdown"               \
-#     -yc "WITH_MADV" -l "YES" -yc "NO_MADV" -l "NO"      \
+#     -yc "WITH_MADV" -l "YES"      \
 #     -yl "Latency (µs)" --ltitle "MAdvise Notify App"    \
-#     --ymul 1e-3 --barwidth .3 --size 8 4  -of $PLOTEXT -o $plotname 
+#     --ymul 1e-3 --barwidth .3 --size 8 4  -of $PLOTEXT -o $plotname
 # display $plotname &
-# rm ${tmpfile}
+# # rm ${tmpfile}
 
 
 ############# ARCHIVED ##############################
 
 # # MEMCACHED MEM ACCESS
 # expname="run-10-17-21-19"     # .001 Mpps
-# expname="run-10-19-13-22"       # 2 Mpps
-expname="run-10-23-22-50"       # 2 mpps, with evict addrs
-python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname}
+expname="run-10-19-13-22"       # 2 Mpps
+# expname="run-10-23-22-50"       # 2 mpps, with evict addrs
+# python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname}
 
 DATADIR=data/$expname/addrs/
-PLOTDIR=data/$expname/plots
-mkdir -p $PLOTDIR
+# PLOTDIR=data/$expname/plots
+# mkdir -p $PLOTDIR
 
-# datafile=${DATADIR}/rfaults
-# plotname=${PLOTDIR}/rfaults.${PLOTEXT}
+datafile=${DATADIR}/rfaults
+plotname=${PLOTDIR}/rfaults.${PLOTEXT}
+python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
+    -yc addr -yl "Address" -xc "time"               \
+    --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+display $plotname &
+
+datafile=${DATADIR}/wfaults
+plotname=${PLOTDIR}/wfaults.${PLOTEXT}
+python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
+    -yc addr -yl "Address" -xc "time"               \
+    --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+display $plotname &
+
+# datafile=${DATADIR}/evictions
+# plotname=${PLOTDIR}/evictions.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
-#     -yc addr -yl "Address" -xc "time"               \
+#     -yc addr -yl "Page Address" -xc time -xl "Time (secs)"    \
 #     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
 # display $plotname &
 
-# datafile=${DATADIR}/wfaults
-# plotname=${PLOTDIR}/wfaults.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
-#     -yc addr -yl "Address" -xc "time"               \
-#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# datafile=${DATADIR}/counts
+# plotname=${PLOTDIR}/counts.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}         \
+#     -yc rfaults -yc wfaults -yc evictions -xc "time" \
+#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 30 --xmax 90
 # display $plotname &
-
-datafile=${DATADIR}/evictions
-plotname=${PLOTDIR}/evictions.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
-    -yc addr -yl "Page Address" -xc time -xl "Time (secs)"    \
-    --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-display $plotname &
-
-datafile=${DATADIR}/counts
-plotname=${PLOTDIR}/counts.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py -d ${datafile}         \
-    -yc rfaults -yc wfaults -yc evictions -xc "time" \
-    --size 8 4 -of $PLOTEXT -o $plotname --xmin 30 --xmax 90
-display $plotname &
 # ==============================
 
-# for f in `ls run*/stats/stat.csv`; do 
-# for f in `ls run.20210805082856-shenango-memcached-tcp/stats/stat.csv`; do 
-#     dir1=`dirname $f`; 
-#     dir=`dirname $dir1`; 
+# for f in `ls run*/stats/stat.csv`; do
+# for f in `ls run.20210805082856-shenango-memcached-tcp/stats/stat.csv`; do
+#     dir1=`dirname $f`;
+#     dir=`dirname $dir1`;
 #     mpps=`jq ".clients[] | .[0].start_mpps" $dir/config.json | paste -sd+ | bc`
 #     echo $dir, $mpps
 #     cat $f
-    
+
 #     plotname=$dir/plot_p99.$PLOTEXT
 #     python3 ${SCRIPT_DIR}/plot.py -d $f \
 #         -xc achieved -xl "Xput (Mpps)" --xmul 1e-6              \
@@ -137,9 +137,9 @@ display $plotname &
 # gv $plotname &
 
 # # ZIPF
-# for N in 10000 1000000 10000000; do 
+# for N in 10000 1000000 10000000; do
 #     plots=
-#     for ALPHA in 0.1 0.5 1 10; do 
+#     for ALPHA in 0.1 0.5 1 10; do
 #         plots="$plots -d zipf_${N}_$ALPHA -l alpha=$ALPHA"
 #     done
 #     plotname=${PLOTDIR}/zipf_cdf_${N}.$PLOTEXT

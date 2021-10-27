@@ -33,7 +33,7 @@ import scipy.stats as scstats
 
 colors = ['b', 'g', 'r', 'brown', 'c','k', 'orange', 'm','orangered','y']
 linetypes = ['g-','g--','g-+']
-markers = ['x','+','o','s','+', '|', '^']
+markers = ['o','x','+','s','+', '|', '^']
 
 class PlotType(Enum):
     line = 'line'
@@ -500,8 +500,7 @@ def main():
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
             ax.scatter(xc, yc, label=label, color=colors[cidx],
-                marker=(None if args.nomarker else markers[midx]),
-                markerfacecolor=(None if args.nomarker else colors[cidx]))
+                marker=(None if args.nomarker else markers[midx]))
             if args.xstr:   ax.set_xticks(xc)
             if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 
