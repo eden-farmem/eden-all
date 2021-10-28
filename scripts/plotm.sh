@@ -17,9 +17,17 @@ SOME_BIG_NUMBER=100000000000
 usage="\n
 -s, --suffix \t\t a plain suffix defining the set of runs to consider\n
 -cs, --csuffix \t\t same as suffix but a more complex one (with regexp pattern)\n
+-vm, --vary-mem \t\t hint to use kona memory on x-axis (default)\n
+-vc, --vary-cores \t\t hint to use server cores on x-axis\n
 -d, --display \t\t display individal plots\n
 -f, --force \t\t force re-summarize results\n"
 
+# Defaults
+XCOL=konamem
+XLABEL='Local Mem (MB)'
+COLIDX=3
+
+# Read parameters
 for i in "$@"
 do
 case $i in
@@ -37,6 +45,18 @@ case $i in
 
     -f|--force)
     FORCE=1
+    ;;
+
+    -vm|--vary-mem)
+    XCOL=konamem
+    XLABEL='Local Mem (MB)'
+    COLIDX=3
+    ;;
+
+    -vc|--vary-cores)
+    XCOL=scores
+    XLABEL='Server Cores'
+    COLIDX=4
     ;;
 
     *)                      # unknown option
@@ -89,8 +109,7 @@ done
 # Data in one file
 tmpfile=temp_xput_$curlabel
 echo -e "$stats" > $tmpfile
-# sort -k3 -n -t, $tmpfile -o $tmpfile
-sort -k4 -n -t, $tmpfile -o $tmpfile
+sort -k${COLIDX} -n -t, $tmpfile -o $tmpfile
 sed -i "1s/^/$header/" $tmpfile
 sed -i "s/$SOME_BIG_NUMBER/NoKona/" $tmpfile
 plots="$plots -d $tmpfile"
@@ -100,11 +119,11 @@ datafile=$tmpfile
 # Plot memcached
 plotname=${PLOTDIR}/memcached_xput_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
         -yc achieved -l "Throughput" -ls solid          \
-        -xc scores -xl "Server Cores" --xstr          \
+        -xc $XCOL -xl "$XLABEL" --xstr                  \
         -yl "Million Ops/sec" --ymul 1e-6               \
-        -fs 12 -of $PLOTEXT -o $plotname
+        --size 6 3 -fs 12 -of $PLOTEXT -o $plotname
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
@@ -115,14 +134,14 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
     datafile_kona="temp_kona"
     sed '/NoKona/d' $datafile > $datafile_kona      #remove nokona run
     python3 ${SCRIPT_DIR}/plot.py -d ${datafile_kona}               \
-        -yc "n_faults" -l "Total Faults" -ls solid          \
-        -yc "n_net_page_in" -l "Net Pages Read" -ls solid   \
-        -yc "n_net_page_out" -l "Net Pages Write" -ls solid \
-        -yc "outstanding"   -l "Max Concurrent Reads" -ls dashed \
-        -xc scores -xl "Server Cores" --xstr              \
-        -yl "Count (x1000)" --ymul 1e-3 --ymin 0            \
-        --twin 4  -tyl "Count" --tymin 0   \
-        -fs 12  -of $PLOTEXT  -o $plotname -t "Kona"    
+        -yc "n_faults" -l "Total Faults" -ls solid                  \
+        -yc "n_net_page_in" -l "Net Pages Read" -ls solid           \
+        -yc "n_net_page_out" -l "Net Pages Write" -ls solid         \
+        -yc "outstanding"   -l "Max Concurrent Reads" -ls dashed    \
+        -xc $XCOL -xl "$XLABEL" --xstr                              \
+        -yl "Count (x1000)" --ymul 1e-3 --ymin 0                    \
+        --twin 4  -tyl "Count" --tymin 0                            \
+        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Kona Activity"    
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
@@ -132,19 +151,19 @@ files="$files $plotname"
 plotname=${PLOTDIR}/konastats_extended_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                            \
-        -yc "PERF_HANDLER_FAULT_Q" -l "1.0 Fault Queue Wait"        \
-        -yc "PERF_HANDLER_RW" -l "1.1 Handle Fault" -ls solid       \
-        -yc "PERF_PAGE_READ" -l "1.2 RDMA Read" -ls dashed          \
+        -yc "PERF_HANDLER_FAULT_Q" -l "1.0 Fault Queue Wait"                \
+        -yc "PERF_HANDLER_RW" -l "1.1 Handle Fault" -ls solid               \
+        -yc "PERF_PAGE_READ" -l "1.2 RDMA Read" -ls dashed                  \
         -yc "PERF_HANDLER_MADV_NOTIF" -l "1.3 Handle Notif " -ls dashed     \
-        -yc "PERF_POLLER_READ" -l "2   Handle Read" -ls solid       \
-        -yc "PERF_POLLER_UFFD_COPY" -l "2.1 UFFD Copy" -ls dashed   \
-        -yc "PERF_EVICT_TOTAL" -l "3   Evict Total" -ls solid       \
-        -yc "PERF_EVICT_WP" -l "3.1 Evict WP" -ls dashed            \
-        -yc "PERF_EVICT_WRITE" -l "3.2 Issue Write" -ls dashed      \
-        -yc "PERF_EVICT_MADVISE" -l "3.3 Madvise" -ls dashed        \
-        -xc scores -xl "Server Cores" --xstr                        \
-        -yl "Micro-secs" --ymin 0 --ymax 300 --ymul 454e-6           \
-        -fs 10  -of $PLOTEXT  -o $plotname -t "Kona Op Latencies"
+        -yc "PERF_POLLER_READ" -l "2   Handle Read" -ls solid               \
+        -yc "PERF_POLLER_UFFD_COPY" -l "2.1 UFFD Copy" -ls dashed           \
+        -yc "PERF_EVICT_TOTAL" -l "3   Evict Total" -ls solid               \
+        -yc "PERF_EVICT_WP" -l "3.1 Evict WP" -ls dashed                    \
+        -yc "PERF_EVICT_WRITE" -l "3.2 Issue Write" -ls dashed              \
+        -yc "PERF_EVICT_MADVISE" -l "3.3 Madvise" -ls dashed                \
+        -xc $XCOL -xl "$XLABEL" --xstr                                      \
+        -yl "Micro-secs" --ymin 0 --ymax 300 --ymul 454e-6                  \
+        --size 6 3 -fs 10  -of $PLOTEXT  -o $plotname -lt "Kona Latencies"
     # display $plotname &  
 fi
 files="$files $plotname"
@@ -152,15 +171,15 @@ files="$files $plotname"
 # Plot iok stats
 plotname=${PLOTDIR}/iokstats_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
-    -yc "TX_PULLED" -l "From Runtime" -ls solid             \
-    -yc "RX_PULLED" -l "To Runtime" -ls solid               \
-    -yc "RX_UNICAST_FAIL" -l "To Runtime (Failed)" -ls solid      \
-    -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed    \
-    -xc scores -xl "Server Cores" --xstr                  \
-    -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
-    --twin 4  -tyl "Saturation %" --tymul 100 --tymin 0 --tymax 110   \
-    -fs 12 -of $PLOTEXT  -o $plotname -t "Shenango I/O Core"
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
+        -yc "TX_PULLED" -l "From Runtime" -ls solid                     \
+        -yc "RX_PULLED" -l "To Runtime" -ls solid                       \
+        -yc "RX_UNICAST_FAIL" -l "To Runtime (Failed)" -ls solid        \
+        -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed            \
+        -xc $XCOL -xl "$XLABEL" --xstr                                  \
+        -yl "Million pkts/sec" --ymul 1e-6 --ymin 0                     \
+        --twin 4  -tyl "Saturation %" --tymul 100 --tymin 0 --tymax 110 \
+        --size 6 3 -fs 12 -of $PLOTEXT  -o $plotname -lt "Shenango I/O Core"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
@@ -168,15 +187,15 @@ files="$files $plotname"
 # Plot runtime stats
 plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
         -yc "rxpkt" -l "From I/O Core" -ls solid                \
         -yc "txpkt" -l "To I/O Core" -ls solid                  \
         -yc "drops" -l "Pkt drops" -ls solid                    \
         -yc "cpupct" -l "CPU Utilization" -ls dashed            \
-        -xc scores -xl "Server Cores" --xstr                  \
+        -xc $XCOL -xl "$XLABEL" --xstr                          \
         -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
         --twin 4  -tyl "CPU Cores" --tymul 1e-2 --tymin 0       \
-        -fs 12  -of $PLOTEXT  -o $plotname -t "Shenango Resources"
+        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Shenango Resources"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
@@ -189,10 +208,10 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
         -yc "localschedpct" -l "Core Local Work %" -ls solid    \
         -yc "rescheds" -l "Reschedules" -ls dashed              \
         -yc "parks" -l "KThread Parks" -ls dashed               \
-        -xc scores -xl "Server Cores" --xstr                  \
+        -xc $XCOL -xl "$XLABEL" --xstr                          \
         -yl "Percent" --ymin 0 --ymax 110                       \
         --twin 4  -tyl "Million Times" --tymul 1e-6 --tymin 0   \
-        -fs 12  -of $PLOTEXT  -o $plotname -t "Shenango Scheduler" 
+        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Shenango Scheduler" 
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
@@ -200,7 +219,7 @@ files="$files $plotname"
 # Write config params 
 echo "text 3,6 \"" > temp_cfg 
 echo "        INFO" >> temp_cfg 
-echo "        Server Cores: $sthreads" >> temp_cfg 
+echo "        $XLABEL: $sthreads" >> temp_cfg 
 echo "        Offered Load: $mpps MOps" >> temp_cfg 
 echo "\"" >> temp_cfg 
 convert -size 360x120 xc:white -font "DejaVu-Sans" -pointsize 20 -fill black -draw @temp_cfg temp_image.png

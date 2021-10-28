@@ -77,8 +77,8 @@ if [ -f $datafile ]; then
         -yc "n_net_page_in" -l "Net In" -ls solid   \
         -yc "n_net_page_out" -l "Net Out" -ls solid \
         -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
-        --ymin 0 --tymin 0 -t "Kona"  --ymul 1e-3           \
-        -fs 12  -of $PLOTEXT  -o $plotname
+        --ymin 0 --tymin 0 --ymax 70 -lt "Kona Faults"  --ymul 1e-3 \
+        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
     files="$files $plotname"
     # display $plotname &  
 fi
@@ -97,9 +97,9 @@ if [ -f $datafile ]; then
         -yc "PERF_EVICT_WRITE" -l "Issue Write 2" -ls dashed        \
         -yc "PERF_HANDLER_FAULT" -l "Handle Fault 2" -ls dashed     \
         -yc "PERF_EVICT_MADVISE" -l "Evict Madvise" -ls dashed      \
-        -xc "time" -xl  "Time (secs)"                       \
-        -yl "Micro-secs" --ymin 0 --ymul 1e-3               \
-        -fs 10  -of $PLOTEXT  -o $plotname -t "Kona Op Latencies"
+        -xc "time" -xl "Time (secs)"                       \
+        -yl "Micro-secs" --ymin 0 --ymax 70 --ymul 1e-3               \
+        --size 6 3 -fs 10 -of $PLOTEXT  -o $plotname -lt "Kona Latencies"
     files="$files $plotname"
     # display $plotname &  
 fi
@@ -109,15 +109,15 @@ datafile=$statsdir/iokstats_$SAMPLE
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_iokstats.$PLOTEXT
     python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
-        -yc "TX_PULLED" -l "From Runtime" -ls solid             \
-        -yc "RX_PULLED" -l "From NIC" -ls solid                 \
-        -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed    \
+        -yc "TX_PULLED" -l "Acheived" -ls solid             \
+        -yc "RX_PULLED" -l "Offered" -ls solid                 \
         -xc "time" -xl  "Time (secs)" -yl "Million pkts/sec"    \
-        --twin 3  -tyl "Saturation %" --tymul 100 --ymul 1e-6   \
-        --tymin 0 --ymin 0 --tymax 110 -t "Shenango I/O Core"   \
-        -fs 12 -of $PLOTEXT  -o $plotname
+        --ymin 0 --ymax 2.1 --ymul 1e-6 -lt "Shenango I/O Core"   \
+        --size 6 3 -fs 12 -of $PLOTEXT  -o $plotname
     files="$files $plotname"
     # display $plotname & 
+        # --twin 3  -tyl "Saturation %" --tymul 100  --tymax 110 --tymin 0     \
+        # -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed    \
 fi
 
 # Plot runtime stats
@@ -131,23 +131,23 @@ if [ -f $datafile ]; then
         -yc "cpupct" -l "CPU Utilization" -ls dashed            \
         -xc "time" -xl  "Time (secs)" -yl "Million pkts/sec"    \
         --twin 4  -tyl "CPU Cores" --tymul 1e-2 --ymul 1e-6     \
-        --tymin 0 --ymin 0 -t "Shenango Resources"              \
-        -fs 12  -of $PLOTEXT  -o $plotname
+        --tymin 0 --ymin 0 -lt "Shenango Runtime"               \
+        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
     files="$files $plotname"
     # display $plotname & 
 
-    plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
-        -yc "stolenpct" -l "Stolen Work %" -ls solid            \
-        -yc "migratedpct" -l "Core Migration %" -ls solid       \
-        -yc "localschedpct" -l "Core Local Work %" -ls solid    \
-        -yc "rescheds" -l "Reschedules" -ls dashed              \
-        -yc "parks" -l "KThread Parks" -ls dashed               \
-        -xc "time" -xl  "Time (secs)" -yl "Percent"             \
-        --twin 4  -tyl "Million Times" --tymul 1e-6             \
-        --tymin 0 --ymin 0 --ymax 110 -t "Shenango Scheduler"   \
-        -fs 12  -of $PLOTEXT  -o $plotname
-    files="$files $plotname"
+    # plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
+    # python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
+    #     -yc "stolenpct" -l "Stolen Work %" -ls solid            \
+    #     -yc "migratedpct" -l "Core Migration %" -ls solid       \
+    #     -yc "localschedpct" -l "Core Local Work %" -ls solid    \
+    #     -yc "rescheds" -l "Reschedules" -ls dashed              \
+    #     -yc "parks" -l "KThread Parks" -ls dashed               \
+    #     -xc "time" -xl  "Time (secs)" -yl "Percent"             \
+    #     --twin 4  -tyl "Million Times" --tymul 1e-6             \
+    #     --tymin 0 --ymin 0 --ymax 110 -t "Shenango Scheduler"   \
+    #     --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
+    # files="$files $plotname"
     # display $plotname & 
 fi
 

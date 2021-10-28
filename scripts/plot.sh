@@ -80,19 +80,19 @@ DATADIR=data/$expname/addrs/
 # PLOTDIR=data/$expname/plots
 # mkdir -p $PLOTDIR
 
-datafile=${DATADIR}/rfaults
-plotname=${PLOTDIR}/rfaults.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
-    -yc addr -yl "Address" -xc "time"               \
-    --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-display $plotname &
+# datafile=${DATADIR}/rfaults
+# plotname=${PLOTDIR}/rfaults.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
+#     -yc addr -yl "Address" -xc "time"               \
+#     --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
 
-datafile=${DATADIR}/wfaults
-plotname=${PLOTDIR}/wfaults.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
-    -yc addr -yl "Address" -xc "time"               \
-    --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-display $plotname &
+# datafile=${DATADIR}/wfaults
+# plotname=${PLOTDIR}/wfaults.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
+#     -yc addr -yl "Address" -xc "time"               \
+#     --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
 
 # datafile=${DATADIR}/evictions
 # plotname=${PLOTDIR}/evictions.${PLOTEXT}

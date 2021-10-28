@@ -285,7 +285,7 @@ def parse_args():
         nargs=2,
         action='store',
         metavar=('width', 'height'),
-        type=int,
+        type=float,
         help='Custom plot size, Takes two args: height width',
         default=(8,4))
 

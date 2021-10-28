@@ -13,7 +13,7 @@ import numpy as np
 
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
-KONA_DISPLAY_FIELDS = ["n_faults", "n_net_page_in", "n_net_page_out", "malloc_size", 
+KONA_DISPLAY_FIELDS = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "malloc_size", 
     "mem_pressure", "n_poller_copy_fail", "n_madvise_try", "n_page_dirty", "n_faults_wp"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 

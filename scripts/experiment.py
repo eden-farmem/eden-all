@@ -132,7 +132,7 @@ def alloc_port(experiment):
     experiment['nextport'] += 1
     return port
 
-def new_memcached_server(threads, experiment, name="memcached", transport="tcp"):
+def new_memcached_server(threads, experiment, name="memcached", transport="tcp", dump_core=False):
     x = {
         'name': name,
         'ip': alloc_ip(experiment),
@@ -147,10 +147,14 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp")
         'mac': gen_random_mac(),
         'protocol': 'memcached',
         'transport': transport,
-        'host': THISHOST
+        'host': THISHOST,
+        'dump': dump_core,
+        'pidfile': name + '_pid'
     }
 
-    args = "-U {port} -p {port} -c 32768 -m {meml} -b 32768"
+    args = "-U {port} -p {port} -c 32768 -m {meml} -b 32768 -P {pidfile}"
+    if dump_core:
+        args += " -r"
     args += " -o hashpower={hashpower}"
 
     args += {
@@ -278,13 +282,16 @@ def finalize_measurement_cohort(experiment, samples, runtime):
         cfg['samples'] = samples
         cfg['leader'] = cfg['host']
         if i > 0:   cfg['before'] = ['sleep_5']
-    experiment['client_files'].append(binaries['synthetic'])
+    # TODO: No need to copy the client binary. In my current setup, we use the binary 
+    # compiled on the client directly. Otherwise, this requires the client binary be 
+    # built on the main server (with a different kernel) as well which is superflous.
+    # experiment['client_files'].append(binaries['synthetic'])
 
 
 def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=6.0, 
         noht=False, transport="tcp", nconns=1200, start_mpps=0.0, warmup=False,
         kona=False, kona_mem=None, kona_evict_thr=0.9, kona_evict_done_thr=0.9,
-        name=None, desc=None):
+        name=None, desc=None, dump_core=False):
     x = new_experiment(system, name=name, desc=desc)
     # x['name'] += "-memcached" + "-" + transport
     # x['name'] += "-spin" if spin else ""
@@ -293,7 +300,7 @@ def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=
         assert system == "shenango"
         x['noht'] = True
 
-    memcached_handle = new_memcached_server(thr, x, transport=transport)
+    memcached_handle = new_memcached_server(thr, x, transport=transport, dump_core=dump_core)
     if spin:
         memcached_handle['spin'] = thr
 
@@ -420,10 +427,10 @@ def launch_shenango_program(cfg, experiment):
         time.sleep(30)
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr}".format(**cfg["kona"])
-        fullcmd = "ulimit -c unlimited; sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
+        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
             params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
     elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
-        fullcmd = "ulimit -c unlimited; numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
+        fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)  
     else:
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(
@@ -632,6 +639,23 @@ def collect_logs(experiment, success):
         runcmd("mv {exp} data/".format(exp=experiment['name']))
     return
 
+def dump_cores_if_asked(experiment):
+    try:
+        for cfg in experiment['apps'][THISHOST]:
+            if not cfg['dump']:
+                continue
+            # Issue SIGQUIT to the targeted process
+            pidfile = os.path.join(experiment['name'], cfg['pidfile'])
+            if not os.path.exists(pidfile):
+                print("No pid file found, skipping process dump")
+                continue
+            pid = int(open(pidfile, 'r').read())
+            # os.kill(pid, signal.SIGQUIT)
+            os.system("sudo kill -3 " + str(pid))
+    except Exception as ex:
+        # Don't let an error here affect the run, ok to supress
+        print("Error dumping the process." + str(ex))
+
 def execute_experiment(experiment):
     if not os.path.exists(experiment['name']):    os.mkdir(experiment['name'])
     runcmd("cp {} {}/".format(__file__, experiment['name']))    # save a copy of this file
@@ -658,14 +682,13 @@ def execute_experiment(experiment):
         error = True
         raise
     finally:
+        # if not error:
+        dump_cores_if_asked(experiment)
         collect_logs(experiment, not error)
         for p in procs:
             p.terminate()
             p.wait()
             del p
-        # if servers: TODO: Find correct pid, there are multiple. Is ulimit even getting applied? 
-        #     os.kill(servers[0].pid, signal.SIGQUIT)
-        #     time.sleep(20)
         cleanup()
     return experiment
 
@@ -716,7 +739,7 @@ def main():
             start_mpps=args.start, mpps=args.finish, samples=args.steps, time=args.time,
             kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, 
             kona_evict_done_thr=args.konaedt, transport=args.prot, nconns=args.nconns,
-            warmup=args.warmup
+            warmup=args.warmup, dump_core=False
         ))
 
     elif role == role.app:
