@@ -10,7 +10,7 @@ if [ -z "$prefix" ];  then    prefix=$(date +"%m-%d");    fi    # today
 
 HOST="sc2-hs2-b1630"
 CLIENT="sc2-hs2-b1607"
-OUT=`echo Exp,Kona Mem,Cores,Mpps,Prot,Comments`
+OUT=`echo Exp,Kona Mem,EvThr,EvDThr,Cores,Mpps,Prot,Comments`
 
 # for f in `ls data/run-08-20-*/config.json`; do
 for f in `ls data/run-${prefix}*/config.json`; do
@@ -22,6 +22,8 @@ for f in `ls data/run-${prefix}*/config.json`; do
     konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $f`
     if [ $konamem == "null" ]; then    konamem_mb="-";
     else    konamem_mb=`echo $konamem | awk '{ printf "%-4d MB", $1/1000000 }'`;     fi
+    konaet=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_thr' $f`
+    konaedt=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_done_thr' $f`
     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $f`
     prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $f`
     nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $f`
@@ -29,7 +31,7 @@ for f in `ls data/run-${prefix}*/config.json`; do
     desc=`jq '.desc' $f`
 
     # Print all
-    LINE=`echo $name,$konamem_mb,$sthreads,$mpps,$prot,$desc`
+    LINE=`echo $name,$konamem_mb,$konaet,$konaedt,$sthreads,$mpps,$prot,$desc`
     OUT=`echo -e "${OUT}\n${LINE}"`
 done
 

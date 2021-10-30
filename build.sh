@@ -15,6 +15,8 @@ usage="\n
 -sy,--synthetic \t\t build shenango synthetic app\n
 -sb,--sbench \t\t build shenango bench app\n
 -k,--kona \t\t build kona\n
+-kc,--kona-config \t\t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
+-kf,--kona-cflags \t\t C flags passed to gcc when compiling kona\n
 -mk,--with-kona \t\t build memcached + shenango linked with kona\n
 -a, --all \t\t build everything\n
 -h, --help \t\t this usage information message\n"
@@ -67,8 +69,8 @@ case $i in
     kona_cfg="PBMEM_CONFIG=${i#*=}"
     ;;
 
-    -ko=*|--kona-opts=*)
-    kona_opts="${i#*=}"
+    -ko=*|--kona-cflags=*)
+    kona_cflags="${i#*=}"
     ;;
 
     -mk|--with-kona)
@@ -143,7 +145,7 @@ if [[ $KONA ]]; then
     core_opts+="FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE "
     core_opts+="EVICTION_CORE=$KONA_EVICTION_CORE "
     core_opts+="ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE} "
-    make all -j $core_opts $kona_cfg $kona_opts
+    make all -j $core_opts $kona_cfg PROVIDED_CFLAGS=$kona_cflags
     popd
 fi
 
