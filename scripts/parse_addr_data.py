@@ -60,10 +60,11 @@ def main():
     writes = os.path.join(outdir, "wfaults")
     reads = os.path.join(outdir, "rfaults")
     evicts = os.path.join(outdir, "evictions")
+    last_write = last_read = last_evict = None
     with open(writes, "w") as wf, open(reads, "w") as rf, open(evicts, "w") as ef:
-        wf.write("time,addr,page,pgofst\n")
-        rf.write("time,addr,page,pgofst\n")
-        ef.write("time,addr,page,pgofst\n")
+        wf.write("time,addr,page,pgofst,gap\n")
+        rf.write("time,addr,page,pgofst,gap\n")
+        ef.write("time,addr,page,pgofst,gap\n")
         step = 0.0
         prev_time = -1
         for time, addr, type_ in zip(times, addrs, types):
@@ -71,14 +72,20 @@ def main():
                 step += 1.0 / samples_per_sec[time]
             if time != prev_time:   step = 0.0
             if type_ == "read":
-                rf.write("{},{},{},{}\n".format(float(time)+step, addr, 
-                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1)))
+                rf.write("{},{},{},{},{}\n".format(float(time)+step, addr, 
+                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1), 
+                    addr - last_read if last_read else 0))
+                last_read = addr
             elif type_ == "write":
-                wf.write("{},{},{},{}\n".format(float(time)+step, addr, 
-                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1)))
+                wf.write("{},{},{},{},{}\n".format(float(time)+step, addr, 
+                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1),
+                    addr - last_read if last_read else 0))
+                last_write = addr
             else:
-                ef.write("{},{},{},{}\n".format(float(time)+step, addr, 
-                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1)))
+                ef.write("{},{},{},{},{}\n".format(float(time)+step, addr, 
+                    addr >> PAGE_OFFSET, addr & (1<<PAGE_OFFSET-1),
+                    addr - last_evict if last_evict else 0))
+                last_evict = addr
             prev_time = time
 
     # Count and write stats

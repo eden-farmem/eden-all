@@ -72,32 +72,39 @@ done
 
 # # MEMCACHED MEM ACCESS
 # expname="run-10-17-21-19"     # .001 Mpps
-expname="run-10-19-13-22"       # 2 Mpps
-# expname="run-10-23-22-50"       # 2 mpps, with evict addrs
-# python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname}
+# expname="run-10-19-13-22"       # 2 Mpps
+expname="run-10-23-22-50"       # 2 mpps, with evict addrs
+python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname}
 
 DATADIR=data/$expname/addrs/
 # PLOTDIR=data/$expname/plots
 # mkdir -p $PLOTDIR
 
 # datafile=${DATADIR}/rfaults
-# plotname=${PLOTDIR}/rfaults.${PLOTEXT}
+# plotname=${PLOTDIR}/rfaults_gap.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
-#     -yc addr -yl "Address" -xc "time"               \
+#     -yc gap -yl "Read Gap" -xc "time"               \
 #     --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
 # display $plotname &
 
 # datafile=${DATADIR}/wfaults
-# plotname=${PLOTDIR}/wfaults.${PLOTEXT}
+# plotname=${PLOTDIR}/wfaults_gap.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
-#     -yc addr -yl "Address" -xc "time"               \
+#     -yc gap -yl "Write Gap" -xc "time"               \
 #     --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
 # display $plotname &
 
 # datafile=${DATADIR}/evictions
 # plotname=${PLOTDIR}/evictions.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}         \
+#     -yc addr -yl "Page Address" -xc time -xl "Time (secs)"      \
+#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
+# display $plotname &
+
+# datafile=${DATADIR}/evictions
+# plotname=${PLOTDIR}/evictions_gap.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
-#     -yc addr -yl "Page Address" -xc time -xl "Time (secs)"    \
+#     -yc gap -yl "Eviction Gap" -xc time -xl "Time (secs)"    \
 #     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
 # display $plotname &
 
