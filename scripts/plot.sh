@@ -11,7 +11,8 @@ CLIENT="sc2-hs2-b1607"
 SCRIPT_DIR=`dirname "$0"`
 
 usage="\n
--f, --force \t\t force re-summarize results\n
+-f,   --force \t\t force re-summarize data and re-generate plots\n
+-fp,  --force-plots \t force re-generate just the plots\n
 -h, --help \t\t this usage information message\n"
 
 for i in "$@"
@@ -19,6 +20,12 @@ do
 case $i in
     -f|--force)
     FORCE=1
+    FORCE_FLAG=" -f "
+    ;;
+    
+    -fp|--force-plots)
+    FORCE_PLOTS=1
+    FORCEP_FLAG=" -fp "
     ;;
 
     *)                      # unknown option
@@ -30,32 +37,39 @@ esac
 done
 
 
-# Madvise batching micro-benchmark
-cat data/run-11-01-12-55/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / count; } ' 
-cat data/run-11-01-12-58/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / (5*count); } ' 
-cat data/run-11-01-13-01/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / (10*count); } ' 
-cat data/run-11-01-13-04/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / (20*count); } '
-
-plotname=${PLOTDIR}/eviction_batching2.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py -d temp_madvise       \
-    -xc batch -xl "Batch Size"                      \
-    -yc latency                                     \
-    -yl "Amortized (Cycles)" --ymul 1e-3            \
-    --size 6 3 -fs 12 -of $PLOTEXT -o $plotname 
-display $plotname & 
-
-plotname=${PLOTDIR}/eviction_batching.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py -z cdf -yc Latency        \
-    -xl "Latency (Kilo Cycles)" --xmul 1e-3             \
-    -d temp_madvise1    -l "1"                          \
-    -d temp_madvise5    -l "5"                          \
-    -d temp_madvise10   -l "10"                         \
-    -d temp_madvise20   -l "20"                         \
-    --size 6 3 -fs 12 -of $PLOTEXT -o $plotname -lt "Batch Size"
-display $plotname & 
+# # Varying evict threshold plots
+bash scripts/plotg.sh -lt="Evict Threshold" ${FORCE_FLAG} ${FORCEP_FLAG} \
+    -s1="11-03-0[89]"                       -l1="70%"       \
+    -cs2="11-03-\(10\|11-[01]\)"            -l2="80%"       \
+    -cs3="11-03-\(11-[2345]\|12-[01234]\)"  -l3="90%"       \
+    -cs4="11-03-\(12-5\|1[347]\)"           -l4="99%"
 
 
 ############# ARCHIVED ##############################
+
+# # Madvise batching micro-benchmark
+# cat data/run-11-01-12-55/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / count; } ' 
+# cat data/run-11-01-12-58/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / (5*count); } ' 
+# cat data/run-11-01-13-01/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / (10*count); } ' 
+# cat data/run-11-01-13-04/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / (20*count); } '
+
+# plotname=${PLOTDIR}/eviction_batching2.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -d temp_madvise       \
+#     -xc batch -xl "Batch Size"                      \
+#     -yc latency                                     \
+#     -yl "Amortized (Cycles)" --ymul 1e-3            \
+#     --size 6 3 -fs 12 -of $PLOTEXT -o $plotname 
+# display $plotname & 
+
+# plotname=${PLOTDIR}/eviction_batching.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -z cdf -yc Latency        \
+#     -xl "Latency (Kilo Cycles)" --xmul 1e-3             \
+#     -d temp_madvise1    -l "1"                          \
+#     -d temp_madvise5    -l "5"                          \
+#     -d temp_madvise10   -l "10"                         \
+#     -d temp_madvise20   -l "20"                         \
+#     --size 6 3 -fs 12 -of $PLOTEXT -o $plotname -lt "Batch Size"
+# display $plotname & 
 
 # # Eviction latency breakdown
 # yes_madv=run-10-23-11-43

@@ -12,15 +12,14 @@ import glob
 import numpy as np
 
 NUMA_NODE = 1
-IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]                                   
-KONA_DISPLAY_FIELDS = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", "malloc_size", 
-    "mem_pressure", "n_poller_copy_fail", "n_madvise_try", "n_page_dirty", "n_faults_wp"]
+IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]
+KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
+    "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty", "n_faults_wp", "n_flush_fail"]                            
+KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
     "PERF_EVICT_WRITE", "PERF_HANDLER_FAULT", "PERF_EVICT_MADVISE", "PERF_HANDLER_MADV_NOTIF",
     "PERF_HANDLER_FAULT_Q"]
-KONA_FIELDS_ACCUMULATED = ["n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
-    "n_faults", "n_madvise_try", "n_rw_fault_q", "n_page_dirty", "n_faults_wp"]
 RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", 
     "localschedpct", "parks", "rescheds"]
 
@@ -220,8 +219,16 @@ def parse_kona_accounting_log(dirn, experiment):
     with open(fname) as f:
         data = f.read().splitlines()
 
+    # header_list = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    # "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
+    # "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
+    # "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
+    # "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
+    # "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
+    # "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
     header_list = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
-    "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
+    "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_evictions,n_evictable,"
+    "n_eviction_batches,n_madvise,n_"
     "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
     "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
     "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
@@ -235,10 +242,14 @@ def parse_kona_accounting_log(dirn, experiment):
             dats = line.split()
             time = int(dats[0])
             values = dats[1].split(",")
+            # if len(values) == len(header_list_new):
+            #     header_list = header_list_new
             assert len(values) == len(header_list), "unexpected kona log format"
             if header_list[1] == values[1]:     continue    #header
             for c in header_list[1:]:  stats[c].append((time, int(values[COL_IDX[c]])))            
             stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']])))
+            stats['n_flush_fail'].append((time, int(values[COL_IDX['n_flush_try']]) - int(values[COL_IDX['n_flush_success']])))
+            stats['n_madvise_fail'].append((time, int(values[COL_IDX['n_madvise_try']]) - int(values[COL_IDX['n_madvise']])))
 
     # Correct timestamps: A bunch of logs may get the same timestamp 
     # due to stdout flushing at irregular intervals. Assume that the 
@@ -522,7 +533,8 @@ def parse_dir(dirname):
     load_loadgen_results(experiment, dirname)
 
     apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
-    start_time = min(sample['time'] for app in apps for sample in app.get('loadgen', []))
+    samples = [sample['time'] for app in apps for sample in app.get('loadgen', [])]
+    start_time = min(samples) if samples else 0
 
     for app in apps:
         app['output'] = load_app_output(app, dirname, start_time)
@@ -631,7 +643,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
-    runtime = exp['clients'].itervalues().next()[0]['runtime'] + start_offset
+    runtime = exp['clients'].itervalues().next()[0]['runtime'] + start_offset + 20
 
     STAT_F = "{}/stats/".format(dirname)
     os.system("mkdir -p " + STAT_F)
@@ -678,10 +690,13 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
         for app in apps:
             if not 'loadgen' in app: continue
-            for i, sample in enumerate(app['loadgen']):
+            for sample_id, sample in enumerate(app['loadgen']):
                 start = sample['time'] - start_offset
                 print(start, runtime)
-                iokfile = STAT_F + "iokstats_{}".format(i)
+                # sample_id = 0
+                # start = int(experiment["start_time"])
+                # runtime = 100
+                iokfile = STAT_F + "iokstats_{}".format(sample_id)
                 print("Writing iok stats to " + iokfile)
                 with open(iokfile, "w") as f:
                     trimmed = { k:extract_window_seq(v, start, runtime) for k,v in exp['ioklog'].items()}
@@ -697,6 +712,9 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             if not 'loadgen' in app: continue
             for sample_id, sample in enumerate(app['loadgen']):
                 start = sample['time'] - start_offset
+                # sample_id = 0
+                # start = int(experiment["start_time"])
+                # runtime = 100
                 print(start, runtime)
                 konafile = STAT_F + "konastats_{}".format(sample_id)
                 print("Writing kona stats to " + konafile)

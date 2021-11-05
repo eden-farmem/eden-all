@@ -17,16 +17,17 @@ SCRIPT_DIR=`dirname "$0"`
 TMPFILE_PFX="temp_plotg_"
 
 usage="\n
--s1,  --suffix1   \t a plain suffix defining the first group of runs\n
--cs1, --csuffix1  \t same as -s1 but a more complex one (with regexp pattern)\n
--l1,  --label1    \t plot label for first group of runs\n
+-s1,  --suffix1 \t\t a plain suffix defining the first group of runs\n
+-cs1, --csuffix1  \t\t same as -s1 but a more complex one (with regexp pattern)\n
+-l1,  --label1    \t\t\t plot label for first group of runs\n
 -s[234],  --suffix[234] \t a plain suffix defining the group [234] of runs (optional)\n
--cs[234], --csuffix[234]  \t same as -s[234] but a more complex one (with regexp pattern)\n
--l2,  --label2    \t plot label for second group of runs\n
--vm,  --vary-mem  \t hint to use kona memory on x-axis (default)\n
--vc,  --vary-cores \t hint to use server cores on x-axis\n
--d,   --display   \t display individal plots\n
--f,   --force     \t force re-summarize results\n"
+-cs[234], --csuffix[234] \t same as -s[234] but a more complex one (with regexp pattern)\n
+-l2,  --label2    \t\t\t plot label for second group of runs\n
+-vm,  --vary-mem  \t\t hint to use kona memory on x-axis (default)\n
+-vc,  --vary-cores \t\t hint to use server cores on x-axis\n
+-d,   --display   \t\t\t display individal plots\n
+-f,   --force     \t\t\t force re-summarize data and re-generate plots\n
+-fp,  --force-plots \t\t force re-generate just the plots\n"
 
 # Defaults
 XCOL=konamem
@@ -100,6 +101,10 @@ case $i in
 
     -f|--force)
     FORCE=1
+    ;;
+
+    -fp|--force-plots)
+    FORCE_PLOTS=1
     ;;
 
     -vm|--vary-mem)
@@ -253,10 +258,10 @@ add_plot_group 4 "$SUFFIX4" "$CSUFFIX4" "$LABEL4" "$FORCE"
 
 # Plot memcached
 plotname=${PLOTDIR}/memcached_xput_${fsuffix}.$PLOTEXT
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py ${plots}                          \
-        -yc achieved -ls solid -yl "Xput Mops/sec" --ymul 1e-6      \
-        -xc $XCOL -xl "$XLABEL" --ylog                              \
+        -yc achieved -ls solid -yl "Xput (Million Ops/sec)" --ymul 1e-6  \
+        -xc $XCOL -xl "$XLABEL"                              \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
@@ -266,7 +271,7 @@ files="$files $plotname"
 plotname=${PLOTDIR}/konastats_${fsuffix}.$PLOTEXT
 ycol="n_faults"     # options: "malloc_size" "n_net_page_in" "n_net_page_out" "outstanding"
 ydesc="Kilo Page Faults / sec"
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     # sed '/NoKona/d' $datafile > $datafile_kona      #remove nokona run
     python3 ${SCRIPT_DIR}/plot.py ${plots}                          \
         -yc $ycol -ls solid -yl "$ydesc" --ymul 1e-3                \
@@ -279,7 +284,7 @@ files="$files $plotname"
 plotname=${PLOTDIR}/konastats1_${fsuffix}.$PLOTEXT
 ycol="mem_pressure"     # options: "malloc_size" "n_net_page_in" "n_net_page_out" "outstanding"
 ydesc="Mem Pressure (GB)"
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     # sed '/NoKona/d' $datafile > $datafile_kona      #remove nokona run
     python3 ${SCRIPT_DIR}/plot.py ${plots}                      \
         -yc $ycol -ls solid -yl "$ydesc" --ymul 1e-9            \
@@ -292,7 +297,7 @@ files="$files $plotname"
 plotname=${PLOTDIR}/konastats_extended_${fsuffix}.$PLOTEXT
 ycol="PERF_HANDLER_FAULT_Q"     # options: "PERF_EVICT_MADVISE", "PERF_EVICT_TOTAL"
 ydesc="Fault Wait Time (µs)"
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py ${plots}              \
         -yc $ycol -yl "$ydesc"  --ymul 454e-6           \
         -xc $XCOL -xl "$XLABEL"                         \
@@ -304,10 +309,23 @@ files="$files $plotname"
 plotname=${PLOTDIR}/konastats_extended1_${fsuffix}.$PLOTEXT
 ycol="PERF_EVICT_TOTAL"     # options: "PERF_EVICT_MADVISE", "PERF_EVICT_TOTAL"
 ydesc="Eviction Time (µs)"
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py ${plots}                  \
         -yc $ycol -yl "$ydesc" --ymin 0  --ymul 454e-6      \
         -xc $XCOL -xl "$XLABEL"                             \
+         --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
+    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
+fi
+files="$files $plotname"
+
+plotname=${PLOTDIR}/iokstats_${fsuffix}.$PLOTEXT
+ycol="RX_PULLED"     # options: "TX_PULLED" 
+ydesc="Offered Load (Mpps)"
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+    python3 ${SCRIPT_DIR}/plot.py ${plots}      \
+        -yc $ycol -ls solid -yl "$ydesc"        \
+        --ymul 1e-6 --ymin 0 --ymax 2           \
+        -xc $XCOL -xl "$XLABEL"                 \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi

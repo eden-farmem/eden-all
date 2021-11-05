@@ -59,6 +59,12 @@ case $i in
     COLIDX=4
     ;;
 
+    -vebs|--vary-evict-batch-size)
+    XCOL=konaebs
+    XLABEL='Eviction Batch Size'
+    COLIDX=5
+    ;;
+
     *)                      # unknown option
     echo "Unkown Option: $i"
     echo -e $usage
@@ -83,9 +89,9 @@ for exp in $LS_CMD; do
     cfg="$exp/config.json"
     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
     konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
-    if [ $konamem == "null" ]; then    klabel="No_Kona";    konamem_mb=$SOME_BIG_NUMBER;
+    if [ $konamem == "null" ]; then konamem_mb=$SOME_BIG_NUMBER;
     else    konamem_mb=`echo $konamem | awk '{ print $1/1000000 }'`;     fi
-    label=$klabel
+    konaebs=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_batch_sz' $cfg`
     prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
     nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`
     mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $cfg`
@@ -99,10 +105,10 @@ for exp in $LS_CMD; do
     fi
     
     # aggregate across runs
-    header=nconns,mpps,konamem,scores,`cat $statfile | awk 'NR==1'`
+    header=nconns,mpps,konamem,scores,konaebs,`cat $statfile | awk 'NR==1'`
     curstats=`cat $statfile | awk 'NR==2'`
     # if ! [[ $curstats ]]; then    curstats=$prevstats;  fi      #HACK!
-    stats="$stats\n$nconns,$mpps,$konamem_mb,$sthreads,$curstats"
+    stats="$stats\n$nconns,$mpps,$konamem_mb,$sthreads,$konaebs,$curstats"
     prevstats=$curstats
 done
 
@@ -137,16 +143,18 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
         -yc "n_faults" -l "Total Faults" -ls solid                  \
         -yc "n_net_page_in" -l "Net Pages Read" -ls solid           \
         -yc "n_net_page_out" -l "Net Pages Write" -ls solid         \
-        -yc "outstanding"   -l "Max Concurrent Reads" -ls dashed    \
+        -yc "n_madvise"     -l "Madvise Calls"  -ls solid           \
+        -yc "n_madvise_fail" -l "Madvise Fails" -ls solid           \
+        -yc "malloc_size" -l "Mallocd Mem" -ls dashed               \
+        -yc "mem_pressure" -l "Mem pressure" -ls dashed             \
         -xc $XCOL -xl "$XLABEL" --xstr                              \
         -yl "Count (x1000)" --ymul 1e-3 --ymin 0                    \
-        --twin 4  -tyl "Count" --tymin 0                            \
+        --twin 6  -tyl "GB" --tymin 0  --tymul 1e-9                 \
         --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Kona Activity"    
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
-        # -yc "malloc_size" -l "Mallocd Mem" -ls dashed       \
-        # -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
+        # -yc "outstanding"   -l "Max Concurrent Reads" -ls dashed    \
 
 plotname=${PLOTDIR}/konastats_extended_${SUFFIX}.$PLOTEXT
 if [[ $FORCE ]] || [ ! -f "$plotname" ]; then

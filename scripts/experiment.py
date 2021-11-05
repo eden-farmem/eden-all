@@ -77,6 +77,7 @@ DEFAULT_RUNTIME_SECS = 20
 DEFAULT_KONA_MEM = 1E9
 DEFAULT_KONA_EVICT_THR = 0.8
 DEFAULT_KONA_EVICT_DONE_THR = 0.8
+DEFAULT_EVICTION_BATCH_SIZE = 1
 
 class Role(Enum):
     host = "host"           # where memcached server and the experiment is hosted
@@ -115,6 +116,7 @@ def new_experiment(system, **kwargs):
         'apps': {},
         'nextip': 100,
         'nextport': 5000 + random.randint(0,255),
+        'start_time': time.time(),
     }
 
 def gen_random_mac():
@@ -153,8 +155,7 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp",
     }
 
     args = "-U {port} -p {port} -c 32768 -m {meml} -b 32768 -P {pidfile}"
-    if dump_core:
-        args += " -r"
+    args += " -r"       # dump core on seg fault or when terminated with SIGQUIT
     args += " -o hashpower={hashpower}"
 
     args += {
@@ -290,7 +291,8 @@ def finalize_measurement_cohort(experiment, samples, runtime):
 
 def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=6.0, 
         noht=False, transport="tcp", nconns=1200, start_mpps=0.0, warmup=False,
-        kona=False, kona_mem=None, kona_evict_thr=0.9, kona_evict_done_thr=0.9,
+        kona=False, kona_mem=None, kona_evict_thr=DEFAULT_KONA_EVICT_THR, 
+        kona_evict_done_thr=DEFAULT_KONA_EVICT_DONE_THR, kona_evict_batch_sz=DEFAULT_EVICTION_BATCH_SIZE, 
         name=None, desc=None, dump_core=False):
     x = new_experiment(system, name=name, desc=desc)
     # x['name'] += "-memcached" + "-" + transport
@@ -309,6 +311,7 @@ def bench_memcached(system, thr, spin=False, bg=None, samples=55, time=10, mpps=
         memcached_handle['kona']['mlimit'] = kona_mem
         memcached_handle['kona']['evict_thr'] = kona_evict_thr
         memcached_handle['kona']['evict_done_thr'] = kona_evict_done_thr
+        memcached_handle['kona']['evict_batch_sz'] = kona_evict_batch_sz
         add_kona_apps(x, memcached_handle, kona_mem, kona_evict_thr, kona_evict_done_thr)
 
     new_measurement_instances(len(CLIENT_SET), memcached_handle, mpps, x, nconns=nconns, start_mpps=start_mpps, warmup=warmup)
@@ -426,7 +429,8 @@ def launch_shenango_program(cfg, experiment):
         print("Wait some time for kona controller and server to be properly setup")
         time.sleep(30)
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
-        params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr}".format(**cfg["kona"])
+        params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr} ".format(**cfg["kona"])
+        params += "EVICTION_BATCH_SIZE={evict_batch_sz} ".format(**cfg["kona"])
         fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
             params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
     elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
@@ -682,8 +686,8 @@ def execute_experiment(experiment):
         error = True
         raise
     finally:
-        # if not error:
-        dump_cores_if_asked(experiment)
+        if not error:
+            dump_cores_if_asked(experiment)
         collect_logs(experiment, not error)
         for p in procs:
             p.terminate()
@@ -724,6 +728,7 @@ def main():
     parser.add_argument('-km', '--konamem', action='store', help='local mem for kona', type=int, default=DEFAULT_KONA_MEM)
     parser.add_argument('-ket', '--konaet', action='store', help='kona evict threshold', type=float, default=DEFAULT_KONA_EVICT_THR)
     parser.add_argument('-kedt', '--konaedt', action='store', help='kona evict done threshold', type=float, default=DEFAULT_KONA_EVICT_DONE_THR)
+    parser.add_argument('-kebs', '--konaebs', action='store', help='kona evict batch size', type=int, default=DEFAULT_EVICTION_BATCH_SIZE)
     parser.add_argument('--stopat', action='store', help="stop program at a certain point (for debugging purposes)", type=int, default=0)
 
     args = parser.parse_args()
@@ -738,8 +743,8 @@ def main():
             name=args.name, desc=args.desc,
             start_mpps=args.start, mpps=args.finish, samples=args.steps, time=args.time,
             kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, 
-            kona_evict_done_thr=args.konaedt, transport=args.prot, nconns=args.nconns,
-            warmup=args.warmup, dump_core=False
+            kona_evict_done_thr=args.konaedt, kona_evict_batch_sz=args.konaebs, 
+            transport=args.prot, nconns=args.nconns, warmup=args.warmup, dump_core=True
         ))
 
     elif role == role.app:

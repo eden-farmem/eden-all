@@ -197,6 +197,12 @@ def parse_args():
         help='Custom y-axis multiplier constant (e.g., for unit conversion)',
         default=1)
 
+    # TODO: better doc
+    parser.add_argument('-yn', '--ynorm', 
+        action='store_true', 
+        help='Normalize plots a/c to the first plot',
+        default=False)
+
     parser.add_argument('--xlog', 
         action='store_true', 
         help='Plot x-axis on log scale',
@@ -487,6 +493,14 @@ def main():
             yc = df[ycol]
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
+
+            if args.ynorm:
+                if plot_num == 0:   
+                    base_dataset = yc
+                    yc = [1 for _ in yc]
+                else:
+                    yc = [i/j for i,j in zip(yc,base_dataset)]
+
             if args.xstr:   xc = [str(x) for x in xc]
             lns += ax.plot(xc, yc, label=label, color=colors[cidx],
                 marker=(None if args.nomarker else markers[midx]),
@@ -565,8 +579,8 @@ def main():
             
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
-            lns += ax.plot(xc, yc, label=label, color=colors[cidx])
-                # marker=(None if args.nomarker else markers[midx],)
+            lns += ax.plot(xc, yc, label=label, color=colors[cidx],
+                marker=(None if args.nomarker else markers[midx]))
                 # markerfacecolor=(None if args.nomarker else colors[cidx]))
 
             # Add a line at mode (TODO: make this a command line option)

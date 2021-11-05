@@ -74,10 +74,12 @@ if [ -f $datafile ]; then
         -yc "n_faults_r" -l "Read Faults" -ls solid         \
         -yc "n_faults_w" -l "Write Faults" -ls solid        \
         -yc "n_faults_wp" -l "Remove WP" -ls solid          \
-        -yc "n_net_page_in" -l "Net In" -ls solid   \
-        -yc "n_net_page_out" -l "Net Out" -ls solid \
+        -yc "n_net_page_in" -l "Net In" -ls solid           \
+        -yc "n_net_page_out" -l "Net Out" -ls solid         \
+        -yc "n_madvise"     -l "Madvise Calls"  -ls solid   \
+        -yc "n_madvise_fail" -l "Madvise Fails" -ls solid   \
         -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
-        --ymin 0 --tymin 0 --ymax 70 -lt "Kona Faults"  --ymul 1e-3 \
+        --ymin 0 --ymax 70 -lt "Kona Faults"  --ymul 1e-3   \
         --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
     files="$files $plotname"
     # display $plotname &  
