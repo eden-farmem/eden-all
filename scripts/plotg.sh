@@ -35,6 +35,9 @@ XLABEL='Local Mem (MB)'
 COLIDX=3
 LTITLE=""
 
+# XLABEL='Local Mem Ratio'  # For ratio
+# XMUL="--xmul 5e-4"
+
 # Read parameters
 for i in "$@"
 do
@@ -49,10 +52,6 @@ case $i in
     
     -l1=*|--label1=*)
     LABEL1="${i#*=}"
-    ;;
-
-    -cs1=*|--csuffix1=*)
-    CSUFFIX1="${i#*=}"
     ;;
 
     -s2=*|--suffix2=*)
@@ -167,7 +166,7 @@ parse_runs_prepare_data() {
         statsdir=$exp/stats
         statfile=$statsdir/stat.csv
         if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-            python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --app --iok
+            python ${SCRIPT_DIR}/summary.py -n $name --kona --app --iok     #--lat
         fi
         
         # aggregate across runs
@@ -218,51 +217,13 @@ add_plot_group 2 "$SUFFIX2" "$CSUFFIX2" "$LABEL2" "$FORCE"
 add_plot_group 3 "$SUFFIX3" "$CSUFFIX3" "$LABEL3" "$FORCE"
 add_plot_group 4 "$SUFFIX4" "$CSUFFIX4" "$LABEL4" "$FORCE"
 
-# # Group 2
-# tmpfile2=${TMPFILE_PFX}2
-# parse_runs_prepare_data "$SUFFIX2" "$CSUFFIX2" "$tmpfile2" "$FORCE"
-# lines2=$(wc -l < $tmpfile2)
-# echo $lines1. $lines2
-# if [ $lines1 != $lines2 ]; then 
-#     echo "ERROR! groups 1 and 2 have different number of runs"; 
-#     exit 1; 
-# fi
-# plots="$plots -d $tmpfile2 -l ""'""$LABEL2""'"
-# fsuffix="${fsuffix}__${SUFFIX2:-$CSUFFIX2}"
-
-# # Group 3
-# tmpfile3=${TMPFILE_PFX}3
-# if [[ $SUFFIX3 ]] || [[ $CSUFFIX3 ]]; then
-#     parse_runs_prepare_data "$SUFFIX3" "$CSUFFIX3" "$tmpfile3" "$FORCE"
-#     lines3=$(wc -l < $tmpfile3)
-#     if [ $lines1 != $lines3 ]; then 
-#         echo "ERROR! group 3 has different number of runs"; 
-#         exit 1; 
-#     fi
-#     plots="$plots -d $tmpfile3 -l ""'"$LABEL3"'"
-#     fsuffix="${fsuffix}__${SUFFIX3:-$CSUFFIX3}"
-# fi
-
-# # Group 4
-# tmpfile4=${TMPFILE_PFX}4
-# if [[ $SUFFIX3 ]] || [[ $CSUFFIX3 ]]; then
-#     parse_runs_prepare_data "$SUFFIX3" "$CSUFFIX3" "$tmpfile3" "$FORCE"
-#     lines3=$(wc -l < $tmpfile3)
-#     if [ $lines1 != $lines3 ]; then 
-#         echo "ERROR! group 3 has different number of runs"; 
-#         exit 1; 
-#     fi
-#     plots="$plots -d $tmpfile3 -l ""'"$LABEL3"'"
-#     fsuffix="${fsuffix}__${SUFFIX3:-$CSUFFIX3}"
-# fi
-
 # Plot memcached
 plotname=${PLOTDIR}/memcached_xput_${fsuffix}.$PLOTEXT
 if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-    python3 ${SCRIPT_DIR}/plot.py ${plots}                          \
-        -yc achieved -ls solid -yl "Xput (Million Ops/sec)" --ymul 1e-6  \
-        -xc $XCOL -xl "$XLABEL"                              \
-         --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
+    python3 ${SCRIPT_DIR}/plot.py ${plots}                              \
+        -yc achieved -ls solid -yl "Xput (Million Ops/sec)" --ymul 1e-6 \
+        -xc $XCOL -xl "$XLABEL" $XMUL                                   \
+         --size 6 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
 files="$files $plotname"
@@ -275,7 +236,7 @@ if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     # sed '/NoKona/d' $datafile > $datafile_kona      #remove nokona run
     python3 ${SCRIPT_DIR}/plot.py ${plots}                          \
         -yc $ycol -ls solid -yl "$ydesc" --ymul 1e-3                \
-        -xc $XCOL -xl "$XLABEL"                                     \
+        -xc $XCOL -xl "$XLABEL" $XMUL                               \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
@@ -288,7 +249,7 @@ if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     # sed '/NoKona/d' $datafile > $datafile_kona      #remove nokona run
     python3 ${SCRIPT_DIR}/plot.py ${plots}                      \
         -yc $ycol -ls solid -yl "$ydesc" --ymul 1e-9            \
-        -xc $XCOL -xl "$XLABEL"                                 \
+        -xc $XCOL -xl "$XLABEL" $XMUL                           \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
@@ -300,7 +261,7 @@ ydesc="Fault Wait Time (µs)"
 if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py ${plots}              \
         -yc $ycol -yl "$ydesc"  --ymul 454e-6           \
-        -xc $XCOL -xl "$XLABEL"                         \
+        -xc $XCOL -xl "$XLABEL" $XMUL                   \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE" 
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
@@ -312,7 +273,7 @@ ydesc="Eviction Time (µs)"
 if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py ${plots}                  \
         -yc $ycol -yl "$ydesc" --ymin 0  --ymul 454e-6      \
-        -xc $XCOL -xl "$XLABEL"                             \
+        -xc $XCOL -xl "$XLABEL" $XMUL                       \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
@@ -325,7 +286,7 @@ if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
     python3 ${SCRIPT_DIR}/plot.py ${plots}      \
         -yc $ycol -ls solid -yl "$ydesc"        \
         --ymul 1e-6 --ymin 0 --ymax 2           \
-        -xc $XCOL -xl "$XLABEL"                 \
+        -xc $XCOL -xl "$XLABEL" $XMUL           \
          --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname -lt "$LTITLE"
     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
 fi
@@ -339,7 +300,7 @@ files="$files $plotname"
 #         -yc "RX_PULLED" -l "To Runtime" -ls solid                       \
 #         -yc "RX_UNICAST_FAIL" -l "To Runtime (Failed)" -ls solid        \
 #         -yc "IOK_SATURATION" -l "Core Saturation" -ls dashed            \
-#         -xc $XCOL -xl "$XLABEL"                                   \
+#         -xc $XCOL -xl "$XLABEL" $XMUL                             \
 #         -yl "Million pkts/sec" --ymul 1e-6 --ymin 0                     \
 #         --twin 4  -tyl "Saturation %" --tymul 100 --tymin 0 --tymax 110 \
 #          --size 4.5 3 -fs 11 -of $PLOTEXT  -o $plotname -lt "Shenango I/O Core"
@@ -355,7 +316,7 @@ files="$files $plotname"
 #         -yc "txpkt" -l "To I/O Core" -ls solid                  \
 #         -yc "drops" -l "Pkt drops" -ls solid                    \
 #         -yc "cpupct" -l "CPU Utilization" -ls dashed            \
-#         -xc $XCOL -xl "$XLABEL"                           \
+#         -xc $XCOL -xl "$XLABEL" $XMUL                     \
 #         -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
 #         --twin 4  -tyl "CPU Cores" --tymul 1e-2 --tymin 0       \
 #          --size 4.5 3 -fs 11  -of $PLOTEXT  -o $plotname -lt "Shenango Resources"
@@ -371,7 +332,7 @@ files="$files $plotname"
 #         -yc "localschedpct" -l "Core Local Work %" -ls solid    \
 #         -yc "rescheds" -l "Reschedules" -ls dashed              \
 #         -yc "parks" -l "KThread Parks" -ls dashed               \
-#         -xc $XCOL -xl "$XLABEL"                           \
+#         -xc $XCOL -xl "$XLABEL" $XMUL                     \
 #         -yl "Percent" --ymin 0 --ymax 110                       \
 #         --twin 4  -tyl "Million Times" --tymul 1e-6 --tymin 0   \
 #          --size 4.5 3 -fs 11  -of $PLOTEXT  -o $plotname -lt "Shenango Scheduler" 
@@ -379,8 +340,8 @@ files="$files $plotname"
 # fi
 # files="$files $plotname"
 
-# # # Combine
-# # echo $files
+# # Combine
+# echo $files
 plotname=${PLOTDIR}/all_${fsuffix}.$PLOTEXT
 montage -tile 0x2 -geometry +5+5 -border 5 $files ${plotname}
 display ${plotname} &

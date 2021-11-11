@@ -9,6 +9,7 @@ HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
 CLIENT="sc2-hs2-b1607"
 SCRIPT_DIR=`dirname "$0"`
+SAMPLE=0
 
 usage="\n
 -f,   --force \t\t force re-summarize data and re-generate plots\n
@@ -37,15 +38,97 @@ esac
 done
 
 
-# # Varying evict threshold plots
-bash scripts/plotg.sh -lt="Evict Threshold" ${FORCE_FLAG} ${FORCEP_FLAG} \
-    -s1="11-03-0[89]"                       -l1="70%"       \
-    -cs2="11-03-\(10\|11-[01]\)"            -l2="80%"       \
-    -cs3="11-03-\(11-[2345]\|12-[01234]\)"  -l3="90%"       \
-    -cs4="11-03-\(12-5\|1[347]\)"           -l4="99%"
+# runs=(
+#     "run-11-08-14-29"
+#     "run-11-08-17-52"
+#     "run-11-08-18-45"
+#     "run-11-08-00-12"
+# )
+# for exp in ${runs[@]}; do 
+#     echo $exp;
+#     statsdir=data/$exp/stats
+#     konafile=$statsdir/konastats_$SAMPLE
+#     if [[ $FORCE ]] || [ ! -d $statsdir ]; then
+#         python ${SCRIPT_DIR}/summary.py -n $exp --kona --iok --app -so 60 --suppresswarn
+#     fi
+# done
+# plots="$plots -d data/run-11-08-14-29/stats/konastats_$SAMPLE -l 0.7 "
+# plots="$plots -d data/run-11-08-17-52/stats/konastats_$SAMPLE -l 0.8 "
+# plots="$plots -d data/run-11-08-18-45/stats/konastats_$SAMPLE -l 0.9 "
+# plots="$plots -d data/run-11-08-00-12/stats/konastats_$SAMPLE -l 0.99"
+
+# plotname=${PLOTDIR}/mem_pressure_vary_et.$PLOTEXT
+# python3 ${SCRIPT_DIR}/plot.py ${plots}                      \
+#     -yc "mem_pressure"  -yl "Size (MB)" --ymul 1e-6         \
+#     -xc "time" -xl  "Time (secs)" -yl "Memory Used (MB)"    \
+#     --size 7 3.5 -fs 12  -of $PLOTEXT  -o $plotname -lt "Evict High Thr (1800 MB)"
+# display $plotname &
+
+plots=
+runs=(
+    "run-11-08-00-12"
+    "run-11-08-01-05"
+    "run-11-08-10-01"
+    "run-10-28-11-47"
+)
+for exp in ${runs[@]}; do 
+    echo $exp;
+    statsdir=data/$exp/stats
+    konafile=$statsdir/konastats_$SAMPLE
+    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
+        python ${SCRIPT_DIR}/summary.py -n $exp --kona --iok --app -so 60 --suppresswarn
+    fi
+done
+plots="$plots -d data/run-11-08-00-12/stats/konastats_$SAMPLE -l 0.7 "
+plots="$plots -d data/run-11-08-01-05/stats/konastats_$SAMPLE -l 0.8 "
+plots="$plots -d data/run-11-08-10-01/stats/konastats_$SAMPLE -l 0.9 "
+plots="$plots -d data/run-10-28-11-47/stats/konastats_$SAMPLE -l 0.99"
+
+plotname=${PLOTDIR}/mem_pressure_vary_edt.$PLOTEXT
+python3 ${SCRIPT_DIR}/plot.py ${plots}                      \
+    -yc "mem_pressure"  -yl "Size (MB)" --ymul 1e-6         \
+    -xc "time" -xl  "Time (secs)" -yl "Memory Used (MB)"    \
+    --size 7 3.5 -fs 12  -of $PLOTEXT  -o $plotname -lt "Evict Low Thr (1800 MB)"
+display $plotname &
+
+
+# # Varying evict high watermark plots (No madvise notif, low watermark: 70%, 2 cores)
+# bash scripts/plotg.sh -lt="Evict High Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
+#     -cs1="11-\(08-23\|09-00\|09-01-00\)"    -l1="70%"       \
+#     -cs2="11-09-\(01-[1-5]\|02-[012]\)"     -l2="80%"       \
+#     -cs3="11-09-\(02-[345]\|03-[0-4]\)"     -l3="90%"       \
+#     -s4="11-09-04"                          -l4="99%"
+
+# # Varying evict high watermark plots (No madvise notif, low watermark: 70%, 8 cores)
+# bash scripts/plotg.sh -lt="Evict High Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
+#     -cs1="11-09-\(05\|06-[012]\)"           -l1="70%"       \
+#     -cs2="11-09-\(06-[345]\|07\)"           -l2="80%"       \
+#     -cs3="11-09-\(08\|09-[0-4]\)"           -l3="90%"       \
+#     -cs4="11-09-\(09-51\|1[012]\)"          -l4="99%"
+
+# # Varying evict high watermark plots (No madvise notif, low watermark: 70%)
+# bash scripts/plotg.sh -lt="Evict High Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
+#     -s1="11-08-14"                          -l1="70%"       \
+#     -cs2="11-08-\(17\|18-[01]\)"            -l2="80%"       \
+#     -cs3="11-08-\(18-[2345]\|19\)"          -l3="90%"       \
+#     -cs4="11-\(07-23\|08-00-[0123]\)"       -l4="99%"
+
+# # Varying evict low watermark plots (No madvise notif, high watermark: 99%)
+# bash scripts/plotg.sh -lt="Evict Low Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
+#     -cs1="11-\(07-23\|08-00-[0123]\)"       -l1="70%"       \
+#     -cs2="11-08-\(00-[45]\|01-[012]\)"      -l2="80%"       \
+#     -cs3="11-08-\(01-[34]\|09\|10\)"        -l3="90%"       \
+#     -s4="10-28-11"                          -l4="99%"
 
 
 ############# ARCHIVED ##############################
+
+# # # Varying evict threshold plots (with madvise notif)
+# bash scripts/plotg.sh -lt="Evict Threshold" ${FORCE_FLAG} ${FORCEP_FLAG} \
+#     -s1="11-03-0[89]"                       -l1="70%"       \
+#     -cs2="11-03-\(10\|11-[01]\)"            -l2="80%"       \
+#     -cs3="11-03-\(11-[2345]\|12-[01234]\)"  -l3="90%"       \
+#     -cs4="11-03-\(12-5\|1[347]\)"           -l4="99%"
 
 # # Madvise batching micro-benchmark
 # cat data/run-11-01-12-55/memcached.out  | egrep -o "Madvise for [0-9]+ pages took ([0-9]+) cycles" | awk ' NR == 1 { sum = 0; count = 0; } { sum += $6; count++; } END { print sum / count; } ' 

@@ -145,6 +145,7 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp",
         'app': 'memcached',
         'nice': -20,
         'meml': 32000,
+        # 'meml': 4096,     # preallocate memory
         'hashpower': 28,
         'mac': gen_random_mac(),
         'protocol': 'memcached',
@@ -744,7 +745,7 @@ def main():
             start_mpps=args.start, mpps=args.finish, samples=args.steps, time=args.time,
             kona=not args.nokona, kona_mem=args.konamem, kona_evict_thr=args.konaet, 
             kona_evict_done_thr=args.konaedt, kona_evict_batch_sz=args.konaebs, 
-            transport=args.prot, nconns=args.nconns, warmup=args.warmup, dump_core=True
+            transport=args.prot, nconns=args.nconns, warmup=args.warmup, dump_core=False
         ))
 
     elif role == role.app:

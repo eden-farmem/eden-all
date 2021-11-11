@@ -23,6 +23,8 @@ KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_
 RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", 
     "localschedpct", "parks", "rescheds"]
 
+suppress_warn = False
+
 def percentile(latd, target):
     # latd: ({microseconds: count}, number_dropped)
     # target: percentile target, ie 0.99
@@ -219,14 +221,14 @@ def parse_kona_accounting_log(dirn, experiment):
     with open(fname) as f:
         data = f.read().splitlines()
 
-    # header_list = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
-    # "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
-    # "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
-    # "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
-    # "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
-    # "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
-    # "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
-    header_list = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    header_list_old = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
+    "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
+    "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
+    "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
+    "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
+    "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
+    header_list_new = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
     "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_evictions,n_evictable,"
     "n_eviction_batches,n_madvise,n_"
     "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
@@ -234,7 +236,8 @@ def parse_kona_accounting_log(dirn, experiment):
     "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
     "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
     "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
-    COL_IDX = {k: v for v, k in enumerate(header_list)}
+    header_list = None
+    COL_IDX = None
 
     stats = defaultdict(list)
     for line in data:
@@ -242,8 +245,12 @@ def parse_kona_accounting_log(dirn, experiment):
             dats = line.split()
             time = int(dats[0])
             values = dats[1].split(",")
-            # if len(values) == len(header_list_new):
-            #     header_list = header_list_new
+            if not header_list:
+                if len(values) == len(header_list_new):
+                    header_list = header_list_new
+                elif len(values) == len(header_list_old):
+                    header_list = header_list_old
+                COL_IDX = {k: v for v, k in enumerate(header_list)}
             assert len(values) == len(header_list), "unexpected kona log format"
             if header_list[1] == values[1]:     continue    #header
             for c in header_list[1:]:  stats[c].append((time, int(values[COL_IDX[c]])))            
@@ -448,12 +455,13 @@ def parse_runtime_log(app, dirn):
 
     return stat_vec
 
-def extract_window_seq(datapoints, wct_start, duration_sec, accumulated=False):
-    window_start = wct_start 
-    window_end = wct_start + duration_sec
+def extract_window_seq(datapoints, wct_start, duration_sec, accumulated=False, trim=0.0):
+    window_start = wct_start + int(duration_sec * trim)
+    window_end = wct_start + duration_sec - int(duration_sec * trim)
     datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
     if accumulated and len(datapoints) > 0:
-        return [(x[0], (x[1] - datapoints[i - 1][1]) / (x[0] - datapoints[i - 1][0])) for i, x in enumerate(datapoints)][1:]
+        return [(x[0], (x[1] - datapoints[i - 1][1]) / (x[0] - datapoints[i - 1][0])) 
+                for i, x in enumerate(datapoints)][1:]
     return datapoints
 
 def extract_window(datapoints, wct_start, duration_sec, accumulated=False):
@@ -471,17 +479,13 @@ def extract_window(datapoints, wct_start, duration_sec, accumulated=False):
         avgmids = None
     return avgmids
 
-def extract_window_diff(datapoints, wct_start, duration_sec):
-    window_start = wct_start + int(duration_sec * 0.1)
-    window_end = wct_start + int(duration_sec * 0.9)
-    datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
+def extract_window_diff(datapoints, wct_start, duration_sec, accumulated=False):
+    datapoints = extract_window_seq(datapoints, wct_start, duration_sec, accumulated)
     data = [v for k,v in datapoints]
     return max(data) - min(data)
 
-def extract_window_max(datapoints, wct_start, duration_sec):
-    window_start = wct_start + int(duration_sec * 0.1)
-    window_end = wct_start + int(duration_sec * 0.9)
-    datapoints = filter(lambda l: l[0] >= window_start and l[0] <= window_end, datapoints)
+def extract_window_max(datapoints, wct_start, duration_sec, accumulated=False):
+    datapoints = extract_window_seq(datapoints, wct_start, duration_sec, accumulated)
     data = [v for k,v in datapoints]
     return max(data)
 
@@ -491,8 +495,8 @@ def load_loadgen_results(experiment, dirname):
 
     if not insts:
         print(insts)
-        insts = [i for i in apps if i.get('protocol') == 'synthetic'] # local synth;
-        experiment['clients'][experiment['server_hostname']] = insts #[i for i in insts if i.get('protocol') == 'synthetic'] #experiment['apps'] #semicorrect
+        insts = [i for i in apps if i.get('protocol') == 'synthetic']   # local synth;
+        experiment['clients'][experiment['server_hostname']] = insts    #[i for i in insts if i.get('protocol') == 'synthetic'] #experiment['apps'] #semicorrect
     for inst in insts: #host in experiment['clients']:
 #       for inst in experiment['clients'][host]:
         filename = "{}/{}.out".format(dirname, inst['name'])
@@ -548,6 +552,7 @@ def parse_dir(dirname):
 
 
 def arrange_2d_results(experiment):
+    global suppress_warn
     # per start time: the 1 background app of choice, aggregate throughtput,  
     # 1 line per start time per server application
     apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
@@ -563,7 +568,8 @@ def arrange_2d_results(experiment):
     header2 = ["offered", "achieved", "p50", "p90", "p99", "p999", "p9999", "distribution"]     # app
     # header3 = ["tput", "baseline", "totaloffered", "totalachieved", "totalcpu"] #, "localcpu", "ioksaturation"]
 
-    header = header1 + header2 + IOK_DISPLAY_FIELDS + KONA_DISPLAY_FIELDS + ["outstanding"] + KONA_DISPLAY_FIELDS_EXTENDED + RSTAT_DISPLAY_FIELDS
+    header = header1 + header2 + IOK_DISPLAY_FIELDS + KONA_DISPLAY_FIELDS + ["outstanding"] + \
+                KONA_DISPLAY_FIELDS_EXTENDED + RSTAT_DISPLAY_FIELDS
     lines = [header]
     ncons = 0
     for list_pm in experiment['clients'].itervalues():
@@ -572,7 +578,7 @@ def arrange_2d_results(experiment):
 
     for time_point in by_time_point:
         times = set(t['time'] for t in time_point)
-        print(times)
+        # print(times)
         #assert len(times) == 1 # all start times are the same
         time = times.pop()
         if len(times) == 1: assert abs(times.pop() - time) <= 1
@@ -584,26 +590,56 @@ def arrange_2d_results(experiment):
         total_offered = sum(t['offered'] for t in time_point)
         total_achieved = sum(t['achieved'] for t in time_point)
         for point in time_point:
-            out = [experiment['system'], point['app']['app'], bg['app'] if bg else None, point['app'].get('transport', None), point['app']['spin'] > 1, ncons, point['app']['threads']]
+            # Client-side numbers
+            out = [experiment['system'], point['app']['app'], bg['app'] if bg else None, 
+                    point['app'].get('transport', None), point['app']['spin'] > 1, ncons, 
+                    point['app']['threads']]
             out += [point[k] for k in header2]
-            # out += [bgtput, bgbaseline, total_offered, total_achieved, cpu]
-            # out += [rfaults, wfaults, tfaults, netin, netout, maxmem, maxpressure]
+
+            # Stats at Shenango I/O Core
             for field in IOK_DISPLAY_FIELDS:
-                if experiment['ioklog']:   out.append(extract_window(experiment['ioklog'][field], time, runtime))
+                if experiment['ioklog']:   
+                    out.append(extract_window(experiment['ioklog'][field], time, runtime))
                 else:   out.append(None)
+
+            # Stats from Kona
             for field in KONA_DISPLAY_FIELDS:
-                if experiment['konalog']:   out.append(extract_window(experiment['konalog'][field], time, runtime, 
-                                                accumulated=(field in KONA_FIELDS_ACCUMULATED)))
-                else:   out.append(None)
+                if experiment['konalog']:   
+                    out.append(extract_window(experiment['konalog'][field], time, runtime, 
+                        accumulated=(field in KONA_FIELDS_ACCUMULATED)))
+                else:  out.append(None)
             out.append(extract_window_max(experiment['konalog']["n_poller_copy_fail"], time, runtime))
             for field in KONA_DISPLAY_FIELDS_EXTENDED:
-                if experiment['konalogext']:   out.append(extract_window(experiment['konalogext'][field], time, runtime, 
-                                                accumulated=(field in KONA_FIELDS_ACCUMULATED)))
+                if experiment['konalogext']:   
+                    out.append(extract_window(experiment['konalogext'][field], time, runtime, 
+                        accumulated=(field in KONA_FIELDS_ACCUMULATED)))
                 else:   out.append(None)
+
+            # Stats from Shenango runtime
             for field in RSTAT_DISPLAY_FIELDS:
-                if point['app']['rstat']:   out.append(extract_window(point['app']['rstat'][field], time, runtime))
+                if point['app']['rstat']:   
+                    out.append(extract_window(point['app']['rstat'][field], time, runtime))
                 else:   out.append(None)
             lines.append(out)
+
+            # Detecting soft crashes by looking at anomalies in acheived throughput
+            # Only Shenango spits out second-by-second throughput numbers, the client just writes 
+            # aggregate throughput, so we look at the packet rate received at the I/O core.
+            if experiment['ioklog'] and experiment['ioklog']["RX_PULLED"]:
+                xput_series = extract_window_seq(experiment['ioklog']["RX_PULLED"], time, runtime, trim=0.1)
+                mean = None
+                for i, (_, val) in enumerate(xput_series):
+                    # print(val, mean)
+                    if mean:
+                        if val < mean / 2.0:
+                            print("WARNING! drastic throughput drop detected, possible soft crash")
+                            if not suppress_warn:
+                                sys.exit(1)
+                        mean = (mean * i + val) / (i + 1)
+                    else:
+                        mean = val
+
+        # Numbers for background apps, if any
         for bgl in bgs:
             continue; out = [experiment['system'], bgl['app'], bg['app'] if bg else None, 
                     None, bgl['spin'] > 1]
@@ -639,11 +675,11 @@ def print_res(res):
 
 
 def do_it_all(dirname, save_lat=False, save_kona=False, 
-    save_iok=False, save_rstat=False, start_offset=0):
+    save_iok=False, save_rstat=False, start_offset=0, end_offset=0):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
-    runtime = exp['clients'].itervalues().next()[0]['runtime'] + start_offset + 20
+    runtime = exp['clients'].itervalues().next()[0]['runtime'] + start_offset + end_offset
 
     STAT_F = "{}/stats/".format(dirname)
     os.system("mkdir -p " + STAT_F)
@@ -652,7 +688,6 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             x = ",".join([str(x) for x in line])
             print(x)
             f.write(x + '\n')
-
 
     # Write latencies too
     if save_lat:
@@ -666,7 +701,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
                     f.write("Latencies\n")
                     for k,v in sample['latencies'][0].items():
                         f.writelines([str(k) + "\n"] * v)
-                print(sample['offered'], sample['achieved'])
+                print("OFFERED: {}, ACHIEVED: {}".format(sample['offered'], sample['achieved']))
 
     if save_rstat:
         apps = [a for host in exp['apps'] for a in exp['apps'][host]]
@@ -675,7 +710,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             if not 'loadgen' in app: continue
             for i, sample in enumerate(app['loadgen']):
                 start = sample['time'] - start_offset
-                print(start, runtime)
+                # print(start, runtime)
                 rstatfile = STAT_F + "rstat_{}_{}".format(app['name'], i)
                 print("Writing runtime stats to " + rstatfile)
                 with open(rstatfile, "w") as f:
@@ -692,10 +727,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             if not 'loadgen' in app: continue
             for sample_id, sample in enumerate(app['loadgen']):
                 start = sample['time'] - start_offset
-                print(start, runtime)
-                # sample_id = 0
-                # start = int(experiment["start_time"])
-                # runtime = 100
+                # print(start, runtime)
                 iokfile = STAT_F + "iokstats_{}".format(sample_id)
                 print("Writing iok stats to " + iokfile)
                 with open(iokfile, "w") as f:
@@ -712,10 +744,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             if not 'loadgen' in app: continue
             for sample_id, sample in enumerate(app['loadgen']):
                 start = sample['time'] - start_offset
-                # sample_id = 0
-                # start = int(experiment["start_time"])
-                # runtime = 100
-                print(start, runtime)
+                # print(start, runtime)
                 konafile = STAT_F + "konastats_{}".format(sample_id)
                 print("Writing kona stats to " + konafile)
                 with open(konafile, "w") as f:
@@ -752,8 +781,10 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
 
                 konafile = STAT_F + "konastats_extended_aggregated_{}".format(sample_id)
                 print("Writing kona aggregated extended stats to " + konafile)
-                trimmed_avg = { k:np.nanmean([val if val != 0 else np.NaN for (_, val) in values ]) 
-                                for k,values in trimmed.items()}
+                trimmed_avg = {}
+                for k, values in trimmed.items():
+                    nonzero = [val for (_, val) in values if val != 0]
+                    trimmed_avg[k] = np.mean(nonzero) if nonzero else 0
                 with open(konafile, "w") as f:
                     json.dump(trimmed_avg, f, sort_keys=True,indent=4)
 
@@ -761,6 +792,8 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
 
 
 def main():
+    global suppress_warn
+
     parser = argparse.ArgumentParser("Summarizes exp results")
     parser.add_argument('-n', '--name', action='store', help='Exp (directory) name')
     parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
@@ -768,7 +801,9 @@ def main():
     parser.add_argument('-sk', '--kona', action='store_true', help='save kona stats to file', default=False)
     parser.add_argument('-si', '--iok', action='store_true', help='save iok stats to file', default=False)
     parser.add_argument('-sa', '--app', action='store_true', help='save app runtime stats to file', default=False)
-    parser.add_argument('-so', '--strtofst', action='store', help='see results from this many seconds before the the actual start time of the sample', type=int, default=0)
+    parser.add_argument('-so', '--strtofst', action='store', help='keep numbers from this many seconds before the the real start time of the sample', type=int, default=0)
+    parser.add_argument('-eo', '--endofst', action='store', help='keep numbers from this many seconds after the the real end time of the sample', type=int, default=0)
+    parser.add_argument('-sw', '--suppresswarn', action='store_true', help='suppress warnings and continue the program')
     args = parser.parse_args()
 
     expname = args.name
@@ -777,10 +812,12 @@ def main():
         latest = max(subfolders, key=os.path.getctime)
         expname = os.path.basename(os.path.split(latest)[0])
     dirname = os.path.join(args.dir, expname)
+    suppress_warn = args.suppresswarn
 
     print("Summarizing exp run: " + expname)
     do_it_all(dirname, save_lat=args.lat, save_kona=args.kona, 
-        save_iok=args.iok, save_rstat=args.app, start_offset=args.strtofst)
+        save_iok=args.iok, save_rstat=args.app, 
+        start_offset=args.strtofst, end_offset=args.endofst)
 
 if __name__ == '__main__':
     main()
