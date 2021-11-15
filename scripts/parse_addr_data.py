@@ -10,13 +10,14 @@ import glob
 from collections import defaultdict
 
 PAGE_OFFSET = 12
-PATTERN = "(read|write|eviction) fault at ([a-z0-9]+)"
+ADDR_PATTERN = "(read|write|eviction) fault at ([a-z0-9]+)"
+CHECKPT_PATTERN = "Checkpoint (\S+):([0-9]+)"
+CLIENT_LOG = "0-sc2-hs2-b1607.memcached.out"
 
 def main():
     parser = argparse.ArgumentParser("Visualize mem access patterns")
     parser.add_argument('-n', '--name', action='store', help='Exp (directory) name')
     parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
-    parser.add_argument('-st', '--start', action='store', type=int, help='Provide explicit start time')
     parser.add_argument('-of', '--offset', action='store_true', help='Offset addresses', default=False)
     args = parser.parse_args()
     
@@ -27,7 +28,8 @@ def main():
         expname = os.path.basename(os.path.split(latest)[0])
     dirname = os.path.join(args.dir, expname)
 
-    start = args.start
+    start = None
+    end = None
     times = []
     addrs = []
     types = []
@@ -35,9 +37,10 @@ def main():
         lines = f.read().splitlines()
         for line in lines:
             (time, log) = line.split(" ", 1)
-            if not start:   
-                start = int(time)
-            match = re.search(PATTERN, log)
+            
+            # Check for printed address
+            match = re.search(ADDR_PATTERN, log)
+            if not start:   start = int(time)
             if match:
                 type_ = match.group(1)
                 addr = int(match.group(2), 16)
@@ -45,6 +48,19 @@ def main():
                 times.append(int(time))
                 addrs.append(addr)
                 types.append(type_)
+                end = int(time)
+            
+    # Check for checkpoints
+    checkpoints = {}
+    with open("{}/{}".format(dirname, CLIENT_LOG), 'r') as f:
+        lines = f.read().splitlines()
+        for line in lines:     
+            match = re.match(CHECKPT_PATTERN, line)
+            if match:
+                label = match.group(1)
+                time = int(match.group(2))
+                checkpoints[label] = time
+    if "PreloadStart" in checkpoints:   start = checkpoints["PreloadStart"]
 
     times = [t - start for t in times]
     samples_per_sec = {t:times.count(t) for t in range(max(times))}
@@ -56,15 +72,20 @@ def main():
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     
+    if checkpoints:
+        with open(os.path.join(outdir, "checkpoints"), "w") as f:
+            for pt,time in checkpoints.items():
+                if start <= time <= end:
+                    f.write("{},{}\n".format(pt, time-start))
+    
     # Write addresses to file
     writes = os.path.join(outdir, "wfaults")
     reads = os.path.join(outdir, "rfaults")
     evicts = os.path.join(outdir, "evictions")
+    header = "time,addr,page,pgofst,gap\n"
     last_write = last_read = last_evict = None
     with open(writes, "w") as wf, open(reads, "w") as rf, open(evicts, "w") as ef:
-        wf.write("time,addr,page,pgofst,gap\n")
-        rf.write("time,addr,page,pgofst,gap\n")
-        ef.write("time,addr,page,pgofst,gap\n")
+        wf.write(header);   rf.write(header);   ef.write(header)
         step = 0.0
         prev_time = -1
         for time, addr, type_ in zip(times, addrs, types):

@@ -38,89 +38,6 @@ esac
 done
 
 
-# runs=(
-#     "run-11-08-14-29"
-#     "run-11-08-17-52"
-#     "run-11-08-18-45"
-#     "run-11-08-00-12"
-# )
-# for exp in ${runs[@]}; do 
-#     echo $exp;
-#     statsdir=data/$exp/stats
-#     konafile=$statsdir/konastats_$SAMPLE
-#     if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-#         python ${SCRIPT_DIR}/summary.py -n $exp --kona --iok --app -so 60 --suppresswarn
-#     fi
-# done
-# plots="$plots -d data/run-11-08-14-29/stats/konastats_$SAMPLE -l 0.7 "
-# plots="$plots -d data/run-11-08-17-52/stats/konastats_$SAMPLE -l 0.8 "
-# plots="$plots -d data/run-11-08-18-45/stats/konastats_$SAMPLE -l 0.9 "
-# plots="$plots -d data/run-11-08-00-12/stats/konastats_$SAMPLE -l 0.99"
-
-# plotname=${PLOTDIR}/mem_pressure_vary_et.$PLOTEXT
-# python3 ${SCRIPT_DIR}/plot.py ${plots}                      \
-#     -yc "mem_pressure"  -yl "Size (MB)" --ymul 1e-6         \
-#     -xc "time" -xl  "Time (secs)" -yl "Memory Used (MB)"    \
-#     --size 7 3.5 -fs 12  -of $PLOTEXT  -o $plotname -lt "Evict High Thr (1800 MB)"
-# display $plotname &
-
-plots=
-runs=(
-    "run-11-08-00-12"
-    "run-11-08-01-05"
-    "run-11-08-10-01"
-    "run-10-28-11-47"
-)
-for exp in ${runs[@]}; do 
-    echo $exp;
-    statsdir=data/$exp/stats
-    konafile=$statsdir/konastats_$SAMPLE
-    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-        python ${SCRIPT_DIR}/summary.py -n $exp --kona --iok --app -so 60 --suppresswarn
-    fi
-done
-plots="$plots -d data/run-11-08-00-12/stats/konastats_$SAMPLE -l 0.7 "
-plots="$plots -d data/run-11-08-01-05/stats/konastats_$SAMPLE -l 0.8 "
-plots="$plots -d data/run-11-08-10-01/stats/konastats_$SAMPLE -l 0.9 "
-plots="$plots -d data/run-10-28-11-47/stats/konastats_$SAMPLE -l 0.99"
-
-plotname=${PLOTDIR}/mem_pressure_vary_edt.$PLOTEXT
-python3 ${SCRIPT_DIR}/plot.py ${plots}                      \
-    -yc "mem_pressure"  -yl "Size (MB)" --ymul 1e-6         \
-    -xc "time" -xl  "Time (secs)" -yl "Memory Used (MB)"    \
-    --size 7 3.5 -fs 12  -of $PLOTEXT  -o $plotname -lt "Evict Low Thr (1800 MB)"
-display $plotname &
-
-
-# # Varying evict high watermark plots (No madvise notif, low watermark: 70%, 2 cores)
-# bash scripts/plotg.sh -lt="Evict High Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
-#     -cs1="11-\(08-23\|09-00\|09-01-00\)"    -l1="70%"       \
-#     -cs2="11-09-\(01-[1-5]\|02-[012]\)"     -l2="80%"       \
-#     -cs3="11-09-\(02-[345]\|03-[0-4]\)"     -l3="90%"       \
-#     -s4="11-09-04"                          -l4="99%"
-
-# # Varying evict high watermark plots (No madvise notif, low watermark: 70%, 8 cores)
-# bash scripts/plotg.sh -lt="Evict High Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
-#     -cs1="11-09-\(05\|06-[012]\)"           -l1="70%"       \
-#     -cs2="11-09-\(06-[345]\|07\)"           -l2="80%"       \
-#     -cs3="11-09-\(08\|09-[0-4]\)"           -l3="90%"       \
-#     -cs4="11-09-\(09-51\|1[012]\)"          -l4="99%"
-
-# # Varying evict high watermark plots (No madvise notif, low watermark: 70%)
-# bash scripts/plotg.sh -lt="Evict High Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
-#     -s1="11-08-14"                          -l1="70%"       \
-#     -cs2="11-08-\(17\|18-[01]\)"            -l2="80%"       \
-#     -cs3="11-08-\(18-[2345]\|19\)"          -l3="90%"       \
-#     -cs4="11-\(07-23\|08-00-[0123]\)"       -l4="99%"
-
-# # Varying evict low watermark plots (No madvise notif, high watermark: 99%)
-# bash scripts/plotg.sh -lt="Evict Low Watermark" ${FORCE_FLAG} ${FORCEP_FLAG} \
-#     -cs1="11-\(07-23\|08-00-[0123]\)"       -l1="70%"       \
-#     -cs2="11-08-\(00-[45]\|01-[012]\)"      -l2="80%"       \
-#     -cs3="11-08-\(01-[34]\|09\|10\)"        -l3="90%"       \
-#     -s4="10-28-11"                          -l4="99%"
-
-
 ############# ARCHIVED ##############################
 
 # # # Varying evict threshold plots (with madvise notif)
@@ -192,49 +109,65 @@ display $plotname &
 # # rm ${tmpfile}
 
 # # MEMCACHED MEM ACCESS
-# expname="run-10-17-21-19"     # .001 Mpps
-# expname="run-10-19-13-22"       # 2 Mpps
-# expname="run-10-23-22-50"       # 2 mpps, with evict addrs
-# python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname}
+# # expname="run-10-17-21-19"     # .001 Mpps
+# # expname="run-10-19-13-22"       # 2 Mpps
+# # expname="run-10-23-22-50"       # 2 mpps, with evict addrs
+# # expname="run-11-13-12-12"       # 0.001 Mpps, no workload
+# # expname="run-11-13-12-20"       # 2 Mpps, ET=0.99
+# # expname="run-11-13-13-19"       # 2 Mpps, ET=0.8
+# # expname="run-11-13-14-00"       # .1 Mpps
+# python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname} --offset
 
 # DATADIR=data/$expname/addrs/
 # PLOTDIR=data/$expname/plots
 # mkdir -p $PLOTDIR
+# checkpts=$DATADIR/checkpoints
+# if [ -f $checkpts ]; then 
+#     VLINES="--vlinesfile $checkpts"
+# fi
+# files=
+# XLIMS="--xmin 30 --xmax 120"
+# # XLIMS="--xmin 0"
 
 # datafile=${DATADIR}/rfaults
-# plotname=${PLOTDIR}/rfaults_gap.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
-#     -yc gap -yl "Read Gap" -xc "time"               \
-#     --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-# display $plotname &
+# plotname=${PLOTDIR}/rfaults.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}     \
+#     -yc addr -yl "Read Faulted Pages" --ymin 0 --ymax 2e9   \
+#     -xc "time" ${XLIMS}             $VLINES                 \
+#     --size 6 3 -of $PLOTEXT -o $plotname -fs 11
+# files="$files $plotname"
+# # display $plotname &
 
 # datafile=${DATADIR}/wfaults
-# plotname=${PLOTDIR}/wfaults_gap.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}        \
-#     -yc gap -yl "Write Gap" -xc "time"               \
-#     --size 6 3 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-# display $plotname &
+# plotname=${PLOTDIR}/wfaults.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}     \
+#     -yc addr -yl "Write Faulted Pages" --ymin 0 --ymax 2e9  \
+#     -xc "time" ${XLIMS}             $VLINES                 \
+#     --size 6 3 -of $PLOTEXT -o $plotname -fs 11
+# files="$files $plotname"
+# # display $plotname &
 
 # datafile=${DATADIR}/evictions
 # plotname=${PLOTDIR}/evictions.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}         \
-#     -yc addr -yl "Page Address" -xc time -xl "Time (secs)"      \
-#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-# display $plotname &
-
-# datafile=${DATADIR}/evictions
-# plotname=${PLOTDIR}/evictions_gap.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}        \
-#     -yc gap -yl "Eviction Gap" -xc time -xl "Time (secs)"    \
-#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 40 --xmax 90
-# display $plotname &
+# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}     \
+#     -yc addr -yl "Evicted Pages" --ymin 0 --ymax 2e9        \
+#     -xc "time" ${XLIMS}             $VLINES                 \
+#     --size 6 3 -of $PLOTEXT -o $plotname -fs 11
+# files="$files $plotname"
+# # display $plotname &
 
 # datafile=${DATADIR}/counts
 # plotname=${PLOTDIR}/counts.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}         \
-#     -yc rfaults -yc wfaults -yc evictions -xc "time" \
-#     --size 8 4 -of $PLOTEXT -o $plotname --xmin 30 --xmax 90
-# display $plotname &
+# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}            \
+#     -yc rfaults -yc wfaults -yc evictions -yl "Count"   \
+#     -xc "time" ${XLIMS}             $VLINES             \
+#     --size 6 3 -of $PLOTEXT -fs 11 -o $plotname
+# files="$files $plotname"
+# # display $plotname &
+
+# plotname=${PLOTDIR}/all_addrs_${expname}.$PLOTEXT
+# montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
+# display ${plotname} &
 # ==============================
 
 # for f in `ls run*/stats/stat.csv`; do

@@ -45,19 +45,6 @@ class PlotType(Enum):
     def __str__(self):
         return self.value
 
-class PlotSize(Enum):
-    xs = 'xs'
-    s = 's'
-    m = 'm'
-    l = 'l'
-    def __str__(self):
-        return self.value
-    def size_tuple(self):
-        if self.value == 'xs':      return (4,2)
-        if self.value == 's':       return (6,3)
-        if self.value == 'm':       return (8,4)
-        if self.value == 'l':       return (10,5)
-
 class LegendLoc(Enum):
     none = "none"
     best = 'best'
@@ -224,6 +211,10 @@ def parse_args():
         type=float,
         dest='vlines',
         help='Add a vertical line at specified x-value (multiple lines are allowed)')
+    
+    parser.add_argument('-vlf', '--vlinesfile', 
+        action='store', 
+        help='File with (label,xvalue) pairs for vertical lines, one pair per line')
 
     parser.add_argument('-tw', '--twin', 
         action='store', 
@@ -467,15 +458,12 @@ def main():
             ymul = args.tymul
             ymin = args.tymin
             ymax = args.tymax
-            # if args.tymin and args.tymax: ax.set_ylim(ymin=args.tymin,ymax=args.tymax)
-            # elif args.tymin:    ax.set_ylim(ymin=args.tymin)
-            # elif args.tymax:    ax.set_ylim(ymax=args.tymax)
 
         if not os.path.exists(datafile):
             print("Datafile {0} does not exist".format(datafile))
             return -1
 
-        df = pd.read_csv(datafile,skipinitialspace=True)
+        df = pd.read_csv(datafile, skipinitialspace=True)
         if args.print_:
             label = "{0}:{1}".format(datafile, ycol)
             print(label, df[ycol].mean(), df[ycol].std())
@@ -513,8 +501,9 @@ def main():
             yc = df[ycol]
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
+            marker_size = 2*(72./fig.dpi)**2 if len(yc) > 1000 else None
             ax.scatter(xc, yc, label=label, color=colors[cidx],
-                marker=(None if args.nomarker else markers[midx]))
+                marker=(None if args.nomarker else markers[midx]), s=(72./fig.dpi)**2)
             if args.xstr:   ax.set_xticks(xc)
             if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 
@@ -547,16 +536,6 @@ def main():
 
         elif args.ptype == PlotType.cdf:
             xc, yc = gen_cdf(df[ycol], 100000)
-            #compress buckets
-            # bsize = int(len(df[ycol]) / 100000)
-            # xc = []
-            # yc = []
-            # if bsize == 0:   bsize = 1 
-            # for i, count in enumerate(df[ycol]):
-            #     if i % bsize == 0:
-            #         xc.append(i)
-            #         yc.append(yc[-1] if yc else 0)
-            #     yc[-1] += count
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
@@ -638,6 +617,16 @@ def main():
             plt.axvline(x=vline, ls='dashed')
             plt.text(vline, 0.1, str(vline), transform=axmain.get_xaxis_transform(), 
                 color='black', fontsize='small',rotation=90)
+    if args.vlinesfile:
+        if os.path.exists(args.vlinesfile):
+            with open(args.vlinesfile) as f:
+                for line in f.readlines():
+                    label = line.split(",")[0]
+                    xval = int(line.split(",")[1])
+                    plt.axvline(x=xval, ls='dashed', color='black')
+                    plt.text(xval, 0.3, str(label), transform=axmain.get_xaxis_transform(), 
+                        color='black', fontsize='small',rotation=90)
+
 
     # plt.savefig(args.output, format="eps")
     plt.savefig(args.output, format=str(args.outformat))

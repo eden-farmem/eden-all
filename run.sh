@@ -1,29 +1,29 @@
 #
 # Run experiments
 #
-RUNTIME=100
+RUNTIME=30
 
 # # Kona Params
 # cfg=CONFIG_NO_DIRTY_TRACK
 cfg=CONFIG_WP
 # cfg=NO_KONA
-kona_cflags="-DPRINT_FAULT_ADDRS"
+# kona_cflags="-DPRINT_FAULT_ADDRS"
 # kona_cflags="-DREGISTER_MADVISE_NOTIF"
 # kona_cflags="-DBATCH_EVICTION"
 
 EVICT_THR=.99
-EVICT_DONE_THR=0.99 
+EVICT_DONE_THR=.7
 EVICT_BATCH_SIZE=1
 
 # # Client Params
 CONNS=1000
-MPPS=0
+MPPS=2
 KEYSPACE=10M  #not configurable yet
-MEM=1600
+MEM=1800
 
 # # Client debugging config
-# CONNS=10
-# MPPS=1e-3
+# CONNS=5
+# MPPS=1e-4
 # CONNS=100
 # MPPS=.25
 # MEM=20
@@ -44,8 +44,8 @@ fi
 # for kona_cflags in ""; do
 # for SCORES in 8; do
 # for kona_cflags in "" "-DREGISTER_MADVISE_NOTIF"; do
-    # for EVICT_THR in 0.99; do
-    # for EVICT_DONE_THR in 0.7; do
+    # for EVICT_THR in 0.9; do
+    for EVICT_DONE_THR in 0.7 0.8 0.9 0.99; do
     # for EVICT_BATCH_SIZE in 2 4; do
         # for mem in `seq 2000 200 2600`; do
         for mem in $MEM; do
@@ -54,9 +54,10 @@ fi
             ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            DESC="(evict watermarks)"
+            DESC="(varying evict high watermark)"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
-            # STOPAT="--stopat 4"     # debugging
+            # STOPAT="--stopat 4"     
+            # debugging
             if [[ "$cfg" == "NO_KONA" ]]; then
                 python scripts/experiment.py --nokona -p udp -nc $CONNS --time $RUNTIME \
                     --start $MPPS --finish $MPPS --scores $SCORES ${warmup} ${STOPAT} ${kona_evict} \
@@ -69,7 +70,7 @@ fi
 
             sleep 5
         done
-    # done
+    done
 # done
 
 

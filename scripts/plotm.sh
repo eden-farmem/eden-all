@@ -93,6 +93,8 @@ for exp in $LS_CMD; do
     konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
     if [ $konamem == "null" ]; then konamem_mb=$SOME_BIG_NUMBER;
     else    konamem_mb=`echo $konamem | awk '{ print $1/1000000 }'`;     fi
+    konaet=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_thr' $cfg`
+    konaedt=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_done_thr' $cfg`
     konaebs=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_batch_sz' $cfg`
     prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
     nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`

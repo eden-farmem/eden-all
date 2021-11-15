@@ -73,13 +73,14 @@ def merge_lat(list_of_tuples):
     return c, dropped
 
 
-def parse_loadgen_output(filename):
+def parse_client_output(filename):
     with open(filename) as f:
         dat = f.read()
 
+    checkpoints = {}
     samples = []
     line_starts = ["Latencies: ", "Trace: ", "zero, ","exponential, ",
-                   "bimodal1, ", "constant, "]
+                   "bimodal1, ", "constant, ", "Checkpoint "]
 
     def get_line_start(line):
         for l in line_starts:
@@ -114,6 +115,12 @@ def parse_loadgen_output(filename):
                 'tracepoints': tracepoints,
                 'time': int(header_line[10]),
             })
+        elif line_start == "Checkpoint ":
+            match = re.match("Checkpoint (\S+):([0-9]+)", line)
+            assert match is not None
+            label = match.group(1)
+            time = int(match.group(2))
+            checkpoints[label] = time
         else:
             # print(header_line)
             header_line = line.strip().split(", ")
@@ -137,7 +144,8 @@ def parse_loadgen_output(filename):
             'latencies': ({}, int(header_line[3])),
             'time': int(header_line[10]),
         })
-    return samples
+
+    return {"checkpts": checkpoints, "samples": samples}
 
 
 def merge_sample_sets(a, b):
@@ -490,34 +498,40 @@ def extract_window_max(datapoints, wct_start, duration_sec, accumulated=False):
     return max(data)
 
 def load_loadgen_results(experiment, dirname):
-    insts = [i for host in experiment['clients'] for i in experiment['clients'][host]]
+    clients = [i for host in experiment['clients'] for i in experiment['clients'][host]]
     apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
 
-    if not insts:
-        print(insts)
-        insts = [i for i in apps if i.get('protocol') == 'synthetic']   # local synth;
-        experiment['clients'][experiment['server_hostname']] = insts    #[i for i in insts if i.get('protocol') == 'synthetic'] #experiment['apps'] #semicorrect
-    for inst in insts: #host in experiment['clients']:
-#       for inst in experiment['clients'][host]:
-        filename = "{}/{}.out".format(dirname, inst['name'])
+    if not clients:
+        print(clients)
+        clients = [i for i in apps if i.get('protocol') == 'synthetic']   # local client;
+        experiment['clients'][experiment['server_hostname']] = clients
+
+    for client in clients:
+        filename = "{}/{}.out".format(dirname, client['name'])
         assert os.access(filename, os.F_OK)
         print("Parsing " + filename)
-        data = parse_loadgen_output(filename)
-        # assert len(data) == inst['samples'], filename
-        if inst['name'] != "localsynth":
-            server_handle = inst['name'].split(".")[1] 
+        output = parse_client_output(filename)
+        assert len(output["samples"]) == client['samples'], filename
+        client["output"] = output
+
+        # Find server app
+        if client['name'] != "localsynth":
+            server_handle = client['name'].split(".")[1] 
             app = next(app for app in apps if app['name'] == server_handle)
         else:
-            app = inst #local
+            app = client #local
+
         if not 'loadgen' in app:
-            app['loadgen'] = data
+            app['loadgen'] = output
         else:
-            app['loadgen'] = merge_sample_sets(app['loadgen'], data)
+            data = app['loadgen']
+            assert 'checkpts' not in data, "Yet to implement merging checkpt data for multiple clients!"
+            data['samples'] = merge_sample_sets(data['samples'], output['samples'])
         # print(len(app["loadgen"]))
 
     for app in apps:
         if not 'loadgen' in app: continue
-        for sample in app['loadgen']:
+        for sample in app['loadgen']['samples']:
             latd = sample['latencies']
             sample['p50'] = percentile(latd, 0.5)
             sample['p90'] = percentile(latd, 0.9)
@@ -537,7 +551,9 @@ def parse_dir(dirname):
     load_loadgen_results(experiment, dirname)
 
     apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
-    samples = [sample['time'] for app in apps for sample in app.get('loadgen', [])]
+    samples = [sample['time'] for app in apps \
+                for sample in (app['loadgen']['samples'] \
+                if 'loadgen' in app else [])]
     start_time = min(samples) if samples else 0
 
     for app in apps:
@@ -556,7 +572,7 @@ def arrange_2d_results(experiment):
     # per start time: the 1 background app of choice, aggregate throughtput,  
     # 1 line per start time per server application
     apps = [a for host in experiment['apps'] for a in experiment['apps'][host]]
-    by_time_point = zip(*(app['loadgen'] for app in apps if 'loadgen' in app))
+    by_time_point = zip(*(app['loadgen']['samples'] for app in apps if 'loadgen' in app))
     bgs = [app for app in apps if app['output']]
     # TODO support multiple bg apps
     assert len(bgs) <= 1
@@ -675,11 +691,30 @@ def print_res(res):
 
 
 def do_it_all(dirname, save_lat=False, save_kona=False, 
-    save_iok=False, save_rstat=False, start_offset=0, end_offset=0):
+    save_iok=False, save_rstat=False, sample_id=None):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
     bycol = rotate(stats)
-    runtime = exp['clients'].itervalues().next()[0]['runtime'] + start_offset + end_offset
+    runtime = exp['clients'].itervalues().next()[0]['runtime']
+
+    main_apps = [a for host in exp['apps'] for a in exp['apps'][host] if 'loadgen' in a]
+    assert len(main_apps) == 1, "Only expecting memcached for now"
+    app = next(iter(main_apps))
+    samples = app['loadgen']['samples']
+    sduration = exp['clients'].itervalues().next()[0]['runtime']
+    sid = sample_id - 1 if sample_id else None
+    checkpts = app['loadgen']['checkpts']
+
+    if sid is not None:
+        assert 0 <= sid < len(samples), "Invalid sample id"
+        start = samples[sid]['time']
+        runtime = sduration
+    else:
+        # If sample is not specified, write metrics for entire run
+        if "PreloadStart" in checkpts:  start = checkpts['PreloadStart']
+        else:   start = min([s['time'] for s in samples]) if samples else 0
+        runtime = max([s['time'] for s in samples]) + sduration - start
+    print(start, runtime)
 
     STAT_F = "{}/stats/".format(dirname)
     os.system("mkdir -p " + STAT_F)
@@ -689,104 +724,91 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
             print(x)
             f.write(x + '\n')
 
+    if checkpts:    
+        with open(STAT_F + "checkpoints", "w") as f:
+            print("Writing checkpoints to " + STAT_F + "checkpoints")
+            # f.write("label,time")
+            for pt,time in checkpts.items():
+                if start <= time <= start + runtime:
+                    f.write("{},{}\n".format(pt, time-start))
+
     # Write latencies too
     if save_lat:
-        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
-        for app in apps:
-            if not 'loadgen' in app: continue
-            for i, sample in enumerate(app['loadgen']):
-                latfile = STAT_F + "latencies_{}".format(i)
-                print("Writing latencies to " + latfile)
-                with open(latfile, "w") as f:
-                    f.write("Latencies\n")
-                    for k,v in sample['latencies'][0].items():
-                        f.writelines([str(k) + "\n"] * v)
-                print("OFFERED: {}, ACHIEVED: {}".format(sample['offered'], sample['achieved']))
+        for i, sample in enumerate(samples):
+            latfile = STAT_F + "latencies_{}".format(i+1)
+            print("Writing latencies to " + latfile)
+            with open(latfile, "w") as f:
+                f.write("Latencies\n")
+                for k,v in sample['latencies'][0].items():
+                    f.writelines([str(k) + "\n"] * v)
+            print("OFFERED: {}, ACHIEVED: {}".format(sample['offered'], sample['achieved']))
 
     if save_rstat:
-        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
-        for app in apps:
-            if not app['rstat']: continue
-            if not 'loadgen' in app: continue
-            for i, sample in enumerate(app['loadgen']):
-                start = sample['time'] - start_offset
-                # print(start, runtime)
-                rstatfile = STAT_F + "rstat_{}_{}".format(app['name'], i)
-                print("Writing runtime stats to " + rstatfile)
-                with open(rstatfile, "w") as f:
-                    trimmed = { k:extract_window_seq(v, start, runtime) for k,v in app['rstat'].items()}
-                    # print(trimmed.keys())
-                    f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed.values()[0]):
-                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
-                        f.write(",".join(values) + "\n")
+        if app['rstat']:
+            rstatfile = STAT_F + "rstat_{}".format(app['name'])
+            print("Writing runtime stats to " + rstatfile)
+            with open(rstatfile, "w") as f:
+                trimmed = { k:extract_window_seq(v, start, runtime) for k,v in app['rstat'].items()}
+                # print(trimmed.keys())
+                f.write("time," + ",".join(trimmed.keys()) + "\n")
+                for i, (time, _) in enumerate(trimmed.values()[0]):
+                    values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                    f.write(",".join(values) + "\n")
     
     if save_iok and exp['ioklog']:
-        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
-        for app in apps:
-            if not 'loadgen' in app: continue
-            for sample_id, sample in enumerate(app['loadgen']):
-                start = sample['time'] - start_offset
-                # print(start, runtime)
-                iokfile = STAT_F + "iokstats_{}".format(sample_id)
-                print("Writing iok stats to " + iokfile)
-                with open(iokfile, "w") as f:
-                    trimmed = { k:extract_window_seq(v, start, runtime) for k,v in exp['ioklog'].items()}
-                    # print(trimmed['TX_PULLED'])
-                    f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed.values()[0]):
-                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
-                        f.write(",".join(values) + "\n")
+        iokfile = STAT_F + "iokstats"
+        print("Writing iok stats to " + iokfile)
+        with open(iokfile, "w") as f:
+            trimmed = { k:extract_window_seq(v, start, runtime) for k,v in exp['ioklog'].items()}
+            # print(trimmed['TX_PULLED'])
+            f.write("time," + ",".join(trimmed.keys()) + "\n")
+            for i, (time, _) in enumerate(trimmed.values()[0]):
+                values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                f.write(",".join(values) + "\n")
 
     if save_kona and exp['konalog']:
-        apps = [a for host in exp['apps'] for a in exp['apps'][host]]
-        for app in apps:
-            if not 'loadgen' in app: continue
-            for sample_id, sample in enumerate(app['loadgen']):
-                start = sample['time'] - start_offset
-                # print(start, runtime)
-                konafile = STAT_F + "konastats_{}".format(sample_id)
-                print("Writing kona stats to " + konafile)
-                with open(konafile, "w") as f:
-                    # FIXME: Some columns might not be cumulative
-                    trimmed = {}
-                    for k,v in exp['konalog'].items():
-                        trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
-                        # ignore first row for non-accumulated ones
-                        if k not in KONA_FIELDS_ACCUMULATED:
-                            trimmed[k] = trimmed[k][1:] 
+        konafile = STAT_F + "konastats"
+        print("Writing kona stats to " + konafile)
+        with open(konafile, "w") as f:
+            # FIXME: Some columns might not be cumulative
+            trimmed = {}
+            for k,v in exp['konalog'].items():
+                trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
+                # ignore first row for non-accumulated ones
+                if k not in KONA_FIELDS_ACCUMULATED:
+                    trimmed[k] = trimmed[k][1:] 
 
-                    # print(trimmed)
-                    f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed.values()[0]):
-                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
-                        f.write(",".join(values) + "\n")
+            # print(trimmed)
+            f.write("time," + ",".join(trimmed.keys()) + "\n")
+            for i, (time, _) in enumerate(trimmed.values()[0]):
+                values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                f.write(",".join(values) + "\n")
                 
-                # Write kona extended stats
-                trimmed = {}
-                for k,v in exp['konalogext'].items():
-                    trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
-                    # ignore first row for non-accumulated ones
-                    if k not in KONA_FIELDS_ACCUMULATED:
-                        trimmed[k] = trimmed[k][1:] 
-                # print(trimmed)
+            # Write kona extended stats
+            trimmed = {}
+            for k,v in exp['konalogext'].items():
+                trimmed[k] = extract_window_seq(v, start, runtime, accumulated=(k in KONA_FIELDS_ACCUMULATED)) 
+                # ignore first row for non-accumulated ones
+                if k not in KONA_FIELDS_ACCUMULATED:
+                    trimmed[k] = trimmed[k][1:] 
+            # print(trimmed)
 
-                konafile = STAT_F + "konastats_extended_{}".format(sample_id)
-                print("Writing kona extended stats to " + konafile)
-                with open(konafile, "w") as f:                
-                    f.write("time," + ",".join(trimmed.keys()) + "\n")
-                    for i, (time, _) in enumerate(trimmed.values()[0]):
-                        values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
-                        f.write(",".join(values) + "\n")
+        konafile = STAT_F + "konastats_extended"
+        print("Writing kona extended stats to " + konafile)
+        with open(konafile, "w") as f:                
+            f.write("time," + ",".join(trimmed.keys()) + "\n")
+            for i, (time, _) in enumerate(trimmed.values()[0]):
+                values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]
+                f.write(",".join(values) + "\n")
 
-                konafile = STAT_F + "konastats_extended_aggregated_{}".format(sample_id)
-                print("Writing kona aggregated extended stats to " + konafile)
-                trimmed_avg = {}
-                for k, values in trimmed.items():
-                    nonzero = [val for (_, val) in values if val != 0]
-                    trimmed_avg[k] = np.mean(nonzero) if nonzero else 0
-                with open(konafile, "w") as f:
-                    json.dump(trimmed_avg, f, sort_keys=True,indent=4)
+        konafile = STAT_F + "konastats_extended_aggregated"
+        print("Writing kona aggregated extended stats to " + konafile)
+        trimmed_avg = {}
+        for k, values in trimmed.items():
+            nonzero = [val for (_, val) in values if val != 0]
+            trimmed_avg[k] = np.mean(nonzero) if nonzero else 0
+        with open(konafile, "w") as f:
+            json.dump(trimmed_avg, f, sort_keys=True,indent=4)
 
     return bycol
 
@@ -797,12 +819,11 @@ def main():
     parser = argparse.ArgumentParser("Summarizes exp results")
     parser.add_argument('-n', '--name', action='store', help='Exp (directory) name')
     parser.add_argument('-d', '--dir', action='store', help='Path to data dir', default="./data")
+    parser.add_argument('-s', '--sample', action='store', type=int, help='Sample ID to filter stats for')
     parser.add_argument('-sl', '--lat', action='store_true', help='save latencies to file', default=False)
     parser.add_argument('-sk', '--kona', action='store_true', help='save kona stats to file', default=False)
     parser.add_argument('-si', '--iok', action='store_true', help='save iok stats to file', default=False)
     parser.add_argument('-sa', '--app', action='store_true', help='save app runtime stats to file', default=False)
-    parser.add_argument('-so', '--strtofst', action='store', help='keep numbers from this many seconds before the the real start time of the sample', type=int, default=0)
-    parser.add_argument('-eo', '--endofst', action='store', help='keep numbers from this many seconds after the the real end time of the sample', type=int, default=0)
     parser.add_argument('-sw', '--suppresswarn', action='store_true', help='suppress warnings and continue the program')
     args = parser.parse_args()
 
@@ -816,8 +837,7 @@ def main():
 
     print("Summarizing exp run: " + expname)
     do_it_all(dirname, save_lat=args.lat, save_kona=args.kona, 
-        save_iok=args.iok, save_rstat=args.app, 
-        start_offset=args.strtofst, end_offset=args.endofst)
+        save_iok=args.iok, save_rstat=args.app, sample_id=args.sample)
 
 if __name__ == '__main__':
     main()

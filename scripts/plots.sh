@@ -9,12 +9,12 @@ DATADIR=data
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
 CLIENT="sc2-hs2-b1607"
-SAMPLE=0
 
 usage="\n
 -n, --name \t\t experiment to consider\n
 -f, --force \t\t force re-summarize results\n
--v, --verbose \t\t show all plots/metrics we have\n"
+-v, --verbose \t\t show all plots/metrics we have\n
+-a, --annotate \t\t mark charts with relevant text annotations\n"
 
 for i in "$@"
 do
@@ -29,6 +29,15 @@ case $i in
 
     -v|--verbose)
     VERBOSE=1
+    ;;
+
+    -a|--annotate)
+    ANNOTATE=1
+    ;;
+
+    -s=*|--sample=*)
+    SAMPLE="${i#*=}"
+    SAMPLE_ARG="--sample $SAMPLE"
     ;;
 
     *)                      # unknown option
@@ -53,23 +62,29 @@ mkdir -p ${PLOTDIR}
 statsdir=$exp/stats
 statfile=$statsdir/stat.csv
 if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-    python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --iok --app -so 60 --suppresswarn
+    python ${SCRIPT_DIR}/summary.py -n $name ${SAMPLE_ARG} \
+        --kona --iok --app --suppresswarn
 fi
 ls $statsdir
 
-# Plot memcached
+checkpts=$statsdir/checkpoints
+if [[ $ANNOTATE ]] && [ -f $checkpts ]; then 
+    VLINES="--vlinesfile $checkpts"
+fi
+
+# Plot Xput
 datafile=$statsdir/stat.csv
-# get offered and achieved xput 
+# TODO: Client does not emit time-series xput data 
 
 # Plot iok stats
-datafile=$statsdir/iokstats_$SAMPLE
+datafile=$statsdir/iokstats
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_iokstats.$PLOTEXT
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
         -yc "TX_PULLED" -l "Acheived" -ls solid                 \
         -yc "RX_PULLED" -l "Offered" -ls solid                  \
         -xc "time" -xl  "Time (secs)" -yl "Million pkts/sec"    \
-        --ymin 0 --ymax 2.1 --ymul 1e-6 -lt "Xput (I/O Core)" \
+        --ymin 0 --ymax 2.1 --ymul 1e-6 -lt "Xput (I/O Core)"   \
         --size 6 3 -fs 12 -of $PLOTEXT  -o $plotname
     files="$files $plotname"
     # display $plotname & 
@@ -78,11 +93,11 @@ if [ -f $datafile ]; then
 fi
 
 # Plot kona 
-datafile=$statsdir/konastats_$SAMPLE
+datafile=$statsdir/konastats
 if [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_konastats.$PLOTEXT
     if [[ $VERBOSE ]]; then 
-        python3 ${SCRIPT_DIR}/plot.py -d ${datafile}            \
+        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
             -yc "n_faults" -l "Total Faults" -ls solid          \
             -yc "n_faults_r" -l "Read Faults" -ls solid         \
             -yc "n_faults_w" -l "Write Faults" -ls solid        \
@@ -97,7 +112,7 @@ if [ -f $datafile ]; then
             --ymin 0 --ymax 70 -lt "Kona Faults"  --ymul 1e-3   \
             --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
     else 
-        python3 ${SCRIPT_DIR}/plot.py -d ${datafile}            \
+        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
             -yc "n_faults" -l "Total Faults" -ls solid          \
             -yc "n_net_page_in" -l "Net In" -ls solid           \
             -yc "n_net_page_out" -l "Net Out" -ls solid         \
@@ -111,10 +126,10 @@ if [ -f $datafile ]; then
     # display $plotname &  
 fi
 
-datafile=$statsdir/konastats_extended_$SAMPLE
+datafile=$statsdir/konastats_extended
 if [[ $VERBOSE ]] && [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_konastats_extended.$PLOTEXT
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                    \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}          \
         -yc "PERF_EVICT_TOTAL" -l "Total Eviction" -ls solid        \
         -yc "PERF_EVICT_WP" -l "Eviction WP" -ls solid              \
         -yc "PERF_RDMA_WRITE" -l "Issue Write" -ls solid            \
@@ -133,10 +148,10 @@ if [[ $VERBOSE ]] && [ -f $datafile ]; then
 fi
 
 # Plot runtime stats
-datafile=$statsdir/rstat_memcached_$SAMPLE
+datafile=$statsdir/rstat_memcached
 if [[ $VERBOSE ]] && [ -f $datafile ]; then 
     plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
         -yc "rxpkt" -l "From I/O Core" -ls solid                \
         -yc "txpkt" -l "To I/O Core" -ls solid                  \
         -yc "drops" -l "Pkt drops" -ls solid                    \
@@ -149,7 +164,7 @@ if [[ $VERBOSE ]] && [ -f $datafile ]; then
     # display $plotname & 
 
     # plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
-    # python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
+    # python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
     #     -yc "stolenpct" -l "Stolen Work %" -ls solid            \
     #     -yc "migratedpct" -l "Core Migration %" -ls solid       \
     #     -yc "localschedpct" -l "Core Local Work %" -ls solid    \

@@ -240,8 +240,8 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'app': 'synthetic',
             'serverip': server_handle['ip'],
             'serverport': server_handle['port'],
-            'output': kwargs.get('output', "buckets"),
-            # 'output': kwargs.get('output', "normal"),       # don't print latencies
+            # 'output': kwargs.get('output', "buckets"),
+            'output': kwargs.get('output', "normal"),       # don't print latencies
             'mpps': float(mpps) / count,
             'protocol': server_handle['protocol'],
             'transport': server_handle['transport'],
