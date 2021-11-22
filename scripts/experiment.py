@@ -683,6 +683,7 @@ def execute_experiment(experiment):
             dir=experiment['name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
         print("DUMP MEMCACHED NOW!")
         if stopat == 4:     time.sleep(3000)
+        # time.sleep(300) #UNDO: Wait some time to look at background numbers
     except:
         error = True
         raise

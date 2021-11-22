@@ -503,7 +503,7 @@ def main():
             yc = [y * ymul for y in yc]
             marker_size = 2*(72./fig.dpi)**2 if len(yc) > 1000 else None
             ax.scatter(xc, yc, label=label, color=colors[cidx],
-                marker=(None if args.nomarker else markers[midx]), s=(72./fig.dpi)**2)
+                marker=(None if args.nomarker else markers[midx]), s=marker_size)
             if args.xstr:   ax.set_xticks(xc)
             if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 

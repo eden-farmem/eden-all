@@ -108,67 +108,6 @@ done
 # display $plotname &
 # # rm ${tmpfile}
 
-# # MEMCACHED MEM ACCESS
-# # expname="run-10-17-21-19"     # .001 Mpps
-# # expname="run-10-19-13-22"       # 2 Mpps
-# # expname="run-10-23-22-50"       # 2 mpps, with evict addrs
-# # expname="run-11-13-12-12"       # 0.001 Mpps, no workload
-# # expname="run-11-13-12-20"       # 2 Mpps, ET=0.99
-# # expname="run-11-13-13-19"       # 2 Mpps, ET=0.8
-# # expname="run-11-13-14-00"       # .1 Mpps
-# python ${SCRIPT_DIR}/parse_addr_data.py -n ${expname} --offset
-
-# DATADIR=data/$expname/addrs/
-# PLOTDIR=data/$expname/plots
-# mkdir -p $PLOTDIR
-# checkpts=$DATADIR/checkpoints
-# if [ -f $checkpts ]; then 
-#     VLINES="--vlinesfile $checkpts"
-# fi
-# files=
-# XLIMS="--xmin 30 --xmax 120"
-# # XLIMS="--xmin 0"
-
-# datafile=${DATADIR}/rfaults
-# plotname=${PLOTDIR}/rfaults.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}     \
-#     -yc addr -yl "Read Faulted Pages" --ymin 0 --ymax 2e9   \
-#     -xc "time" ${XLIMS}             $VLINES                 \
-#     --size 6 3 -of $PLOTEXT -o $plotname -fs 11
-# files="$files $plotname"
-# # display $plotname &
-
-# datafile=${DATADIR}/wfaults
-# plotname=${PLOTDIR}/wfaults.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}     \
-#     -yc addr -yl "Write Faulted Pages" --ymin 0 --ymax 2e9  \
-#     -xc "time" ${XLIMS}             $VLINES                 \
-#     --size 6 3 -of $PLOTEXT -o $plotname -fs 11
-# files="$files $plotname"
-# # display $plotname &
-
-# datafile=${DATADIR}/evictions
-# plotname=${PLOTDIR}/evictions.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -z scatter -d ${datafile}     \
-#     -yc addr -yl "Evicted Pages" --ymin 0 --ymax 2e9        \
-#     -xc "time" ${XLIMS}             $VLINES                 \
-#     --size 6 3 -of $PLOTEXT -o $plotname -fs 11
-# files="$files $plotname"
-# # display $plotname &
-
-# datafile=${DATADIR}/counts
-# plotname=${PLOTDIR}/counts.${PLOTEXT}
-# python3 ${SCRIPT_DIR}/plot.py -d ${datafile}            \
-#     -yc rfaults -yc wfaults -yc evictions -yl "Count"   \
-#     -xc "time" ${XLIMS}             $VLINES             \
-#     --size 6 3 -of $PLOTEXT -fs 11 -o $plotname
-# files="$files $plotname"
-# # display $plotname &
-
-# plotname=${PLOTDIR}/all_addrs_${expname}.$PLOTEXT
-# montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
-# display ${plotname} &
-# ==============================
 
 # for f in `ls run*/stats/stat.csv`; do
 # for f in `ls run.20210805082856-shenango-memcached-tcp/stats/stat.csv`; do

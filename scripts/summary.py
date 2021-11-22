@@ -14,7 +14,7 @@ import numpy as np
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]
 KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
-    "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty", "n_faults_wp", "n_flush_fail"]                            
+    "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty", "n_faults_wp", "n_flush_fail", "n_evictions"]                            
 KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
@@ -641,11 +641,10 @@ def arrange_2d_results(experiment):
             # Detecting soft crashes by looking at anomalies in acheived throughput
             # Only Shenango spits out second-by-second throughput numbers, the client just writes 
             # aggregate throughput, so we look at the packet rate received at the I/O core.
-            if experiment['ioklog'] and experiment['ioklog']["RX_PULLED"]:
-                xput_series = extract_window_seq(experiment['ioklog']["RX_PULLED"], time, runtime, trim=0.1)
+            if experiment['ioklog'] and experiment['ioklog']["TX_PULLED"]:
+                xput_series = extract_window_seq(experiment['ioklog']["TX_PULLED"], time, runtime, trim=0.1)
                 mean = None
                 for i, (_, val) in enumerate(xput_series):
-                    # print(val, mean)
                     if mean:
                         if val < mean / 2.0:
                             print("WARNING! drastic throughput drop detected, possible soft crash")
@@ -713,7 +712,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
         # If sample is not specified, write metrics for entire run
         if "PreloadStart" in checkpts:  start = checkpts['PreloadStart']
         else:   start = min([s['time'] for s in samples]) if samples else 0
-        runtime = max([s['time'] for s in samples]) + sduration - start
+        runtime = max([s['time'] for s in samples]) + sduration + 10 - start
     print(start, runtime)
 
     STAT_F = "{}/stats/".format(dirname)
@@ -728,6 +727,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
         with open(STAT_F + "checkpoints", "w") as f:
             print("Writing checkpoints to " + STAT_F + "checkpoints")
             # f.write("label,time")
+            print(checkpts)
             for pt,time in checkpts.items():
                 if start <= time <= start + runtime:
                     f.write("{},{}\n".format(pt, time-start))
@@ -777,8 +777,8 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
                 # ignore first row for non-accumulated ones
                 if k not in KONA_FIELDS_ACCUMULATED:
                     trimmed[k] = trimmed[k][1:] 
-
             # print(trimmed)
+
             f.write("time," + ",".join(trimmed.keys()) + "\n")
             for i, (time, _) in enumerate(trimmed.values()[0]):
                 values = [str(time - start)] + [str(trimmed[k][i][1]) for k in trimmed.keys()]

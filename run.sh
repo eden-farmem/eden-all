@@ -1,18 +1,18 @@
 #
 # Run experiments
 #
-RUNTIME=30
+RUNTIME=20
 
 # # Kona Params
 # cfg=CONFIG_NO_DIRTY_TRACK
 cfg=CONFIG_WP
 # cfg=NO_KONA
-# kona_cflags="-DPRINT_FAULT_ADDRS"
+kona_cflags="-DPRINT_FAULT_ADDRS"
 # kona_cflags="-DREGISTER_MADVISE_NOTIF"
 # kona_cflags="-DBATCH_EVICTION"
 
 EVICT_THR=.99
-EVICT_DONE_THR=.7
+EVICT_DONE_THR=.99
 EVICT_BATCH_SIZE=1
 
 # # Client Params
@@ -24,10 +24,8 @@ MEM=1800
 # # Client debugging config
 # CONNS=5
 # MPPS=1e-4
-# CONNS=100
-# MPPS=.25
-# MEM=20
-# KEYSPACE=2K  #not configurable yet, 40MB remote mem
+# MEM=.5
+# KEYSPACE=10K  #not configurable yet, 10MB remote mem?
 
 # # Server Params
 SCORES=4
@@ -45,7 +43,7 @@ fi
 # for SCORES in 8; do
 # for kona_cflags in "" "-DREGISTER_MADVISE_NOTIF"; do
     # for EVICT_THR in 0.9; do
-    for EVICT_DONE_THR in 0.7 0.8 0.9 0.99; do
+    # for EVICT_DONE_THR in 0.92 0.94 0.96; do
     # for EVICT_BATCH_SIZE in 2 4; do
         # for mem in `seq 2000 200 2600`; do
         for mem in $MEM; do
@@ -54,23 +52,26 @@ fi
             ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            DESC="(varying evict high watermark)"
+            DESC="printing write protect faults as well"
+            # DESC="memcached verbose log -vvv"
+            # DESC="no_lru_crawler,no_lru_maintainer"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
+            kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
             # STOPAT="--stopat 4"     
             # debugging
             if [[ "$cfg" == "NO_KONA" ]]; then
-                python scripts/experiment.py --nokona -p udp -nc $CONNS --time $RUNTIME \
+                python scripts/experiment.py --nokona -p udp -nc $CONNS --time $RUNTIME             \
                     --start $MPPS --finish $MPPS --scores $SCORES ${warmup} ${STOPAT} ${kona_evict} \
                     -d "$KEYSPACE keys; No Kona; $DESC"
             else
-                python scripts/experiment.py -km ${mem}000000 -p udp -nc $CONNS --time $RUNTIME \
-                    --start $MPPS --finish $MPPS --scores $SCORES ${warmup} ${STOPAT} ${kona_evict} \
+                python scripts/experiment.py -km ${kona_mem_bytes} -p udp -nc $CONNS --time $RUNTIME    \
+                    --start $MPPS --finish $MPPS --scores $SCORES ${warmup} ${STOPAT} ${kona_evict}     \
                     -d "$KEYSPACE keys; PBMEM=${cfg} KonaFlags=${kona_cflags}; $DESC"
             fi
 
             sleep 5
         done
-    done
+    # done
 # done
 
 
