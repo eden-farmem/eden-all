@@ -145,7 +145,7 @@ def main():
         # print(checkpoints)
         with open(os.path.join(outdir, "checkpoints"), "w") as f:
             for pt,time in checkpoints.items():
-                if start <= time <= end:
+                if start - 2 <= time <= end + 2:
                     f.write("{},{}\n".format(pt, time-start))
     
     # Write addresses to file

@@ -7,7 +7,7 @@ RUNTIME=20
 # cfg=CONFIG_NO_DIRTY_TRACK
 cfg=CONFIG_WP
 # cfg=NO_KONA
-kona_cflags="-DPRINT_FAULT_ADDRS"
+# kona_cflags="-DPRINT_FAULT_ADDRS"
 # kona_cflags="-DREGISTER_MADVISE_NOTIF"
 # kona_cflags="-DBATCH_EVICTION"
 
@@ -38,23 +38,22 @@ else
 fi
 
 # # Run
-# for warmup in ""; do    #"--warmup" ""; do 
+for warmup in "--warmup"; do 
 # for kona_cflags in ""; do
 # for SCORES in 8; do
 # for kona_cflags in "" "-DREGISTER_MADVISE_NOTIF"; do
     # for EVICT_THR in 0.9; do
     # for EVICT_DONE_THR in 0.92 0.94 0.96; do
     # for EVICT_BATCH_SIZE in 2 4; do
-        # for mem in `seq 2000 200 2600`; do
-        for mem in $MEM; do
+        for mem in `seq 1000 200 2400`; do
+        # for mem in $MEM; do
         # for SCORES in 1 2 4 6 8 10; do
             echo "Syncing clocks"
             ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            DESC="printing write protect faults as well"
             # DESC="memcached verbose log -vvv"
-            # DESC="no_lru_crawler,no_lru_maintainer"
+            DESC="no_lru_maintainer, no refcount, with warmup"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
             # STOPAT="--stopat 4"     
@@ -72,7 +71,7 @@ fi
             sleep 5
         done
     # done
-# done
+done
 
 
 

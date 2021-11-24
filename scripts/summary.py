@@ -262,9 +262,13 @@ def parse_kona_accounting_log(dirn, experiment):
             assert len(values) == len(header_list), "unexpected kona log format"
             if header_list[1] == values[1]:     continue    #header
             for c in header_list[1:]:  stats[c].append((time, int(values[COL_IDX[c]])))            
-            stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']])))
+            stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']]) + int(values[COL_IDX['n_faults_wp']])))
             stats['n_flush_fail'].append((time, int(values[COL_IDX['n_flush_try']]) - int(values[COL_IDX['n_flush_success']])))
             stats['n_madvise_fail'].append((time, int(values[COL_IDX['n_madvise_try']]) - int(values[COL_IDX['n_madvise']])))
+            if header_list == header_list_old:
+                # In older runs where we were not printing n_evictions, it was same as pages written out
+                # Not true for newer runs though
+                stats['n_evictions'].append((time, int(values[COL_IDX['n_net_page_out']])))
 
     # Correct timestamps: A bunch of logs may get the same timestamp 
     # due to stdout flushing at irregular intervals. Assume that the 

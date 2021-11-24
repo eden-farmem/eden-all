@@ -160,7 +160,7 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp",
     args += " -o hashpower={hashpower}"
 
     args += {
-        'shenango': ",no_hashexpand,lru_crawler,lru_maintainer,idle_timeout=0",
+        'shenango': ",no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0",
     }.get(experiment['system'])
 
     x['args'] = "-t {threads} " + args
@@ -752,7 +752,7 @@ def main():
     elif role == role.app:
         assert args.name
         cleanup(pre=True)    # HACK for kona cleanup.
-        time.sleep(2)
+        time.sleep(5)
         go_app(args.name)
     elif role == role.client:
         assert args.name
