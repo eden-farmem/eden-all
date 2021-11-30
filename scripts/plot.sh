@@ -37,6 +37,55 @@ case $i in
 esac
 done
 
+run1=data/run-11-22-12-26
+run2=data/run-11-22-22-57
+
+statsdir1=$run1/stats
+datafile=$statsdir1/iokstats
+plotname=${PLOTDIR}/iokstats.$PLOTEXT
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
+    python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
+        -yc "RX_PULLED" -l "Request Load" -ls solid             \
+        -xc "time" -xl  "Time (secs)" -yl "Million Ops/sec"     \
+        --ymin 0 --ymax 2.1 --ymul 1e-6                         \
+        --size 6 2.3 -fs 10 -of $PLOTEXT  -o $plotname --xmin 30 --xmax 86
+    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
+fi
+files="$files $plotname"
+
+plotname=${PLOTDIR}/konastats.$PLOTEXT
+datafile=$statsdir1/konastats
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
+        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
+            -yc "n_faults_r" -l "Read" -ls solid         \
+            -yc "n_faults_w" -l "Write" -ls solid        \
+            -yc "n_faults_wp" -l "WProtect" -ls solid          \
+            -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
+            -lt "Faults in Kona (Before)"  --ymul 1e-3          \
+            --size 6 2.3 -fs 10  -of $PLOTEXT  -o $plotname --xmin 30 --xmax 86
+    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi 
+    files="$files $plotname"
+fi
+
+statsdir2=$run2/stats
+plotname=${PLOTDIR}/konastats1.$PLOTEXT
+datafile=$statsdir2/konastats
+if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
+        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
+            -yc "n_faults_r" -l "Read" -ls solid         \
+            -yc "n_faults_w" -l "Write" -ls solid        \
+            -yc "n_faults_wp" -l "WProtect" -ls solid          \
+            -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
+            -lt "Faults in Kona (After)"  --ymul 1e-3          \
+            --size 6 2.3 -fs 10  -of $PLOTEXT  -o $plotname --xmin 34 --xmax 90
+    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi 
+    files="$files $plotname"
+fi
+# display $plotname &
+
+plotname=${PLOTDIR}/all_faults_diff_no_dirtying.$PLOTEXT
+montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
+display ${plotname} &
 
 ############# ARCHIVED ##############################
 
@@ -75,8 +124,8 @@ done
 # yes_madv=run-10-23-11-43
 # no_madv=run-10-23-11-26
 
-# python ${SCRIPT_DIR}/summary.py -n=${yes_madv} --kona
-# python ${SCRIPT_DIR}/summary.py -n=${no_madv} --kona
+# # python ${SCRIPT_DIR}/summary.py -n=${yes_madv} --kona
+# # python ${SCRIPT_DIR}/summary.py -n=${no_madv} --kona
 # yes_data=data/${yes_madv}/stats/konastats_extended_aggregated_0
 # no_data=data/${no_madv}/stats/konastats_extended_aggregated_0
 
@@ -93,8 +142,8 @@ done
 # no_left=`echo $no_evict,$no_write,$no_wp,$no_madv | awk -F, '{ printf "%.1f",$1-$2-$3-$4 }'`
 # echo "METRIC,WITH_MADV,NO_MADV" > ${tmpfile}
 # echo "Total,${yes_evict},${no_evict}" >> ${tmpfile}
-# echo "Rem Write,${yes_write},${no_write}" >> ${tmpfile}
-# echo "Write Protect,${yes_wp},${no_wp}" >> ${tmpfile}
+# echo "Write-Back,${yes_write},${no_write}" >> ${tmpfile}
+# echo "Write-Protect,${yes_wp},${no_wp}" >> ${tmpfile}
 # echo "Madvise,${yes_madv},${no_madv}" >> ${tmpfile}
 # echo "Other,${yes_left},${no_left}" >> ${tmpfile}
 # # cat ${tmpfile}
@@ -102,9 +151,10 @@ done
 # plotname=${PLOTDIR}/eviction_breakdown.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -d ${tmpfile} -z bar      \
 #     -xc "METRIC" -xl "Eviction Breakdown"               \
-#     -yc "WITH_MADV" -l "YES"      \
-#     -yl "Latency (µs)" --ltitle "MAdvise Notify App"    \
-#     --ymul 1e-3 --barwidth .3 --size 8 4  -of $PLOTEXT -o $plotname
+#     -yc "WITH_MADV" -l "YES" \
+#     -yc "NO_MADV" -l "No" \
+#     -yl "Latency (µs)" --ymul 454e-6 -lt "Madvise Notify"    \
+#     --barwidth .3 -fs 12 --size 6 3  -of $PLOTEXT -o $plotname
 # display $plotname &
 # # rm ${tmpfile}
 
@@ -140,11 +190,11 @@ done
 # for N in 10000 1000000 10000000; do
 #     plots=
 #     for ALPHA in 0.1 0.5 1 10; do
-#         plots="$plots -d zipf_${N}_$ALPHA -l alpha=$ALPHA"
+#         plots="$plots -d arxiv/zipf_${N}_$ALPHA -l alpha=$ALPHA"
 #     done
 #     plotname=${PLOTDIR}/zipf_cdf_${N}.$PLOTEXT
 #     python ${SCRIPT_DIR}/plot.py $plots -z cdf  \
-#         -yc count -yl PDF --ylog        \
+#         -yc count -yl PDF  -nm   \
 #         -xl "N" --ltitle "Zipf N=$N"    \
 #         -of $PLOTEXT -o $plotname
 #     display $plotname &

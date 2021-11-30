@@ -535,7 +535,9 @@ def main():
             raise NotImplementedError("hist")
 
         elif args.ptype == PlotType.cdf:
-            xc, yc = gen_cdf(df[ycol], 100000)
+            # xc, yc = gen_cdf(df[ycol], 100000)
+            xc = xcol
+            yc = np.cumsum(df[ycol]) / sum(df[ycol])
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
@@ -599,7 +601,7 @@ def main():
         for idx, ls in enumerate(args.linestyle):
             lns[idx].set_linestyle(ls)
     
-    if args.lloc != LegendLoc.none and args.ptype in [PlotType.bar, PlotType.barstacked, PlotType.hist]:
+    if args.lloc != LegendLoc.none and args.ptype in [PlotType.scatter, PlotType.bar, PlotType.barstacked, PlotType.hist]:
         plt.legend(loc=args.lloc.matplotlib_loc(), title=args.ltitle)
     else:
         # TODO: Fix labels for bar plot

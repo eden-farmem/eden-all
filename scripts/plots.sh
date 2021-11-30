@@ -72,7 +72,7 @@ echo "Working on experiment:" $name
 exp=$DATADIR/$name
 SCRIPT_DIR=`dirname "$0"`
 
-PLOTDIR=exp/plots
+PLOTDIR=$exp/plots
 mkdir -p ${PLOTDIR}
 
 # summarize results
@@ -201,7 +201,6 @@ fi
 
 # Combine
 echo $files
-plotname=${PLOTDIR}/${name}_all_1.$PLOTEXT
+plotname=${PLOTDIR}/all_${name}.$PLOTEXT
 montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
-cp ${plotname} $exp/
 display ${plotname} &
