@@ -16,10 +16,10 @@ EVICT_DONE_THR=.99
 EVICT_BATCH_SIZE=1
 
 # # Client Params
-CONNS=1000
-MPPS=2
+CONNS=50
+MPPS=1e-3
 KEYSPACE=10M  #not configurable yet
-MEM=1800
+MEM=1600
 
 # # Client debugging config
 # CONNS=5
@@ -40,20 +40,19 @@ fi
 # # Run
 for warmup in "--warmup"; do 
 # for kona_cflags in ""; do
-# for SCORES in 8; do
 # for kona_cflags in "" "-DREGISTER_MADVISE_NOTIF"; do
     # for EVICT_THR in 0.9; do
     # for EVICT_DONE_THR in 0.92 0.94 0.96; do
     # for EVICT_BATCH_SIZE in 2 4; do
-        for mem in `seq 1000 200 2400`; do
+    for SCORES in 4; do
+        for mem in `seq 1000 200 2000`; do
         # for mem in $MEM; do
         # for SCORES in 1 2 4 6 8 10; do
             echo "Syncing clocks"
             ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            # DESC="memcached verbose log -vvv"
-            DESC="no_lru_maintainer, no refcount, with warmup"
+            DESC="for latencies"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
             # STOPAT="--stopat 4"     
@@ -70,7 +69,7 @@ for warmup in "--warmup"; do
 
             sleep 5
         done
-    # done
+    done
 done
 
 

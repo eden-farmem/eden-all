@@ -37,55 +37,35 @@ case $i in
 esac
 done
 
-run1=data/run-11-22-12-26
-run2=data/run-11-22-22-57
 
-statsdir1=$run1/stats
-datafile=$statsdir1/iokstats
-plotname=${PLOTDIR}/iokstats.$PLOTEXT
-if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
-        -yc "RX_PULLED" -l "Request Load" -ls solid             \
-        -xc "time" -xl  "Time (secs)" -yl "Million Ops/sec"     \
-        --ymin 0 --ymax 2.1 --ymul 1e-6                         \
-        --size 6 2.3 -fs 10 -of $PLOTEXT  -o $plotname --xmin 30 --xmax 86
-    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
-fi
-files="$files $plotname"
+# See latencies for various runs
+SUFFIX="12-06-11"
+LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
+numplots=0
+for exp in $LS_CMD; do
+    echo "Parsing $exp"
+    name=`basename $exp`
+    cfg="$exp/config.json"
+    sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
+    konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
+    konamem_mb=`echo $konamem | awk '{ print $1/1000000 }'`
 
-plotname=${PLOTDIR}/konastats.$PLOTEXT
-datafile=$statsdir1/konastats
-if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
-        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
-            -yc "n_faults_r" -l "Read" -ls solid         \
-            -yc "n_faults_w" -l "Write" -ls solid        \
-            -yc "n_faults_wp" -l "WProtect" -ls solid          \
-            -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
-            -lt "Faults in Kona (Before)"  --ymul 1e-3          \
-            --size 6 2.3 -fs 10  -of $PLOTEXT  -o $plotname --xmin 30 --xmax 86
-    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi 
-    files="$files $plotname"
-fi
+    # summarize results
+    statsdir=$exp/stats
+    statfile=$statsdir/stat.csv
+    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
+        python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --app --iok
+    fi
+    
+    datafiles="$datafiles -d $statsdir/latencies_1 -l $konamem_mb"
+done
 
-statsdir2=$run2/stats
-plotname=${PLOTDIR}/konastats1.$PLOTEXT
-datafile=$statsdir2/konastats
-if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
-        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
-            -yc "n_faults_r" -l "Read" -ls solid         \
-            -yc "n_faults_w" -l "Write" -ls solid        \
-            -yc "n_faults_wp" -l "WProtect" -ls solid          \
-            -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
-            -lt "Faults in Kona (After)"  --ymul 1e-3          \
-            --size 6 2.3 -fs 10  -of $PLOTEXT  -o $plotname --xmin 34 --xmax 90
-    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi 
-    files="$files $plotname"
-fi
-# display $plotname &
-
-plotname=${PLOTDIR}/all_faults_diff_no_dirtying.$PLOTEXT
-montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
-display ${plotname} &
+echo $datafiles
+plotname=${PLOTDIR}/latencies.${PLOTEXT}
+python3 ${SCRIPT_DIR}/plot.py ${datafiles} -z cdf           \
+    -yc "Latencies" -xl "Latency (µs)" --xmin 0 --xmax 50   \
+    --size 8 4 -fs 12 -of $PLOTEXT -o $plotname -lt "Kona Mem (MB)"
+display $plotname & 
 
 ############# ARCHIVED ##############################
 

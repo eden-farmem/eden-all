@@ -95,14 +95,9 @@ class OutputFormat(Enum):
     def __str__(self):
         return self.value
 
-def gen_cdf(npArray, num_bin):
+def gen_cdf(npArray):
    x = np.sort(npArray)
    y = 1. * np.arange(len(npArray)) / (len(npArray) - 1)
-#    h, edges = np.histogram(npArray, density=True, bins=num_bin )
-#    h = np.cumsum(h)/np.cumsum(h).max()
-#    x = edges.repeat(2)[:-1]
-#    y = np.zeros_like(x)
-#    y[1:] = h.repeat(2)
    return x, y
 
 
@@ -535,9 +530,7 @@ def main():
             raise NotImplementedError("hist")
 
         elif args.ptype == PlotType.cdf:
-            # xc, yc = gen_cdf(df[ycol], 100000)
-            xc = xcol
-            yc = np.cumsum(df[ycol]) / sum(df[ycol])
+            xc, yc = gen_cdf(df[ycol])
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
