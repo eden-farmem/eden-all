@@ -55,21 +55,22 @@ typedef enum  {
     STARTED,
     RATELIMITED,
     SERVICING,
+    FAULT_WAIT,
     DONE = 255
 } STATES;
 
 typedef struct {
     STATES state;
     double hitratio;
-    uint32_t pad[12];
+    uint64_t wait_start_tsc;
+    uint32_t pad[10];
 } req_entry __aligned(CACHE_LINE_SIZE);
 req_entry reqs[MAX_APP_CORES][REQ_QUEUE_DEPTH] __aligned(CACHE_LINE_SIZE) = {0};
 
 typedef struct {
     STATES state;
     uint64_t start_tsc;
-    uint64_t ratelimit_start_tsc;
-    uint32_t pad[10];
+    uint32_t pad[12];
 } fault_entry __aligned(CACHE_LINE_SIZE);
 fault_entry faults[MAX_APP_CORES][FAULT_QUEUE_DEPTH] __aligned(CACHE_LINE_SIZE) = {0};
 
@@ -187,11 +188,11 @@ void* reqcore_main(void* args) {
             case NONE:
                 reqs[core][idx].hitratio = hit_ratio;
                 reqs[core][idx].state = POSTED;      /*send it off*/
-                idx = (idx + 1) % REQ_QUEUE_DEPTH;
-                req_idx[core] = idx;
                 posted++;
                 break;
             }
+            idx = (idx + 1) % REQ_QUEUE_DEPTH;
+            req_idx[core] = idx;
         }
         elapsed_tsc = rdtsc() - start_tsc;
         if (elapsed_tsc / cycles_per_us > RUN_DURATION_SECS * MILLION)
@@ -280,6 +281,7 @@ void* konacore_main(void* args) {
 void* appcore_main(void* args) {
     int i, ridx = 0, fidx = 0, self, hit;
     unsigned int self_seed = time(NULL) ^ getpid() ^ pthread_self();
+    uint64_t fault_time_tsc = (uint64_t)((fault_time_ns * cycles_per_us) / 1000.0);
 
     struct thread_args * targs = (struct thread_args *)args;
     pthread_setname_np(pthread_self(), targs->name);
@@ -298,16 +300,27 @@ void* appcore_main(void* args) {
                 faults[self][fidx].state = POSTED;      /*send it off*/
                 while(faults[self][fidx].state != DONE) /*and wait*/
                     cpu_relax();
+
+                if (use_upcalls) {
+                    /*wait for page fault if returned with an upcall*/
+                    reqs[self][ridx].wait_start_tsc = rdtsc();
+                    reqs[self][ridx].state = FAULT_WAIT;
+                    break; 
+                }
             }
-
-            /* service request */
-            time_delay_ns(service_time_ns);
-
+            /* intentionally skipping break */
+        case SERVICING:
+            time_delay_ns(service_time_ns);     /*emulating request cpu time*/
             reqs[self][ridx].state = DONE;              /*return request*/
-            ridx = (ridx + 1) % REQ_QUEUE_DEPTH;
             stats[self].serviced++;
             break;
+        case FAULT_WAIT:
+            if (rdtsc() - reqs[self][ridx].wait_start_tsc > fault_time_tsc) {
+                reqs[self][ridx].state = SERVICING;
+            }
+            break;
         }
+        ridx = (ridx + 1) % REQ_QUEUE_DEPTH;
     }
 }
 
