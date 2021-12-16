@@ -72,7 +72,7 @@ echo "Working on experiment:" $name
 exp=$DATADIR/$name
 SCRIPT_DIR=`dirname "$0"`
 
-PLOTDIR=exp/plots
+PLOTDIR=$exp/plots
 mkdir -p ${PLOTDIR}
 
 # summarize results
@@ -149,18 +149,18 @@ if [[ $VERBOSE ]]; then
     plotname=${PLOTDIR}/${name}_konastats_extended.$PLOTEXT
     if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
         python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}          \
-            -yc "PERF_EVICT_TOTAL" -l "Total Eviction" -ls solid        \
+            -yc "PERF_EVICT_TOTAL" -l "Evict Total" -ls solid           \
             -yc "PERF_EVICT_WP" -l "Eviction WP" -ls solid              \
-            -yc "PERF_RDMA_WRITE" -l "Issue Write" -ls solid            \
-            -yc "PERF_POLLER_READ" -l "Handle Read" -ls dashed          \
-            -yc "PERF_POLLER_UFFD_COPY" -l "UFFD Copy" -ls dashed       \
-            -yc "PERF_HANDLER_RW" -l "Handle Fault" -ls dashed          \
+            -yc "PERF_RDMA_WRITE" -l "Evict Write RDMA" -ls solid       \
+            -yc "PERF_POLLER_READ" -l "Poller Total" -ls dashed         \
+            -yc "PERF_POLLER_UFFD_COPY" -l "Poller UFFD Copy" -ls dashed \
+            -yc "PERF_HANDLER_RW" -l "Handler RW" -ls dashed            \
             -yc "PERF_PAGE_READ" -l "RDMA Read" -ls dashed              \
-            -yc "PERF_EVICT_WRITE" -l "Issue Write 2" -ls dashed        \
-            -yc "PERF_HANDLER_FAULT" -l "Handle Fault 2" -ls dashed     \
+            -yc "PERF_EVICT_WRITE" -l "Evict Write Total" -ls dashed    \
+            -yc "PERF_HANDLER_FAULT" -l "Handler Total" -ls dashed      \
             -yc "PERF_EVICT_MADVISE" -l "Evict Madvise" -ls dashed      \
             -xc "time" -xl "Time (secs)"                                \
-            -yl "Micro-secs" --ymin 0 --ymax 70 --ymul 1e-3             \
+            -yl "Micro-secs" --ymin 0 --ymax 10 --ymul 454e-6           \
             --size 6 3 -fs 10 -of $PLOTEXT  -o $plotname -lt "Kona Latencies"
         if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
         files="$files $plotname"
@@ -201,7 +201,6 @@ fi
 
 # Combine
 echo $files
-plotname=${PLOTDIR}/${name}_all_1.$PLOTEXT
+plotname=${PLOTDIR}/all_${name}.$PLOTEXT
 montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
-cp ${plotname} $exp/
 display ${plotname} &

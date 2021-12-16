@@ -228,6 +228,8 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
 fi
 files="$files $plotname"
 
+
+
 # Write config params 
 echo "text 3,6 \"" > temp_cfg 
 echo "        INFO" >> temp_cfg 

@@ -38,6 +38,35 @@ esac
 done
 
 
+# See latencies for various runs
+SUFFIX="12-06-11"
+LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
+numplots=0
+for exp in $LS_CMD; do
+    echo "Parsing $exp"
+    name=`basename $exp`
+    cfg="$exp/config.json"
+    sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
+    konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
+    konamem_mb=`echo $konamem | awk '{ print $1/1000000 }'`
+
+    # summarize results
+    statsdir=$exp/stats
+    statfile=$statsdir/stat.csv
+    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
+        python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --app --iok
+    fi
+    
+    datafiles="$datafiles -d $statsdir/latencies_1 -l $konamem_mb"
+done
+
+echo $datafiles
+plotname=${PLOTDIR}/latencies.${PLOTEXT}
+python3 ${SCRIPT_DIR}/plot.py ${datafiles} -z cdf           \
+    -yc "Latencies" -xl "Latency (µs)" --xmin 0 --xmax 50   \
+    --size 8 4 -fs 12 -of $PLOTEXT -o $plotname -lt "Kona Mem (MB)"
+display $plotname & 
+
 ############# ARCHIVED ##############################
 
 # # # Varying evict threshold plots (with madvise notif)
@@ -75,8 +104,8 @@ done
 # yes_madv=run-10-23-11-43
 # no_madv=run-10-23-11-26
 
-# python ${SCRIPT_DIR}/summary.py -n=${yes_madv} --kona
-# python ${SCRIPT_DIR}/summary.py -n=${no_madv} --kona
+# # python ${SCRIPT_DIR}/summary.py -n=${yes_madv} --kona
+# # python ${SCRIPT_DIR}/summary.py -n=${no_madv} --kona
 # yes_data=data/${yes_madv}/stats/konastats_extended_aggregated_0
 # no_data=data/${no_madv}/stats/konastats_extended_aggregated_0
 
@@ -93,8 +122,8 @@ done
 # no_left=`echo $no_evict,$no_write,$no_wp,$no_madv | awk -F, '{ printf "%.1f",$1-$2-$3-$4 }'`
 # echo "METRIC,WITH_MADV,NO_MADV" > ${tmpfile}
 # echo "Total,${yes_evict},${no_evict}" >> ${tmpfile}
-# echo "Rem Write,${yes_write},${no_write}" >> ${tmpfile}
-# echo "Write Protect,${yes_wp},${no_wp}" >> ${tmpfile}
+# echo "Write-Back,${yes_write},${no_write}" >> ${tmpfile}
+# echo "Write-Protect,${yes_wp},${no_wp}" >> ${tmpfile}
 # echo "Madvise,${yes_madv},${no_madv}" >> ${tmpfile}
 # echo "Other,${yes_left},${no_left}" >> ${tmpfile}
 # # cat ${tmpfile}
@@ -102,9 +131,10 @@ done
 # plotname=${PLOTDIR}/eviction_breakdown.${PLOTEXT}
 # python3 ${SCRIPT_DIR}/plot.py -d ${tmpfile} -z bar      \
 #     -xc "METRIC" -xl "Eviction Breakdown"               \
-#     -yc "WITH_MADV" -l "YES"      \
-#     -yl "Latency (µs)" --ltitle "MAdvise Notify App"    \
-#     --ymul 1e-3 --barwidth .3 --size 8 4  -of $PLOTEXT -o $plotname
+#     -yc "WITH_MADV" -l "YES" \
+#     -yc "NO_MADV" -l "No" \
+#     -yl "Latency (µs)" --ymul 454e-6 -lt "Madvise Notify"    \
+#     --barwidth .3 -fs 12 --size 6 3  -of $PLOTEXT -o $plotname
 # display $plotname &
 # # rm ${tmpfile}
 
@@ -140,11 +170,11 @@ done
 # for N in 10000 1000000 10000000; do
 #     plots=
 #     for ALPHA in 0.1 0.5 1 10; do
-#         plots="$plots -d zipf_${N}_$ALPHA -l alpha=$ALPHA"
+#         plots="$plots -d arxiv/zipf_${N}_$ALPHA -l alpha=$ALPHA"
 #     done
 #     plotname=${PLOTDIR}/zipf_cdf_${N}.$PLOTEXT
 #     python ${SCRIPT_DIR}/plot.py $plots -z cdf  \
-#         -yc count -yl PDF --ylog        \
+#         -yc count -yl PDF  -nm   \
 #         -xl "N" --ltitle "Zipf N=$N"    \
 #         -of $PLOTEXT -o $plotname
 #     display $plotname &

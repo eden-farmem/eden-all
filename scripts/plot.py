@@ -95,14 +95,9 @@ class OutputFormat(Enum):
     def __str__(self):
         return self.value
 
-def gen_cdf(npArray, num_bin):
+def gen_cdf(npArray):
    x = np.sort(npArray)
    y = 1. * np.arange(len(npArray)) / (len(npArray) - 1)
-#    h, edges = np.histogram(npArray, density=True, bins=num_bin )
-#    h = np.cumsum(h)/np.cumsum(h).max()
-#    x = edges.repeat(2)[:-1]
-#    y = np.zeros_like(x)
-#    y[1:] = h.repeat(2)
    return x, y
 
 
@@ -147,10 +142,10 @@ def parse_args():
     parser.add_argument('-t', '--ptitle', 
         action='store', 
         help='title of the plot')
-
+    
     parser.add_argument('-l', '--plabel', 
         action='append', 
-        help='plot label, can provide one label per ycol or datafile (goes into legend)')
+        help='plot label (empty string to skip), can provide one label per ycol or datafile (goes into legend)')
     
     parser.add_argument('-lt', '--ltitle', 
         action='store', 
@@ -405,8 +400,8 @@ def main():
     if args.labelincr:
         if not args.plabel:
             parser.error("If --labelincr is specified, plot labels must be specified with -l/--plabel")
-        if len(args.plabel) <= sum(args.labelincr):
-            parser.error("If plot labels and --labelincr are provided, sum of lable increments should not cross the number of plot labels")
+        if len(args.plabel) < sum(args.labelincr):
+            parser.error("If plot labels and --labelincr are provided, sum of label increments should not cross the number of plot labels")
     
     if (args.nohead or args.notail) and args.ptype != PlotType.cdf:
         parser.error("head and tail trimming is only supported for CDF plots (-z/--ptype: cdf)")
@@ -428,9 +423,9 @@ def main():
     matplotlib.rcParams['pdf.fonttype'] = 42        # required for latex embedded figures
 
     fig, axmain = plt.subplots(1, 1, figsize=tuple(args.size))
-    fig.suptitle(args.ptitle if args.ptitle else '')
-    # plt.annotate(args.ptitle, (0,0), (0, -30), xycoords='axes fraction', textcoords='offset points', ha='left', va='top')
-    #plt.ylim(0, 1000)
+    if args.ptitle:
+        fig.suptitle(args.ptitle, x=0.4, y=.93, \
+            horizontalalignment='left', verticalalignment='top')
 
     if args.xlog:
         axmain.set_xscale('log', basex=10)
@@ -444,6 +439,7 @@ def main():
 
     plot_num = 0
     lns = []
+    labels = []
     ax = axmain
     ymul = args.ymul
     ymin = args.ymin
@@ -472,6 +468,7 @@ def main():
         if args.plabel:                 label = args.plabel[labelidx] if args.labelincr else args.plabel[plot_num]
         elif len(args.datafile) == 1:   label = ycol
         else:                           label = datafile
+        labels.append(label)
 
         if not args.dfilexcol:
             xcol = df[args.xcol] if args.xcol else df.index
@@ -535,7 +532,7 @@ def main():
             raise NotImplementedError("hist")
 
         elif args.ptype == PlotType.cdf:
-            xc, yc = gen_cdf(df[ycol], 100000)
+            xc, yc = gen_cdf(df[ycol])
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
@@ -599,12 +596,16 @@ def main():
         for idx, ls in enumerate(args.linestyle):
             lns[idx].set_linestyle(ls)
     
-    if args.lloc != LegendLoc.none and args.ptype in [PlotType.bar, PlotType.barstacked, PlotType.hist]:
+    if args.lloc != LegendLoc.none and \
+            args.ptype in [PlotType.scatter, PlotType.bar, PlotType.barstacked, PlotType.hist]:
+        # FIXME: We don't get ln objects for these plot types. So legends generated in this path 
+        # miss some custom features like the ability to skip some labels or legend location
         plt.legend(loc=args.lloc.matplotlib_loc(), title=args.ltitle)
     else:
-        # TODO: Fix labels for bar plot
-        labels = [l.get_label() for l in lns]
-        set_axes_legend_loc(axmain, lns, labels, args.lloc, args.ltitle)
+        # Skip a label if an empty string is provided
+        labels_adjusted = [l for l in labels if l != ""]
+        lns_adjusted = [l for i,l in enumerate(lns) if labels[i] != ""]
+        set_axes_legend_loc(axmain, lns_adjusted, labels_adjusted, args.lloc, args.ltitle)
 
     # Add any horizantal and/or vertical lines
     if args.hlines:
