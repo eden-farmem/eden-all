@@ -52,15 +52,13 @@ class LegendLoc(Enum):
     rightout = "rightout"
     rightin = "rightin"
     center = "center"
-    topleft = "topleft"
 
     def matplotlib_loc(self):
         if self.value == LegendLoc.none:       return None
         if self.value == LegendLoc.best:       return 'best'
         if self.value == LegendLoc.rightin:    return 'right'
         if self.value == LegendLoc.center:     return 'center'
-        if self.value == LegendLoc.topleft:    return 'topleft'
-        if self.value == LegendLoc.topout:     return 'lower center'
+        if self.value == LegendLoc.topout:     return 'lower left'
         if self.value == LegendLoc.rightout:   return 'upper left'
 
     def __str__(self):
@@ -69,10 +67,10 @@ class LegendLoc(Enum):
 def set_axes_legend_loc(ax, lns, labels, loc, title=None):
     if loc == LegendLoc.none:
         return
-    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center, LegendLoc.topleft):
+    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center):
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), ncol=1, fancybox=True, shadow=True, title=title)
     if loc == LegendLoc.topout:
-        ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(0.5, 1), ncol=2, 
+        ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(0, 1, 1.2, 0.3), ncol=2, 
             fancybox=True, shadow=True, title=title)
     if loc == LegendLoc.rightout:
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(1.05, 1), ncol=1, 
@@ -424,8 +422,9 @@ def main():
 
     fig, axmain = plt.subplots(1, 1, figsize=tuple(args.size))
     if args.ptitle:
-        fig.suptitle(args.ptitle, x=0.4, y=.93, \
-            horizontalalignment='left', verticalalignment='top')
+        fig.suptitle(args.ptitle, x=0.5, y=-0.01, \
+            horizontalalignment='center', verticalalignment='bottom')
+        fig.tight_layout()
 
     if args.xlog:
         axmain.set_xscale('log', basex=10)
