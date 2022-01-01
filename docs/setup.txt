@@ -122,3 +122,18 @@ Upgrading Shenango to latest kernel (v5.9)
 =========================================
 1. Getting DPDK to latest
     Was at 19.11. 
+
+
+Linux Kernel Patching
+==================
+  Pull mainline and go to the commit specified 
+  cp /boot/config-5.9.0-050900-generic .config 
+  make oldconfig
+  make -j 40
+  sudo make modules_install
+  sudo make install
+
+Cleaning up Boot Partition
+==========================
+https://askubuntu.com/questions/345588/what-is-the-safest-way-to-clean-up-boot-partition
+
