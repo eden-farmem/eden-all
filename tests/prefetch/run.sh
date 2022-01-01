@@ -12,13 +12,14 @@ usage="\n
 -kf,--kona-cflags \t optional C flags passed to gcc when compiling kona\n
 -f, --force \t\t force rebuild everything\n
 -c, --cleanup \t\t run only the cleanup part\n
+-b, --bench \t\t measure latency of prefetch page()\n
 -d, --debug \t\t build debug\n
 -h, --help \t\t this usage information message\n"
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
 kona_cfg=CONFIG_WP
-OUTFILE="test_prefetch"
+OUTFILE="prefetch.out"
 KONA_DIR="${SCRIPT_DIR}/../../kona"
 KONA_BIN="${KONA_DIR}/pbmem"
 KONA_RCNTRL_SSH="sc40"
@@ -56,6 +57,12 @@ case $i in
     -c|--cleanup)
     CLEANUP=1
     ;;
+    
+    -b|--bench)
+    KONA=1
+    CFLAGS="-DWITH_KONA"
+    BENCHMARK=1
+    ;;
 
     -h | --help)
     echo -e $usage
@@ -92,14 +99,21 @@ if [[ $KONA ]] && [[ $FORCE ]]; then
     make all -j PBMEM_CONFIG="$kona_cfg" PROVIDED_CFLAGS=$kona_cflags ${DEBUG}
     popd
 fi
-
+``
 # build
 if [[ $KONA ]]; then 
     LDFLAGS="-lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
-    gcc vdso_test_prefetch_page_kona.c parse_vdso.c  \
-        -I${KONA_DIR}/liburing/src/include      \
-        -I${KONA_BIN}                           \
-        ${CFLAGS} ${LDFLAGS} -L${KONA_BIN} -o ${OUTFILE}
+    if [[ $BENCHMARK ]]; then 
+        gcc measure_prefetch_page.c parse_vdso.c \
+            -I${KONA_DIR}/liburing/src/include          \
+            -I${KONA_BIN}                               \
+            ${CFLAGS} ${LDFLAGS} -L${KONA_BIN} -o ${OUTFILE}
+    else
+        gcc vdso_test_prefetch_page_kona.c parse_vdso.c \
+            -I${KONA_DIR}/liburing/src/include          \
+            -I${KONA_BIN}                               \
+            ${CFLAGS} ${LDFLAGS} -L${KONA_BIN} -o ${OUTFILE}
+    fi
 else
     gcc vdso_test_prefetch_page.c parse_vdso.c  \
         ${CFLAGS} -o ${OUTFILE}

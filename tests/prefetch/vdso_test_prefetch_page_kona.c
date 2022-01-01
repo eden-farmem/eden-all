@@ -124,25 +124,6 @@ static int __test_prefetch(const void *p, bool expected_no_io,
 			return _r;					\
 	} while (0)
 
-static void wait_for_io_completion(const void *p)
-{
-	char vec;
-	int i;
-
-	/* Wait to allow the I/O to complete */
-	p = ptr_align(p);
-
-	vec = 0;
-
-	/* Wait for 5 seconds and keep probing the page to get it */
-	for (i = 0; i < 5000; i++) {
-		if (mincore((void *)p, PAGE_SIZE, &vec) == 0 && (vec & 1))
-			break;
-		prefetch_page(p);
-		usleep(1000);
-	}
-}
-
 /* plug a page at given virtual address */
 int uffd_plug_page_at(unsigned long dst) {
 	void* page_buf = malloc(PAGE_SIZE);
@@ -196,6 +177,7 @@ int main(int argc, char **argv)
 	long ret, i, test_ret = 0;
 	int fd, drop_fd;
 	char *p, vec;
+	bool expect_io;
 
 	printf("[RUN]\tTesting vdso_prefetch_page\n");
 
@@ -215,8 +197,9 @@ int main(int argc, char **argv)
 		return KSFT_SKIP;
 	}
 
-	test_prefetch(NULL, false, "NULL access",
-		      SKIP_MINCORE_BEFORE|SKIP_MINCORE_AFTER);
+	expect_io = false;
+	test_prefetch(NULL, expect_io, "NULL access", 
+		SKIP_MINCORE_BEFORE|SKIP_MINCORE_AFTER);
 
 	test_prefetch(name, true, "present", 0);
 
@@ -226,36 +209,31 @@ int main(int argc, char **argv)
 		return KSFT_FAIL;
 	}
 	*p = 'a'; //bring in the page, we are testing page-present case
+	expect_io = true;
 
 	/*
 	 * Mincore would not tell us that no I/O is needed to retrieve the page,
 	 * so tell test_prefetch() to skip it.
 	 */
-	test_prefetch(p, true, "anon prefetch", SKIP_MINCORE_BEFORE);
+	test_prefetch(p, expect_io, "anon prefetch", SKIP_MINCORE_BEFORE);
 
-	p = rmalloc(PAGE_SIZE);	/*rmalloc keeps it page-aligned*/
+	p = rmalloc(PAGE_SIZE);	/*new page*/
 	if (p == NULL) {
 		perror("kona rmalloc at Minor-fault anon prefetch");
 		return KSFT_FAIL;
 	}
-	/*With Kona page is not allocated until first access so first 
+	/*With Kona, page is not allocated until first access so first 
 	 *access should expect io*/
-	// *p = 'a';
-
-	/* Check if we managed to evict the page */
-	ret = mincore(p, PAGE_SIZE, &vec);
-	if (ret != 0) {
-		perror("mincore");
-		return KSFT_FAIL;
-	}
-
+	expect_io = false;
 	test_prefetch(p, false, "Minor-fault (io) anon prefetch", 0);
 
+	/*bring in page*/
 	ret = uffd_plug_page_at((unsigned long)p);
 	if (ret != 0)
 		return KSFT_FAIL;
 
-	test_prefetch(p, true, "Minor-fault (cached) anon prefetch", false);
+	expect_io = true;
+	test_prefetch(p, expect_io, "Minor-fault (cached) anon prefetch", false);
 
 	printf("[PASS]\tvdso_prefetch_page\n");
 	return 0;
