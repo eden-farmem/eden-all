@@ -137,7 +137,7 @@ static int time_calibrate_tsc(void)
 /* spins the CPU for the specified delay */
 void time_delay_ns(uint64_t ns)
 {
-    ASSERT(ns >= 1000);  /*dont want to trust it for durations less than a µs*/
+    ASSERT(ns >= 500);  /*dont want to trust it for durations less than a µs*/
 	unsigned long start = rdtsc();
     /*compute cycles inside the waiting period to avoid overhead*/
 	uint64_t cycles = (uint64_t)((double) ns * cycles_per_us / 1000.0); 
@@ -441,11 +441,11 @@ int main(int argc, char** argv) {
             best_workload = 1;
     }
     ASSERT(num_app_cores > 0 || num_app_cores <= MAX_APP_CORES);
-    ASSERT(workloads[0].service_time_ns >= 1000);       /*cannot support sub-µs precision*/
-    ASSERT(fault_time_ns >= 1000);                      /*cannot support sub-µs precision*/
+    ASSERT(workloads[0].service_time_ns >= 500);       /*cannot support sub-µs precision*/
+    ASSERT(fault_time_ns >= 500);                      /*cannot support sub-µs precision*/
     ASSERT(kona_fault_rate > 0 || kona_fault_rate <= MILLION); 
     ASSERT(use_upcalls == 0 || use_upcalls == 1);       /*expectig boolean*/
-    ASSERT(!use_upcalls || upcall_time_ns >= 1000);      /*cannot support sub-µs precision*/
+    ASSERT(!use_upcalls || upcall_time_ns >= 500);      /*cannot support sub-µs precision*/
 
     /* start kona backend */
     struct thread_data konadata __aligned(CACHE_LINE_SIZE) = {0};
@@ -497,7 +497,7 @@ int main(int argc, char** argv) {
     printf("%d,%d", num_app_cores, fault_time_ns);
     for(i = 0; i < num_workloads; i++) {
         uint64_t rate = reqdata[i].serviced * BILLION / reqdata[i].runtime_ns;
-        printf(",%.1lf,%d,%lu", workloads[i].hitratio, workloads[i].service_time_ns, rate);
+        printf(",%.3lf,%d,%lu", workloads[i].hitratio, workloads[i].service_time_ns, rate);
         total += rate;
     }
     konarate = konadata.serviced * BILLION / reqdata[0].runtime_ns;

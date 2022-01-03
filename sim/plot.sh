@@ -293,5 +293,50 @@ if [ "$PLOTID" == "5" ]; then
     done
 fi
 
+## 6. simulation with and without upcalls, varying servicing time
+if [ "$PLOTID" == "6" ]; then
+    krate=500000
+    montagename=${outdir}/xput_up_noup_kr${krate}.${PLOTEXT}
+    for hr in 0.5 0.9 0.99; do 
+        hitp=`echo $hr | awk '{ print $0*100 }'`
+        plotname=${outdir}/xput_up_noup_kr${krate}_hr${hitp}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            if [[ $FORCE ]]; then   #generate data
+                for mode in "up" "noup"; do 
+                    gcc simulate.c -lpthread -o simulate $DEBUG_FLAG
+                    for cores in 2 4 6 8; do
+                        out=$outdir/xput_${mode}_${cores}_${krate}_hr${hitp}
+                        echo "cores,pfcost,hitratio,hitcost,xput1,xput,faults" > $out
+                        for hittime in $(seq 500 400 10000); do
+                            if [ "$mode" == "noup" ]; then 
+                                ./simulate $cores "$krate" "$hittime" \
+                                    "$PF_TIME_US" "$hr" 0 "" | tee -a $out
+                            else
+                                ./simulate $cores "$krate" "$hittime" \
+                                    "$PF_TIME_US" "$hr" 1 "$UPTIME_NS" | tee -a $out
+                            fi
+                        done
+                    done
+                done
+            fi
+            python3 ${SCRIPT_DIR}/../scripts/plot.py    \
+                -xc hitcost -xl "Service Time (ns)" -yc xput -yl "MOPS" --ymul 1e-6         \
+                -d ${outdir}/xput_up_2_${krate}_hr${hitp}   -l "2"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_2_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -d ${outdir}/xput_up_4_${krate}_hr${hitp}   -l "4"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_4_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -d ${outdir}/xput_up_6_${krate}_hr${hitp}   -l "6"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_6_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -d ${outdir}/xput_up_8_${krate}_hr${hitp}   -l "8"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_8_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -lt "App CPU" -t "HitRatio $hr"                                             \
+                --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname 
+        fi
+        echo $plotname >> $PLOTLIST
+    done
+    montage -tile 0x1 -geometry +5+5 -border 5 @$PLOTLIST ${montagename}
+    display $montagename &
+fi
+
 # cleanup
 rm -f ${TMP_FILE_PFX}*
