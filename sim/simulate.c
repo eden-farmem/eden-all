@@ -257,7 +257,7 @@ void* konacore_main(void* args) {
     uint64_t received[MAX_APP_CORES] = {0}, serviced[MAX_APP_CORES] = {0};
     uint64_t now_tsc, response_time_tsc;
     uint64_t fault_time_tsc = (uint64_t)((fault_time_ns * cycles_per_us) / 1000.0);
-    uint64_t upcall_time_tsc = 0; // (uint64_t)((upcall_time_ns * cycles_per_us) / 1000.0);
+    uint64_t upcall_time_tsc = (uint64_t)((upcall_time_ns * cycles_per_us) / 1000.0);
 
     struct thread_data * tdata = (struct thread_data *)args;
     pthread_setname_np(pthread_self(), tdata->name);
