@@ -2,9 +2,6 @@
  * ops.h - useful x86_64 instructions
  */
 
-#ifndef __OPS_H__
-#define __OPS_H__
-
 #include <stdint.h>
 
 static inline void cpu_relax(void)
@@ -38,5 +35,3 @@ static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val)
 	__asm__("crc32q %1, %0" : "+r" (crc) : "rm" (val));
 	return crc;
 }
-
-#endif  // __OPS_H__
