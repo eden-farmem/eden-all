@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "config.h"
 #include "logging.h"
@@ -30,6 +31,7 @@
 ************************************************/
 
 void dump_stack(void);
+uint64_t time_calibrate_tsc(void);
 
 static inline const void *page_align(const void *p)
 {
@@ -50,31 +52,27 @@ static inline void *xmalloc(size_t size) {
   return ptr;
 }
 
-/* Returns number of rdtsc cycles based on CPU freq */
-/* derived from DPDK */
-static uint64_t time_calibrate_tsc(void)
-{
-	/* TODO: New Intel CPUs report this value in CPUID */
-	struct timespec sleeptime = {.tv_nsec = 5E8 }; /* 1/2 second */
-	struct timespec t_start, t_end;
-
-	cpu_serialize();
-	if (clock_gettime(CLOCK_MONOTONIC_RAW, &t_start) == 0) {
-		uint64_t ns, end, start;
-		double secs;
-
-		start = rdtsc();
-		nanosleep(&sleeptime, NULL);
-		clock_gettime(CLOCK_MONOTONIC_RAW, &t_end);
-		end = rdtscp(NULL);
-		ns = ((t_end.tv_sec - t_start.tv_sec) * 1E9);
-		ns += (t_end.tv_nsec - t_start.tv_nsec);
-
-		secs = (double)ns / 1000;
-		pr_debug("time: detected %lu ticks / us", (uint64_t)((end - start) / secs));
-		return (uint64_t)((end - start) / secs);
-	}
-	return 0;
+/* pin this thread to a particular core */
+static int pin_thread(int core) {
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core, &cpuset);
+  int retcode = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+  if (retcode) { 
+      errno = retcode;
+      perror("pthread_setaffinitity_np");
+  }
+  return retcode;
 }
+
+/* a fast xorshift pseudo-random generator
+ * from https://prng.di.unimi.it/xoshiro256plusplus.c */
+struct rand_state {
+  uint64_t s[4];
+};
+
+/* from wikipedia: https://en.wikipedia.org/wiki/Xorshift */ 
+int rand_seed(struct rand_state* result, uint64_t seed);
+uint64_t rand_next(struct rand_state* state);
 
 #endif  // __UTILS_H__

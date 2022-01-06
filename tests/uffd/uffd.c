@@ -160,8 +160,8 @@ int uffd_copy(int fd, unsigned long dst, unsigned long src, int wpmode,
           // We will assert in uffd_wake if we fail. We should not fail here.
           r = uffd_wake(fd, dst, PAGE_SIZE);
         } else {
-          pr_info("uffd_copy err EEXIST but wake_on_exist=false: %lx", dst);
-          ASSERT(0);
+          pr_debug("uffd_copy err EEXIST but wake_on_exist=false: %lx", dst);
+          return EEXIST;
         }
 
         // We are done with this request

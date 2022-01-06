@@ -45,7 +45,29 @@ typedef long (*prefetch_page_t)(const void *p);
 static prefetch_page_t prefetch_page;
 #endif
 
+#define GIGA (1ULL << 30)
+#define MAX_CORES 28	/*cores per numa node*/
+#define MAX_THREADS (MAX_CORES-1)
+
 uint64_t cycles_per_us;
+pthread_barrier_t ready;
+const int NODE0_CORES[MAX_CORES] = {
+    0,  1,  2,  3,  4,  5,  6, 
+    7,  8,  9,  10, 11, 12, 13, 
+    28, 29, 30, 31, 32, 33, 34, 
+    35, 36, 37, 38, 39, 40, 41 };
+#define CORELIST NODE0_CORES
+int start_button = 0, stop_button = 0;
+
+struct thread_data {
+    int tid;
+	int core;
+    struct rand_state rs;
+	uint64_t range_start;
+	uint64_t range_len;
+	int xput_ops;
+	int errors;
+} CACHE_ALIGN;
 
 int is_page_mapped(const void* p) {
 	p = page_align(p);
@@ -64,16 +86,49 @@ int is_page_mapped(const void* p) {
 #endif
 }
 
+void* thread_main(void* args) {
+    struct thread_data * tdata = (struct thread_data *)args;
+    ASSERTZ(pin_thread(tdata->core));
+    int self = tdata->tid;
+	int r, retries;
+	void *p, *page_buf = malloc(PAGE_SIZE);
+
+	r = pthread_barrier_wait(&ready);	/*signal ready*/
+    ASSERT(r != EINVAL);
+
+	while(!start_button)	cpu_relax();
+	while(!stop_button) {
+		p = (void*)(tdata->range_start + rand_next(&tdata->rs) % tdata->range_len);
+		p = (void*) page_align(p);
+		r = uffd_copy(uffd_info.userfault_fd, (unsigned long)p, 
+			(unsigned long) page_buf, 0, true, &retries, false);
+		if (r)	tdata->errors++;
+		else tdata->xput_ops++;
+	}
+}
+
 int main(int argc, char **argv)
 {
 	unsigned long sysinfo_ehdr;
 	char *p;
 	bool page_mapped;
-	int i, r, retries;
-	const int SAMPLES = 100;
+	int i, j, r, num_threads;
 	uint64_t start, duration;
+	double duration_secs;
+	size_t size;
+
+	/* parse & validate args */
+    if (argc > 2) {
+        printf("Invalid args\n");
+        printf("Usage: %s [num_threads]\n", argv[0]);
+        return 1;
+    }
+    num_threads = atoi(argv[1]);
+	ASSERT(num_threads > 0 && num_threads <= MAX_THREADS);
+	ASSERTZ(num_threads & (num_threads - 1));	/*power of 2*/
 
 	/*init*/
+    ASSERT(sizeof(struct thread_data) == CACHE_LINE_SIZE);
 	cycles_per_us = time_calibrate_tsc();
 	ASSERT(cycles_per_us);
 
@@ -100,7 +155,8 @@ int main(int argc, char **argv)
 
 	/*create/register uffd region*/
 	int writeable = 1;
-	struct uffd_region_t* reg = create_uffd_region(SAMPLES * PAGE_SIZE, writeable);
+	size = 128*GIGA;
+	struct uffd_region_t* reg = create_uffd_region(size, writeable);
 	ASSERT(reg != NULL);
 	ASSERT(reg->addr);
 	r = uffd_register(uffd_info.userfault_fd, reg->addr, reg->size, writeable);
@@ -111,53 +167,44 @@ int main(int argc, char **argv)
 	 * region will trigger such an event so we can't do any direct access.
 	 * Prefetch_page access won't trigger this event so we're fine. */
 
-	uint64_t page_mapped_cycles = 0;
-	uint64_t page_not_mapped_cycles = 0;
-	uint64_t uffd_copy_cycles = 0;
-	for (i = 0; i < SAMPLES; i++) {
-		p = (void*)(reg->addr + i*PAGE_SIZE);
-		if (p == NULL) {
-			perror("kona rmalloc failed");
-			return 1;
-		}
-
-		/*measure when page is not mapped*/
-		page_mapped = false;
-		start = rdtsc();
-		ASSERTZ(is_page_mapped(p));
-		duration = rdtsc() - start;
-		page_not_mapped_cycles += duration;
-
-		/*map the page*/
-		void* page_buf = malloc(PAGE_SIZE);
-		start = rdtsc();
-		r = uffd_copy(uffd_info.userfault_fd, (unsigned long)p, 
-			(unsigned long) page_buf, 0, true, &retries, false);
-		// r = uffd_zero(uffd_info.userfault_fd, (unsigned long)p, 
-		// 	PAGE_SIZE, true, &retries);
-		ASSERTZ(r); /* plugging uffd page failed */
-		duration = rdtsc() - start;
-		uffd_copy_cycles += duration;
-
-		/*measure after page is mapped*/
-		page_mapped = true;
-		start = rdtsc();
-		ASSERT(is_page_mapped(p));
-		duration = rdtsc() - start;
-		page_mapped_cycles += duration;
+    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
+	int coreidx = 0, runtime_secs = 1;
+	pthread_t threads[MAX_THREADS];
+	ASSERTZ(pthread_barrier_init(&ready, NULL, num_threads + 1));
+	pin_thread(coreidx++);	/*main thread on core 0*/
+	
+	for(i = 0; i < num_threads; i++) {
+		tdata[i].tid = i;
+		ASSERTZ(rand_seed(&tdata[i].rs, time(NULL) ^ i));
+        ASSERT(coreidx < MAX_CORES);
+        tdata[i].core = CORELIST[coreidx++];
+		tdata[i].range_start = reg->addr + i * (size / num_threads);
+		tdata[i].range_len = (size / num_threads);
+        pthread_create(&threads[i], NULL, thread_main, (void*)&tdata[i]);
 	}
 
-	printf("=================== RESULT ====================\n");
-	printf("Check-page time (on hit): %lu cycles, %.2lf µs\n", 
-		page_mapped_cycles / SAMPLES,
-		page_mapped_cycles * 1.0 / (SAMPLES * cycles_per_us));
-	printf("Check-page time (on miss): %lu cycles, %.2lf µs\n", 
-		page_not_mapped_cycles / SAMPLES,
-		page_not_mapped_cycles * 1.0 / (SAMPLES * cycles_per_us));
-	printf("UFFD copy time (page mapping): %lu cycles, %.2lf µs\n", 
-		uffd_copy_cycles / SAMPLES,
-		uffd_copy_cycles * 1.0 / (SAMPLES * cycles_per_us));
-	printf("==============================================\n");
+	r = pthread_barrier_wait(&ready);	/*until all threads ready*/
+    ASSERT(r != EINVAL);
+	
+	start = rdtsc();
+	start_button = 1;
+	do {
+		duration = rdtscp(NULL) - start;
+		duration_secs = duration / (1000000.0 * cycles_per_us);
+	} while(duration_secs <= runtime_secs);
+	stop_button = 1;
+
+	uint64_t xput = 0, errors = 0;
+	for (i = 0; i < num_threads; i++) {
+		xput += tdata[i].xput_ops;
+		errors += tdata[i].errors;
+	}
+	xput += errors;	/*count errors too*/
+	xput = xput / num_threads;
+	// printf("ran for %.1lf secs; errors %lu\n", duration_secs, errors);
+
+	printf("%d,%.0lf\n", num_threads, xput / duration_secs);
+	// printf("%.2lfµs\n", duration_secs * 1000000 / xput);
 
 	return 0;
 }
