@@ -32,9 +32,10 @@
 #include "ops.h"
 #include "klib.h"
 #include "klib_sfaults.h"
-
-#ifdef USE_PREFETCH 
 #include "parse_vdso.h"
+
+#ifdef USE_APP_FAULTS
+#define USE_PREFETCH
 #endif
 
 #ifdef USE_PREFETCH 
@@ -123,6 +124,7 @@ void* thread_main(void* args) {
     int self = tdata->tid;
 	int r, retries, tmp;
 	void *p, *page_buf = malloc(PAGE_SIZE);
+	app_fault_packet_t fault;
 
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
@@ -132,16 +134,30 @@ void* thread_main(void* args) {
 	p = (void*) page_align(p);
 	printf("thread %d with memory start %lu, size %lu\n", self, tdata->range_start, tdata->range_len);
 	while(!stop_button) {
-		// p = (void*)(tdata->range_start + rand_next(&tdata->rs) % tdata->range_len);
-		// p = (void*) page_align(p);
-		// tmp = (int*) p;
-		// if (r)	tdata->errors++;
-		// else tdata->xput_ops++;
-		tmp = *(int*)p;	/*access*/
-		tdata->xput_ops++;
+#ifdef USE_APP_FAULTS
+		r = prefetch_page(p);	/*access before*/
+		ASSERT(r == -1);		/*page not expected to exist*/
+		fault.channel = tdata->tid; 
+		fault.fault_addr = (unsigned long) p;
+		fault.flags = APP_FAULT_FLAG_READ;
+		fault.taginfo = p;		/*testing*/
+		r = app_post_fault_async(tdata->tid, fault);
+		ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
+
+		app_fault_packet_t resp;
+		while(app_read_fault_resp_async(tdata->tid, &resp)) 
+			cpu_relax();
+		ASSERT(resp.taginfo == p);	/*sanity check*/
+		
+		r = prefetch_page(p);	/*access after*/
+		ASSERTZ(r);				/*page expected to exist*/
+		pr_debug("page fault served!");
+#else
+		tmp = *(int*)p;	/*normal access*/
+#endif
 		BUG_ON((unsigned long) p > tdata->range_start + tdata->range_len); 
+		tdata->xput_ops++;
 		p += PAGE_SIZE;
-		// if (tdata->xput_ops == 10)	break;
 	}
 }
 
@@ -177,10 +193,14 @@ int main(int argc, char **argv)
 	ASSERT(cycles_per_us);
 
 	/*kona init*/
-	putenv("MEMORY_LIMIT=34359738368");		/*32gb, BIG to avoid eviction*/
+	char env_var[200];
+	size = 34359738368;
+	sprintf(env_var, "MEMORY_LIMIT=%lu", size);	putenv(env_var);	/*32gb, BIG to avoid eviction*/
 	putenv("EVICTION_THRESHOLD=1");			/*32gb, BIG to avoid eviction*/
 	putenv("EVICTION_DONE_THRESHOLD=1");	/*32gb, BIG to avoid eviction*/
-	size = 34359738368;
+#ifdef USE_APP_FAULTS
+	sprintf(env_var, "APP_FAULT_CHANNELS=%d", num_threads);	putenv(env_var);
+#endif
 	rinit();
 
 #ifdef USE_PREFETCH 
@@ -236,11 +256,11 @@ int main(int argc, char **argv)
 		errors += tdata[i].errors;
 	}
 	
-	// printf("ran for %.1lf secs; total xput %lu\n", duration_secs, xput);
-	printf("result:%d,%.0lf\n", num_threads, xput / duration_secs);
-	// printf("%.2lfµs\n", duration_secs * 1000000 / xput);
+	printf("ran for %.1lf secs; total xput %lu\n", duration_secs, xput);
+	printf("result:%d,%.0lf,%lu\n", num_threads, 
+		xput / duration_secs, 							//total xput
+		duration/(cycles_per_us*tdata[0].xput_ops));	//per-op latency
 
 	rdestroy();
-
 	return 0;
 }

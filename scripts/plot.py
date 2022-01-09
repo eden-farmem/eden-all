@@ -68,13 +68,13 @@ def set_axes_legend_loc(ax, lns, labels, loc, title=None):
     if loc == LegendLoc.none:
         return
     if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center):
-        ax.legend(lns, labels, loc=loc.matplotlib_loc(), ncol=1, fancybox=True, shadow=True, title=title)
+        ax.legend(lns, labels, loc=loc.matplotlib_loc(), ncol=1, fancybox=True, title=title)
     if loc == LegendLoc.topout:
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(0, 1, 1.2, 0.3), ncol=2, 
-            fancybox=True, shadow=True, title=title)
+            fancybox=True, title=title)
     if loc == LegendLoc.rightout:
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(1.05, 1), ncol=1, 
-            fancybox=True, shadow=True, title=title)
+            fancybox=True, title=title)
 
 
 class LineStyle(Enum):
@@ -198,6 +198,10 @@ def parse_args():
         type=float,
         dest='hlines',
         help='Add a horizantal line at specified y-value (multiple lines are allowed)')
+
+    parser.add_argument('-hlf', '--hlinesfile', 
+        action='store', 
+        help='File with (label,xvalue) pairs for horizantal lines, one pair per line')
         
     parser.add_argument('-vl', '--vline', 
         action='append', 
@@ -422,8 +426,8 @@ def main():
 
     fig, axmain = plt.subplots(1, 1, figsize=tuple(args.size))
     if args.ptitle:
-        fig.suptitle(args.ptitle, x=0.5, y=-0.01, \
-            horizontalalignment='center', verticalalignment='bottom')
+        fig.suptitle(args.ptitle, x=0.3, y=0.9, \
+            horizontalalignment='left', verticalalignment='top')
         fig.tight_layout()
 
     if args.xlog:
@@ -513,7 +517,7 @@ def main():
             if plot_num == num_plots - 1:
                 xticks = xstart + (num_plots - 1) * args.barwidth / 2
                 ax.set_xticks(xticks)
-                ax.set_xticklabels(xcol, rotation='45' if args.xstr else 0) 
+                ax.set_xticklabels(xcol, rotation='10' if args.xstr else 0) 
 
         elif args.ptype == PlotType.barstacked:
             xc = xcol
@@ -524,7 +528,7 @@ def main():
             ax.bar(xc, yc, bottom=base_dataset, label=label, color=colors[cidx])
             if plot_num == num_plots - 1:
                 ax.set_xticks(xc)
-                ax.set_xticklabels(xc, rotation='45' if args.xstr else 0)
+                ax.set_xticklabels(xc, rotation='10' if args.xstr else 0)
             base_dataset = yc if base_dataset is None else base_dataset + yc
 
         elif args.ptype == PlotType.hist:

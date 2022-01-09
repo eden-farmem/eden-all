@@ -7,14 +7,16 @@
 # 
 
 usage="Example: bash run.sh -f\n
--f, --force \t\t force rebuild kona\n
+-f, --force \t force rebuild kona\n
 -kc,--kconfig \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
 -kf,--kcflags \t C flags passed to gcc when compiling kona\n
--t, --threads \t\t number of app threads\n
--o, --out \t\t output file for any results\n
--c, --clean \t\t run only the cleanup part\n
--d, --debug \t\t build debug\n
--h, --help \t\t this usage information message\n"
+-fl,--cflags \t C flags passed to gcc when compiling the app/test\n
+-t, --threads \t number of app threads\n
+-o, --out \t output file for any results\n
+-s, --safemode \t build kona with safe mode on\n
+-c, --clean \t run only the cleanup part\n
+-d, --debug \t build debug\n
+-h, --help \t this usage information message\n"
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
@@ -38,12 +40,20 @@ case $i in
     CFLAGS="$CFLAGS -DDEBUG"
     ;;
 
+    -fl=*|--cflags=*)
+    CFLAGS="$CFLAGS ${i#*=}"
+    ;;
+
     -kc=*|--kconfig=*)
     kona_cfg="PBMEM_CONFIG=${i#*=}"
     ;;
 
     -ko=*|--kcflags=*)
-    kona_cflags="${i#*=}"
+    kona_cflags="$kona_cflags ${i#*=}"
+    ;;
+    
+    -af|--appfaults)
+    CFLAGS="$CFLAGS -DUSE_APP_FAULTS"
     ;;
 
     -f|--force)
@@ -60,6 +70,10 @@ case $i in
 
     -o=*|--out=*)
     OUTFILE=${i#*=}
+    ;;
+
+    -s|--safemode)
+    kona_cflags="$kona_cflags -DSAFE_MODE"
     ;;
 
     -h | --help)
@@ -92,7 +106,8 @@ if [[ $FORCE ]]; then
     make je_clean
     make clean
     make je_jemalloc
-    make all -j $kona_cfg PROVIDED_CFLAGS=$kona_cflags ${DEBUG}
+    kona_cflags="$kona_cflags -DSERVE_APP_FAULTS"
+    make all -j $kona_cfg PROVIDED_CFLAGS="""$kona_cflags""" ${DEBUG}
     popd
 fi
 
