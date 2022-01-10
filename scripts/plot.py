@@ -193,21 +193,21 @@ def parse_args():
         help='Plot y-axis on log scale',
         default=False)
 
-    parser.add_argument('-hl', '--hline', 
-        action='append', 
+    parser.add_argument('-hl', '--hlines', 
+        action='store', 
         type=float,
-        dest='hlines',
-        help='Add a horizantal line at specified y-value (multiple lines are allowed)')
+        nargs='*',
+        help='Add horizantal lines at specified y-values (multiple lines are allowed)')
 
     parser.add_argument('-hlf', '--hlinesfile', 
         action='store', 
         help='File with (label,xvalue) pairs for horizantal lines, one pair per line')
         
-    parser.add_argument('-vl', '--vline', 
-        action='append', 
+    parser.add_argument('-vl', '--vlines', 
+        action='store', 
         type=float,
-        dest='vlines',
-        help='Add a vertical line at specified x-value (multiple lines are allowed)')
+        nargs='*',
+        help='Add vertical lines at specified x-values (multiple lines are allowed)')
     
     parser.add_argument('-vlf', '--vlinesfile', 
         action='store', 
@@ -517,7 +517,7 @@ def main():
             if plot_num == num_plots - 1:
                 xticks = xstart + (num_plots - 1) * args.barwidth / 2
                 ax.set_xticks(xticks)
-                ax.set_xticklabels(xcol, rotation='10' if args.xstr else 0) 
+                ax.set_xticklabels(xcol, rotation='15' if args.xstr else 0) 
 
         elif args.ptype == PlotType.barstacked:
             xc = xcol
@@ -528,7 +528,7 @@ def main():
             ax.bar(xc, yc, bottom=base_dataset, label=label, color=colors[cidx])
             if plot_num == num_plots - 1:
                 ax.set_xticks(xc)
-                ax.set_xticklabels(xc, rotation='10' if args.xstr else 0)
+                ax.set_xticklabels(xc, rotation='15' if args.xstr else 0)
             base_dataset = yc if base_dataset is None else base_dataset + yc
 
         elif args.ptype == PlotType.hist:

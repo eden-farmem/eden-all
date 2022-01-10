@@ -47,23 +47,30 @@ done
 # run
 set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
-latfile=$DATADIR/latency
-echo "config,latency" > $latfile
+CFLAGS_BEFORE=$CFLAGS
 
-for kind in "faults" "appfaults"; do
-    for newpage in "zp" "no-zp"; do
-        cfg=${kind}-${newpage}
+for kind in "faults" "appfaults" "mixed"; do
+    for op in "read" "write" "r+w"; do
+        cfg=${kind}-${op}
         KC=CONFIG_WP
-        KO=
-        LINESTYLE=dashed
-        CFLAGS=
-        if [[ "$kind" == "appfaults" ]]; then  
-            CFLAGS="$CFLAGS -DUSE_APP_FAULTS";
-            LINESTYLE=solid
-        fi
-        if [[ "$newpage" == "zp" ]]; then  
-            KO="-DNO_ZEROPAGE_OPT"; 
-        fi
+        KO="-DNO_ZEROPAGE_OPT"  #to estimate normal faults after first access
+        CFLAGS=${CFLAGS_BEFORE}
+        LS=
+        CMI=
+
+        case $kind in
+        "faults")           ;;
+        "appfaults")        CFLAGS="$CFLAGS -DUSE_APP_FAULTS";;
+        "mixed")            CFLAGS="$CFLAGS -DUSE_APP_FAULTS -DMIX_FAULTS";;
+        *)                  echo "Unknown fault kind"; exit;;
+        esac
+
+        case $op in
+        "read")             CFLAGS="$CFLAGS -DFAULT_OP=0";  LS=solid;   CMI=0;;
+        "write")            CFLAGS="$CFLAGS -DFAULT_OP=1";  LS=dashed;  CMI=0;;
+        "r+w")              CFLAGS="$CFLAGS -DFAULT_OP=2";  LS=dashdot; CMI=1;;
+        *)                  echo "Unknown fault op"; exit;;
+        esac
 
         datafile=$DATADIR/${cfg}
         if [ ! -f $datafile ] || [[ $FORCE ]]; then 
@@ -79,9 +86,19 @@ for kind in "faults" "appfaults"; do
             rm -f $tmpfile
         fi
         cat $datafile
+        plots="$plots -d $datafile -l $cfg -ls $LS -cmi $CMI"
+
+        # gather latency numbers
+        latfile=${TEMP_PFX}latency-${op}
+        if [ ! -f $latfile ]; then 
+            echo "config,latency" > $latfile; 
+            latplots="$latplots -d $latfile -l $op"
+        fi
         row2col3=`sed -n '2p' ${datafile} | awk -F, '{ print $3 }'`
-        echo "$cfg,$row2col3" >> $latfile
-        plots="$plots -d $datafile -l $cfg -ls $LINESTYLE"
+        # row2col2=`sed -n '5p' ${datafile} | awk -F, '{ print $2 }'`
+        # latency=`echo $row2col2 | awk ' { printf "%.1lf", 4000000.0 / $0 } '`
+        # echo "$kind,$latency"
+        echo "$kind,$row2col3" >> $latfile
     done
 done
 
@@ -91,15 +108,23 @@ plotname=fault_xput.${PLOTEXT}
 python3 ${PLOTSRC} ${plots}             \
     -xc cores -xl "Cores"               \
     -yc xput -yl "Million faults / sec" --ymul 1e-6   \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+    --size 6 4 -fs 11 -of ${PLOTEXT} -o $plotname
 display $plotname & 
 
 plotname=fault_latency.${PLOTEXT}
-python3 ${PLOTSRC} -z bar -d ${latfile} \
-    -xc config -xl "Type" --xstr        \
-    -yc latency -yl "Cost (µs)" -l ""   \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+python3 ${PLOTSRC} -z bar ${latplots}   \
+    -xc config -xl "Fault Type"         \
+    -yc latency -yl "Cost (µs)"         \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname --10ymin 0 --ymax 35
 display $plotname & 
+
+# plotname=fault_latency_zoomed.${PLOTEXT}
+# python3 ${PLOTSRC} -z bar ${latplots}   \
+#     -xc config -xl "Fault Type"         \
+#     -yc latency -yl "Cost (µs)"         \
+#     --ymin 13 --ymax 19 --hlines 14 15 16 17 18 \
+#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+# display $plotname & 
 
 # cleanup
 rm -f ${TEMP_PFX}*

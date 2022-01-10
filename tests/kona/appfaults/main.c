@@ -82,22 +82,17 @@ struct thread_data {
 	int errors;
 } CACHE_ALIGN;
 
-int is_page_mapped(const void* p) {
-	p = page_align(p);
+enum fault_kind {
+	FK_NORMAL,
+	FK_APPFAULT,
+	FK_MIXED
+};
 
-#ifdef USE_PREFETCH
-	return prefetch_page(p) == 0;
-#else
-	/* NOTE: mincore() doesn't exactly get whether page is 
-	 * is mapped but for userfaultfd purposes it seems to be ok? */
-	char vec;
-	if (mincore((void *)p, PAGE_SIZE, &vec)) {
-		pr_err("mincore failed: %s\n", strerror(errno));
-		ASSERT(0);
-	}
-	return vec & 1;
-#endif
-}
+enum fault_op {
+	FO_READ = 0,
+	FO_WRITE,
+	FO_READ_WRITE
+};
 
 int next_available_core(int coreidx) {
 	int i;
@@ -116,6 +111,23 @@ int next_available_core(int coreidx) {
 	return coreidx;
 }
 
+/*post app fault and wait for response*/
+static inline void post_app_fault_sync(int channel, unsigned long fault_addr, int flags){
+	int r;
+	app_fault_packet_t fault;
+	fault.channel = channel; 
+	fault.fault_addr = fault_addr;
+	fault.flags = flags;
+	fault.taginfo = (void*) fault_addr;		/*testing*/
+	r = app_post_fault_async(channel, fault);
+	ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
+
+	app_fault_packet_t resp;
+	while(app_read_fault_resp_async(channel, &resp)) 
+		cpu_relax();
+	ASSERT(resp.taginfo == (void*) fault_addr);	/*sanity check*/
+}
+
 void* thread_main(void* args) {
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
@@ -125,6 +137,24 @@ void* thread_main(void* args) {
 	int r, retries, tmp;
 	void *p, *page_buf = malloc(PAGE_SIZE);
 	app_fault_packet_t fault;
+	enum fault_kind kind = FK_NORMAL;
+	enum fault_op op = FO_READ;
+
+/*fault kind*/
+#ifdef USE_APP_FAULTS
+	kind = FK_APPFAULT;
+#endif
+#ifdef MIX_FAULTS
+#ifndef USE_APP_FAULTS
+#error MIX_FAULTS needs USE_APP_FAULTS as well
+#endif
+	kind = FK_MIXED;
+#endif
+
+/*fault operation*/
+#ifdef FAULT_OP
+	op = (enum fault_op) FAULT_OP;
+#endif
 
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
@@ -132,32 +162,42 @@ void* thread_main(void* args) {
 	while(!start_button)	cpu_relax();
 	p = (void*)(tdata->range_start);
 	p = (void*) page_align(p);
-	printf("thread %d with memory start %lu, size %lu\n", self, tdata->range_start, tdata->range_len);
+	printf("thread %d with memory start %lu, size %lu, kind %d, op %d\n", 
+		self, tdata->range_start, tdata->range_len, kind, op);
 	while(!stop_button) {
+		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
 #ifdef USE_APP_FAULTS
-		r = prefetch_page(p);	/*access before*/
-		ASSERT(r == -1);		/*page not expected to exist*/
-		fault.channel = tdata->tid; 
-		fault.fault_addr = (unsigned long) p;
-		fault.flags = APP_FAULT_FLAG_READ;
-		fault.taginfo = p;		/*testing*/
-		r = app_post_fault_async(tdata->tid, fault);
-		ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
+			pr_debug("posting app fault on thread %d\n", tdata->tid);
+			r = prefetch_page(p);	/*access before*/
+			ASSERT(r == -1);		/*page not expected to exist*/
 
-		app_fault_packet_t resp;
-		while(app_read_fault_resp_async(tdata->tid, &resp)) 
-			cpu_relax();
-		ASSERT(resp.taginfo == p);	/*sanity check*/
-		
-		r = prefetch_page(p);	/*access after*/
-		ASSERTZ(r);				/*page expected to exist*/
-		pr_debug("page fault served!");
+			if (op == FO_READ || op == FO_READ_WRITE)
+				post_app_fault_sync(tdata->tid, (unsigned long)p, APP_FAULT_FLAG_READ);
+			if (op == FO_WRITE || op == FO_READ_WRITE)
+				post_app_fault_sync(tdata->tid, (unsigned long)p, APP_FAULT_FLAG_WRITE);
+			
+			r = prefetch_page(p);	/*access after*/
+			ASSERTZ(r);				/*page expected to exist*/
+			pr_debug("page fault served!");
 #else
-		tmp = *(int*)p;	/*normal access*/
+			BUG(1);	/*cannot be here without USE_APP_FAULTS*/
 #endif
+		} 
+		else {
+			/*normal accesses*/
+			pr_debug("posting regular fault on thread %d\n", tdata->tid);
+			if (op == FO_READ || op == FO_READ_WRITE)
+				tmp = *(int*)p;
+			if (op == FO_WRITE || op == FO_READ_WRITE)
+				*(int*)p = tmp;
+		}
+
 		BUG_ON((unsigned long) p > tdata->range_start + tdata->range_len); 
 		tdata->xput_ops++;
 		p += PAGE_SIZE;
+#ifdef DEBUG
+		break;
+#endif
 	}
 }
 
@@ -257,9 +297,9 @@ int main(int argc, char **argv)
 	}
 	
 	printf("ran for %.1lf secs; total xput %lu\n", duration_secs, xput);
-	printf("result:%d,%.0lf,%lu\n", num_threads, 
-		xput / duration_secs, 							//total xput
-		duration/(cycles_per_us*tdata[0].xput_ops));	//per-op latency
+	printf("result:%d,%.0lf,%.1lf\n", num_threads, 
+		xput / duration_secs, 								//total xput
+		duration * 1.0/(cycles_per_us*tdata[0].xput_ops));	//per-op latency
 
 	rdestroy();
 	return 0;
