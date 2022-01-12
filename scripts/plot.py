@@ -52,15 +52,13 @@ class LegendLoc(Enum):
     rightout = "rightout"
     rightin = "rightin"
     center = "center"
-    topleft = "topleft"
 
     def matplotlib_loc(self):
         if self.value == LegendLoc.none:       return None
         if self.value == LegendLoc.best:       return 'best'
         if self.value == LegendLoc.rightin:    return 'right'
         if self.value == LegendLoc.center:     return 'center'
-        if self.value == LegendLoc.topleft:    return 'topleft'
-        if self.value == LegendLoc.topout:     return 'lower center'
+        if self.value == LegendLoc.topout:     return 'lower left'
         if self.value == LegendLoc.rightout:   return 'upper left'
 
     def __str__(self):
@@ -69,14 +67,14 @@ class LegendLoc(Enum):
 def set_axes_legend_loc(ax, lns, labels, loc, title=None):
     if loc == LegendLoc.none:
         return
-    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center, LegendLoc.topleft):
-        ax.legend(lns, labels, loc=loc.matplotlib_loc(), ncol=1, fancybox=True, shadow=True, title=title)
+    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center):
+        ax.legend(lns, labels, loc=loc.matplotlib_loc(), ncol=1, fancybox=True, title=title)
     if loc == LegendLoc.topout:
-        ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(0.5, 1), ncol=2, 
-            fancybox=True, shadow=True, title=title)
+        ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(0, 1, 1.2, 0.3), ncol=2, 
+            fancybox=True, title=title)
     if loc == LegendLoc.rightout:
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(1.05, 1), ncol=1, 
-            fancybox=True, shadow=True, title=title)
+            fancybox=True, title=title)
 
 
 class LineStyle(Enum):
@@ -195,17 +193,21 @@ def parse_args():
         help='Plot y-axis on log scale',
         default=False)
 
-    parser.add_argument('-hl', '--hline', 
-        action='append', 
+    parser.add_argument('-hl', '--hlines', 
+        action='store', 
         type=float,
-        dest='hlines',
-        help='Add a horizantal line at specified y-value (multiple lines are allowed)')
+        nargs='*',
+        help='Add horizantal lines at specified y-values (multiple lines are allowed)')
+
+    parser.add_argument('-hlf', '--hlinesfile', 
+        action='store', 
+        help='File with (label,xvalue) pairs for horizantal lines, one pair per line')
         
-    parser.add_argument('-vl', '--vline', 
-        action='append', 
+    parser.add_argument('-vl', '--vlines', 
+        action='store', 
         type=float,
-        dest='vlines',
-        help='Add a vertical line at specified x-value (multiple lines are allowed)')
+        nargs='*',
+        help='Add vertical lines at specified x-values (multiple lines are allowed)')
     
     parser.add_argument('-vlf', '--vlinesfile', 
         action='store', 
@@ -424,8 +426,9 @@ def main():
 
     fig, axmain = plt.subplots(1, 1, figsize=tuple(args.size))
     if args.ptitle:
-        fig.suptitle(args.ptitle, x=0.4, y=.93, \
+        fig.suptitle(args.ptitle, x=0.3, y=0.9, \
             horizontalalignment='left', verticalalignment='top')
+        fig.tight_layout()
 
     if args.xlog:
         axmain.set_xscale('log', basex=10)
@@ -514,7 +517,7 @@ def main():
             if plot_num == num_plots - 1:
                 xticks = xstart + (num_plots - 1) * args.barwidth / 2
                 ax.set_xticks(xticks)
-                ax.set_xticklabels(xcol, rotation='45' if args.xstr else 0) 
+                ax.set_xticklabels(xcol, rotation='15' if args.xstr else 0) 
 
         elif args.ptype == PlotType.barstacked:
             xc = xcol
@@ -525,7 +528,7 @@ def main():
             ax.bar(xc, yc, bottom=base_dataset, label=label, color=colors[cidx])
             if plot_num == num_plots - 1:
                 ax.set_xticks(xc)
-                ax.set_xticklabels(xc, rotation='45' if args.xstr else 0)
+                ax.set_xticklabels(xc, rotation='15' if args.xstr else 0)
             base_dataset = yc if base_dataset is None else base_dataset + yc
 
         elif args.ptype == PlotType.hist:

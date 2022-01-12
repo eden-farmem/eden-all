@@ -2,3 +2,6 @@ run-*
 !run-*.png
 .vscode
 arxiv/
+*/simulate
+sim/data/**
+!sim/data/**/*png

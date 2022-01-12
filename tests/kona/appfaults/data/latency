@@ -1,0 +1,10 @@
+config,latency
+faults-read,17
+faults-write,18
+faults-r+w,35
+appfaults-read,15
+appfaults-write,14
+appfaults-r+w,22
+mixed-read,16
+mixed-write,16
+mixed-r+w,29
