@@ -50,7 +50,7 @@ mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 
 for kind in "faults" "appfaults" "mixed"; do
-    for op in "read" "write" "r+w"; do
+    for op in "read" "write"; do        # "r+w"
         cfg=${kind}-${op}
         KC=CONFIG_WP
         KO="-DNO_ZEROPAGE_OPT"  #to estimate normal faults after first access
@@ -74,7 +74,6 @@ for kind in "faults" "appfaults" "mixed"; do
 
         datafile=$DATADIR/${cfg}
         if [ ! -f $datafile ] || [[ $FORCE ]]; then 
-            bash run.sh --clean     #start clean
             bash run.sh -f -kc="$KC" -ko="$KO"  #rebuild kona
             tmpfile=${TEMP_PFX}out
             echo "cores,xput,latency" > $datafile
@@ -86,7 +85,7 @@ for kind in "faults" "appfaults" "mixed"; do
             rm -f $tmpfile
         fi
         cat $datafile
-        plots="$plots -d $datafile -l $cfg -ls $LS -cmi $CMI"
+        plots="$plots -d $datafile -l $cfg -ls $LS"
 
         # gather latency numbers
         latfile=${TEMP_PFX}latency-${op}
@@ -107,24 +106,25 @@ mkdir -p ${PLOTDIR}
 plotname=fault_xput.${PLOTEXT}
 python3 ${PLOTSRC} ${plots}             \
     -xc cores -xl "Cores"               \
-    -yc xput -yl "Million faults / sec" --ymul 1e-6   \
-    --size 6 4 -fs 11 -of ${PLOTEXT} -o $plotname
+    -yc xput -yl "Million faults / sec" \
+    --ymul 1e-6 --ymin 0 --ymax 0.2     \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 
 plotname=fault_latency.${PLOTEXT}
 python3 ${PLOTSRC} -z bar ${latplots}   \
     -xc config -xl "Fault Type"         \
     -yc latency -yl "Cost (µs)"         \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname --10ymin 0 --ymax 35
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 
-# plotname=fault_latency_zoomed.${PLOTEXT}
-# python3 ${PLOTSRC} -z bar ${latplots}   \
-#     -xc config -xl "Fault Type"         \
-#     -yc latency -yl "Cost (µs)"         \
-#     --ymin 13 --ymax 19 --hlines 14 15 16 17 18 \
-#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-# display $plotname & 
+plotname=fault_latency_zoomed.${PLOTEXT}
+python3 ${PLOTSRC} -z bar ${latplots}   \
+    -xc config -xl "Fault Type"         \
+    -yc latency -yl "Cost (µs)"         \
+    --ymin 13 --ymax 19 --hlines 14 15 16 17 18 \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+display $plotname & 
 
 # cleanup
 rm -f ${TEMP_PFX}*

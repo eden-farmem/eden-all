@@ -69,8 +69,9 @@ const int KONA_CORES[] = {
 #define RUNTIME_SECS 5
 
 uint64_t cycles_per_us;
-pthread_barrier_t ready;
+pthread_barrier_t ready, lockstep_start, lockstep_end;
 int start_button = 0, stop_button = 0;
+int stop_button_seen = 0;
 
 struct thread_data {
     int tid;
@@ -91,7 +92,8 @@ enum fault_kind {
 enum fault_op {
 	FO_READ = 0,
 	FO_WRITE,
-	FO_READ_WRITE
+	FO_READ_WRITE,
+	FO_RANDOM
 };
 
 int next_available_core(int coreidx) {
@@ -112,14 +114,14 @@ int next_available_core(int coreidx) {
 }
 
 /*post app fault and wait for response*/
-static inline void post_app_fault_sync(int channel, unsigned long fault_addr, int flags){
+static inline void post_app_fault_sync(int channel, unsigned long fault_addr, int is_write){
 	int r;
 	app_fault_packet_t fault;
 	fault.channel = channel; 
 	fault.fault_addr = fault_addr;
-	fault.flags = flags;
+	fault.flags =  is_write ? APP_FAULT_FLAG_WRITE : APP_FAULT_FLAG_READ;
 	fault.taginfo = (void*) fault_addr;		/*testing*/
-	r = app_post_fault_async(channel, fault);
+	r = app_post_fault_async(channel, &fault);
 	ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
 
 	app_fault_packet_t resp;
@@ -131,14 +133,15 @@ static inline void post_app_fault_sync(int channel, unsigned long fault_addr, in
 void* thread_main(void* args) {
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
-	pr_debug("thread %d pinned to core %d\n", tdata->tid, tdata->core);
+	pr_debug("thread %d pinned to core %d", tdata->tid, tdata->core);
 
     int self = tdata->tid;
-	int r, retries, tmp;
+	int r, retries, tmp, i = 0, stop = 0;
 	void *p, *page_buf = malloc(PAGE_SIZE);
 	app_fault_packet_t fault;
 	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
+	bool concurrent = false;
 
 /*fault kind*/
 #ifdef USE_APP_FAULTS
@@ -150,10 +153,12 @@ void* thread_main(void* args) {
 #endif
 	kind = FK_MIXED;
 #endif
-
 /*fault operation*/
 #ifdef FAULT_OP
 	op = (enum fault_op) FAULT_OP;
+#endif
+#ifdef CONCURRENT
+	concurrent = true;
 #endif
 
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
@@ -164,17 +169,27 @@ void* thread_main(void* args) {
 	p = (void*) page_align(p);
 	printf("thread %d with memory start %lu, size %lu, kind %d, op %d\n", 
 		self, tdata->range_start, tdata->range_len, kind, op);
-	while(!stop_button) {
+
+	while(!stop) {
+		if (op == FO_RANDOM)
+			op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
+
 		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
 #ifdef USE_APP_FAULTS
-			pr_debug("posting app fault on thread %d\n", tdata->tid);
+			pr_debug("posting app fault on thread %d", tdata->tid);
 			r = prefetch_page(p);	/*access before*/
 			ASSERT(r == -1);		/*page not expected to exist*/
 
+			if (concurrent) {
+				/*sync with other threads before each fault*/
+				r = pthread_barrier_wait(&lockstep_start);
+				ASSERT(r != EINVAL);
+			}
+
 			if (op == FO_READ || op == FO_READ_WRITE)
-				post_app_fault_sync(tdata->tid, (unsigned long)p, APP_FAULT_FLAG_READ);
+				post_app_fault_sync(tdata->tid, (unsigned long)p, FO_READ);
 			if (op == FO_WRITE || op == FO_READ_WRITE)
-				post_app_fault_sync(tdata->tid, (unsigned long)p, APP_FAULT_FLAG_WRITE);
+				post_app_fault_sync(tdata->tid, (unsigned long)p, FO_WRITE);
 			
 			r = prefetch_page(p);	/*access after*/
 			ASSERTZ(r);				/*page expected to exist*/
@@ -182,23 +197,43 @@ void* thread_main(void* args) {
 #else
 			BUG(1);	/*cannot be here without USE_APP_FAULTS*/
 #endif
-		} 
+		}
 		else {
 			/*normal accesses*/
+			if (concurrent) {
+				/*sync with other threads before each fault*/
+				r = pthread_barrier_wait(&lockstep_start);
+				ASSERT(r != EINVAL);
+			}
 			pr_debug("posting regular fault on thread %d\n", tdata->tid);
 			if (op == FO_READ || op == FO_READ_WRITE)
 				tmp = *(int*)p;
 			if (op == FO_WRITE || op == FO_READ_WRITE)
 				*(int*)p = tmp;
 		}
-
-		BUG_ON((unsigned long) p > tdata->range_start + tdata->range_len); 
+		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 		tdata->xput_ops++;
 		p += PAGE_SIZE;
 #ifdef DEBUG
-		break;
+		i++;
+		if (i == 1000) 	
+			break;
 #endif
+
+		/* seeing stop_button from main thread */
+		if (concurrent) {
+			/* we need two barriers to lockstep a set of threads which 
+			 * also need to stop together based on an external signal 
+			 * why? https://stackoverflow.com/questions/28843735/whats-a-good-strategy-for-clean-reliable-shutdown-of-threads-that-use-pthread-b*/
+			stop_button_seen = stop_button;
+			r = pthread_barrier_wait(&lockstep_end);
+			ASSERT(r != EINVAL);
+			stop = stop_button_seen;
+		}
+		else	
+			stop = stop_button;
 	}
+	pr_debug("thread %d done with %d faults", tdata->tid, i);
 }
 
 int main(int argc, char **argv)
@@ -266,6 +301,8 @@ int main(int argc, char **argv)
 	int coreidx = 0;
 	pthread_t threads[MAX_THREADS];
 	ASSERTZ(pthread_barrier_init(&ready, NULL, num_threads + 1));
+	ASSERTZ(pthread_barrier_init(&lockstep_start, NULL, num_threads));
+	ASSERTZ(pthread_barrier_init(&lockstep_end, NULL, num_threads));
 	pin_thread(coreidx);	/*main thread on core 0*/
 	
 	for(i = 0; i < num_threads; i++) {
@@ -274,8 +311,13 @@ int main(int argc, char **argv)
         ASSERT(coreidx < NUM_CORES);
 		coreidx = next_available_core(coreidx);
         tdata[i].core = coreidx;
+#ifndef CONCURRENT
 		tdata[i].range_start = ((unsigned long) p) + i * (size / num_threads);
 		tdata[i].range_len = (size / num_threads);
+#else
+		tdata[i].range_start = ((unsigned long) p);
+		tdata[i].range_len = size;
+#endif
         pthread_create(&threads[i], NULL, thread_main, (void*)&tdata[i]);
 	}
 
@@ -289,6 +331,10 @@ int main(int argc, char **argv)
 		duration_secs = duration / (1000000.0 * cycles_per_us);
 	} while(duration_secs <= RUNTIME_SECS);
 	stop_button = 1;
+
+	/*wait for threads to finish*/
+	for(i = 0; i < num_threads; i++)
+		pthread_join(threads[i], NULL);
 
 	uint64_t xput = 0, errors = 0;
 	for (i = 0; i < num_threads; i++) {

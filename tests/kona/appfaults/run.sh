@@ -16,6 +16,7 @@ usage="Example: bash run.sh -f\n
 -s, --safemode \t build kona with safe mode on\n
 -c, --clean \t run only the cleanup part\n
 -d, --debug \t build debug\n
+-d, --gdb \t run with a gdb server (on port :1234) to attach to\n
 -h, --help \t this usage information message\n"
 
 #Defaults
@@ -76,6 +77,12 @@ case $i in
     kona_cflags="$kona_cflags -DSAFE_MODE"
     ;;
 
+    -g|--gdb)
+    GDB=1
+    DEBUG="DEBUG=1"
+    CFLAGS="$CFLAGS -DDEBUG -g -ggdb"
+    ;;
+
     -h | --help)
     echo -e $usage
     exit
@@ -94,8 +101,8 @@ cleanup() {
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl"
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver"
 }
+cleanup     #start clean
 if [[ $CLEANUP ]]; then
-    cleanup
     exit 0
 fi
 
@@ -132,11 +139,12 @@ ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_ME
 sleep 30
 
 # run
+if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
 if [[ $OUTFILE ]]; then 
-    sudo ${env} ./${BINFILE} ${NUM_THREADS} >> $OUTFILE
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${NUM_THREADS} >> $OUTFILE
 else 
-    sudo ${env} ./${BINFILE} ${NUM_THREADS}
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${NUM_THREADS}
 fi
 
 # cleanup

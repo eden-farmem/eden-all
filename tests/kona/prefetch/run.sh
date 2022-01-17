@@ -1,12 +1,12 @@
 #!/bin/bash
 
 #
-# Test Nadav Amit's prefetch_page() API for Userfaultfd pages
+# Test Nadav Amit's prefetch_page() API for Userfaultfd pages using Kona
 # Requires this kernel patch/feature: 
 # https://lore.kernel.org/lkml/20210225072910.2811795-4-namit@vmware.com/
 # 
 
-usage="\n
+usage="Example: bash run.sh -k -f\n
 -k, --kona \t\t build and attach kona to the test\n
 -kc,--kona-config \t optional kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
 -kf,--kona-cflags \t optional C flags passed to gcc when compiling kona\n
@@ -20,7 +20,7 @@ usage="\n
 SCRIPT_DIR=`dirname "$0"`
 kona_cfg=CONFIG_WP
 OUTFILE="prefetch.out"
-KONA_DIR="${SCRIPT_DIR}/../../kona"
+KONA_DIR="${SCRIPT_DIR}/../../../kona"
 KONA_BIN="${KONA_DIR}/pbmem"
 KONA_RCNTRL_SSH="sc40"
 KONA_RCNTRL_IP="192.168.0.40"
