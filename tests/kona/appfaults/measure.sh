@@ -94,9 +94,6 @@ for kind in "faults" "appfaults" "mixed"; do
             latplots="$latplots -d $latfile -l $op"
         fi
         row2col3=`sed -n '2p' ${datafile} | awk -F, '{ print $3 }'`
-        # row2col2=`sed -n '5p' ${datafile} | awk -F, '{ print $2 }'`
-        # latency=`echo $row2col2 | awk ' { printf "%.1lf", 4000000.0 / $0 } '`
-        # echo "$kind,$latency"
         echo "$kind,$row2col3" >> $latfile
     done
 done

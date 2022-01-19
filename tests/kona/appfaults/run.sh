@@ -9,7 +9,7 @@
 usage="Example: bash run.sh -f\n
 -f, --force \t force rebuild kona\n
 -kc,--kconfig \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
--kf,--kcflags \t C flags passed to gcc when compiling kona\n
+-ko,--kcflags \t C flags passed to gcc when compiling kona\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
 -t, --threads \t number of app threads\n
 -o, --out \t output file for any results\n
@@ -98,8 +98,8 @@ done
 
 cleanup() {
     rm -f ${BINFILE}
-    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl"
-    ssh ${KONA_MEMSERVER_SSH} "pkill memserver"
+    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
+    ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
 cleanup     #start clean
 if [[ $CLEANUP ]]; then

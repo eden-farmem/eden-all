@@ -135,7 +135,7 @@ void* thread_main(void* args) {
     ASSERTZ(pin_thread(tdata->core));
 	pr_debug("thread %d pinned to core %d", tdata->tid, tdata->core);
 
-    int self = tdata->tid;
+    int self = tdata->tid, chanid;
 	int r, retries, tmp, i = 0, stop = 0;
 	void *p, *page_buf = malloc(PAGE_SIZE);
 	app_fault_packet_t fault;
@@ -161,22 +161,25 @@ void* thread_main(void* args) {
 	concurrent = true;
 #endif
 
+	ASSERT(is_appfaults_initialized());
+	chanid = app_faults_get_next_channel();
+
+	p = (void*)(tdata->range_start);
+	p = (void*) page_align(p);
+	printf("thread %d with channel %d, memory start %lu, size %lu, kind %d, op %d\n", 
+		self, chanid, tdata->range_start, tdata->range_len, kind, op);
+
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
 
 	while(!start_button)	cpu_relax();
-	p = (void*)(tdata->range_start);
-	p = (void*) page_align(p);
-	printf("thread %d with memory start %lu, size %lu, kind %d, op %d\n", 
-		self, tdata->range_start, tdata->range_len, kind, op);
-
 	while(!stop) {
 		if (op == FO_RANDOM)
 			op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
 
 		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
 #ifdef USE_APP_FAULTS
-			pr_debug("posting app fault on thread %d", tdata->tid);
+			pr_debug("posting app fault on thread %d, channel %d", tdata->tid, chanid);
 			r = prefetch_page(p);	/*access before*/
 			ASSERT(r == -1);		/*page not expected to exist*/
 
@@ -186,10 +189,25 @@ void* thread_main(void* args) {
 				ASSERT(r != EINVAL);
 			}
 
-			if (op == FO_READ || op == FO_READ_WRITE)
-				post_app_fault_sync(tdata->tid, (unsigned long)p, FO_READ);
-			if (op == FO_WRITE || op == FO_READ_WRITE)
-				post_app_fault_sync(tdata->tid, (unsigned long)p, FO_WRITE);
+			switch(op) {
+				case FO_READ:
+					post_app_fault_sync(chanid, (unsigned long)p, FO_READ);
+					break;
+				case FO_WRITE:
+					post_app_fault_sync(chanid, (unsigned long)p, FO_WRITE);
+					break;
+				case FO_READ_WRITE:
+					post_app_fault_sync(chanid, (unsigned long)p, FO_READ);
+					post_app_fault_sync(chanid, (unsigned long)p, FO_WRITE);
+					break;
+				case FO_RANDOM:
+					op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
+					post_app_fault_sync(chanid, (unsigned long)p, op);
+					break;
+				default:
+					pr_err("unknown fault op %d", op);
+					ASSERT(0);
+			}
 			
 			r = prefetch_page(p);	/*access after*/
 			ASSERTZ(r);				/*page expected to exist*/
