@@ -229,21 +229,31 @@ def parse_kona_accounting_log(dirn, experiment):
     with open(fname) as f:
         data = f.read().splitlines()
 
-    header_list_old = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    header_list_v0 = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
     "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_madvise,n_"
     "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
     "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
     "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
     "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
     "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
-    header_list_new = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    header_list_v1 = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
     "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_evictions,n_evictable,"
     "n_eviction_batches,n_madvise,n_"
     "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
     "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
     "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
     "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
-    "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")
+    "madvise_size,mem_pressure,n_kapi_fetch_succ").split(",")   # eviction changes
+    header_list_v2 = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_evictions,n_evictable,"
+    "n_eviction_batches,n_madvise,n_"
+    "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
+    "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
+    "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
+    "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
+    "madvise_size,mem_pressure,n_kapi_fetch_succ,n_afaults_r,n_afaults_w,"
+    "n_af_waitq,n_af_transitq").split(",")   # app fault changes
+    
     header_list = None
     COL_IDX = None
 
@@ -254,10 +264,13 @@ def parse_kona_accounting_log(dirn, experiment):
             time = int(dats[0])
             values = dats[1].split(",")
             if not header_list:
-                if len(values) == len(header_list_new):
-                    header_list = header_list_new
-                elif len(values) == len(header_list_old):
-                    header_list = header_list_old
+                if len(values) == len(header_list_v2):
+                    header_list = header_list_v2
+                if len(values) == len(header_list_v1):
+                    header_list = header_list_v1
+                elif len(values) == len(header_list_v0):
+                    header_list = header_list_v0
+                assert header_list is not None
                 COL_IDX = {k: v for v, k in enumerate(header_list)}
             assert len(values) == len(header_list), "unexpected kona log format"
             if header_list[1] == values[1]:     continue    #header
@@ -265,9 +278,8 @@ def parse_kona_accounting_log(dirn, experiment):
             stats['n_faults'].append((time, int(values[COL_IDX['n_faults_r']]) + int(values[COL_IDX['n_faults_w']]) + int(values[COL_IDX['n_faults_wp']])))
             stats['n_flush_fail'].append((time, int(values[COL_IDX['n_flush_try']]) - int(values[COL_IDX['n_flush_success']])))
             stats['n_madvise_fail'].append((time, int(values[COL_IDX['n_madvise_try']]) - int(values[COL_IDX['n_madvise']])))
-            if header_list == header_list_old:
-                # In older runs where we were not printing n_evictions, it was same as pages written out
-                # Not true for newer runs though
+            if header_list == header_list_v0:
+                # Before v1, we were not printing n_evictions, it was same as pages written out
                 stats['n_evictions'].append((time, int(values[COL_IDX['n_net_page_out']])))
 
     # Correct timestamps: A bunch of logs may get the same timestamp 
@@ -388,20 +400,28 @@ def parse_runtime_log(app, dirn):
     with open(fname) as f:
         data = f.read().splitlines()
 
-    pattern = ("(\d+).*STATS>reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
+    pattern_old = ("(\d+).*STATS>reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
     "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
     "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
     "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
     "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),cycles_per_us:(\d+)")
+    pattern_new = ("(\d+).*STATS>reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
+    "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
+    "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
+    "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
+    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pgfaults_posted:(\d+),"
+    "pgfaults_returned:(\d+),pgfaults_post_retries:(\d+),cycles_per_us:(\d+)")
+    pattern = None
 
     stat_vec = defaultdict(list)
     values_old = None
     for line in data:
         if "STATS>" not in line:    continue
-        match = re.match(pattern, line)
+        match = re.match(pattern_old, line)
+        if not match:   match = re.match(pattern_new, line)
         if match:
-            assert len(match.groups()) == 20
-            values = [int(match.group(i+1)) for i in range(20)]
+            assert len(match.groups()) == 20 or len(match.groups()) == 23
+            values = [int(match.group(i+1)) for i in range(len(match.groups()))]
             if not values_old:
                 values_old = values
                 continue        #ignore first value
@@ -427,7 +447,13 @@ def parse_runtime_log(app, dirn):
             rx_tcp_in_order = diff[16]
             rx_tcp_out_of_order = diff[17]
             rx_tcp_text_cycles = diff[18]
-            cycles_per_us = values[19]
+            cycles_per_us = values[19] 
+            if len(match.groups()) == 23:
+                pgfaults_posted = diff[19]
+                pgfaults_returned = diff[20]
+                pgfaults_post_retries = diff[21]
+                cycles_per_us = values[22] 
+
             # print(values)
             # print(diff)
 

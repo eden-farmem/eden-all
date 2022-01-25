@@ -9,15 +9,16 @@ usage="\n
 -d, --debug \t\t build debug\n
 -o, --onetime \t\t first time (includes some one-time init stuff)\n
 -n, --sync \t\t sync code base from git (for syncing updates on other machines)\n
--s, --shenango \t\t build shenango core\n
+-s, --shenango \t build shenango core\n
 -sd,--sdpdk \t\t include dpdk in the build\n
--m, --memcached \t\t build memcached app\n
--sy,--synthetic \t\t build shenango synthetic app\n
+-spf,--spgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
+-m, --memcached \t build memcached app\n
+-sy,--synthetic \t build shenango synthetic app\n
 -sb,--sbench \t\t build shenango bench app\n
 -k,--kona \t\t build kona\n
--kc,--kona-config \t\t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
--kf,--kona-cflags \t\t C flags passed to gcc when compiling kona\n
--mk,--with-kona \t\t build memcached + shenango linked with kona\n
+-kc,--kona-config \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
+-kf,--kona-cflags \t C flags passed to gcc when compiling kona\n
+-wk,--with-kona \t build shenango or apps linked with kona\n
 -a, --all \t\t build everything\n
 -h, --help \t\t this usage information message\n"
 
@@ -43,6 +44,10 @@ case $i in
 
     -sd|--dpdk)
     DPDK=1
+    ;;
+    
+    -spf=*|--spgfaults=*)
+    PAGE_FAULTS="${i#*=}"
     ;;
 
     -m|--memcached)
@@ -73,7 +78,7 @@ case $i in
     kona_cflags="${i#*=}"
     ;;
 
-    -mk|--with-kona)
+    -wk|-mk|--with-kona)
     WITH_KONA=1
     ;;
 
@@ -127,8 +132,11 @@ if [[ $SHENANGO ]]; then
     pushd shenango 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    if [[ $WITH_KONA ]]; then   KONA_OPT="WITH_KONA=1"; fi
-    make -j ${DEBUG} NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} $KONA_OPT 
+    if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
+    if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
+    echo  ${PGFAULT_OPT}
+    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} 
     popd 
 
     pushd shenango/scripts

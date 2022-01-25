@@ -120,14 +120,14 @@ static inline void post_app_fault_sync(int channel, unsigned long fault_addr, in
 	fault.channel = channel; 
 	fault.fault_addr = fault_addr;
 	fault.flags =  is_write ? APP_FAULT_FLAG_WRITE : APP_FAULT_FLAG_READ;
-	fault.taginfo = (void*) fault_addr;		/*testing*/
+	fault.tag = (void*) fault_addr;		/*testing*/
 	r = app_post_fault_async(channel, &fault);
 	ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
 
 	app_fault_packet_t resp;
 	while(app_read_fault_resp_async(channel, &resp)) 
 		cpu_relax();
-	ASSERT(resp.taginfo == (void*) fault_addr);	/*sanity check*/
+	ASSERT(resp.tag == (void*) fault_addr);	/*sanity check*/
 }
 
 void* thread_main(void* args) {
