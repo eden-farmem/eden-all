@@ -110,7 +110,7 @@ done
 
 mkdir -p ${PLOTDIR}
 
-plotname=fault_xput.${PLOTEXT}
+plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
 python ${PLOTSRC} ${plots}                  \
     -xc cores -xl "App CPU"                 \
     -yc xput -yl "MOPS" --ymul 1e-6         \
@@ -119,7 +119,7 @@ python ${PLOTSRC} ${plots}                  \
 display $plotname & 
 
 if [[ $LATENCIES ]]; then 
-    plotname=latency-${LATCORES}cores.${PLOTEXT}
+    plotname=${PLOTDIR}/latency-${LATCORES}cores.${PLOTEXT}
     python3 ${PLOTSRC} -z cdf ${latplots}   \
         -yc latency -xl "Latency (µs)"      \
         --xmin 0 --xmax 150 -nm             \
