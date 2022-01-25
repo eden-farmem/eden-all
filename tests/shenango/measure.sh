@@ -21,7 +21,7 @@ DATADIR=data
 PLOTEXT=png
 CFGFILE=${TEMP_PFX}shenango.config
 LATFILE=latencies
-LATCORES=2
+LATCORES=3
 
 # parse cli
 for i in "$@"
@@ -98,7 +98,7 @@ for kind in "vanilla" "regular" "apf-sync" "apf-async"; do    #
                 echo "$cores,$xput" >> $datafile        # record xput
                 latfile=$DATADIR/lat-${cfg}-${cores}
                 if [[ $LATENCIES ]] && [ -f $LATFILE ]; then 
-                    mv ${LATFILE} ${latfile}            # record latency
+                    mv -f ${LATFILE} ${latfile}            # record latency
                 fi
             done
         fi
@@ -122,7 +122,7 @@ if [[ $LATENCIES ]]; then
     plotname=${PLOTDIR}/latency-${LATCORES}cores.${PLOTEXT}
     python3 ${PLOTSRC} -z cdf ${latplots}   \
         -yc latency -xl "Latency (µs)"      \
-        --xmin 0 --xmax 150 -nm             \
+        --xmin 0 --xmax 200 -nm            \
         --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
     display $plotname & 
 fi

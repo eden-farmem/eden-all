@@ -63,6 +63,8 @@ void thread_main(void* arg) {
 	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
 	char tmp;
+	if (args->start_tsc > 0)
+		args->start_tsc = rdtsc();
 
 	/* figure out fault kind and operation */
 #ifdef FAULT_KIND
