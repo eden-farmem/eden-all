@@ -240,8 +240,8 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'app': 'synthetic',
             'serverip': server_handle['ip'],
             'serverport': server_handle['port'],
-            'output': kwargs.get('output', "buckets"),
-            # 'output': kwargs.get('output', "normal"),       # don't print latencies
+            # 'output': kwargs.get('output', "buckets"),
+            'output': kwargs.get('output', "normal"),       # don't print latencies
             'mpps': float(mpps) / count,
             'protocol': server_handle['protocol'],
             'transport': server_handle['transport'],
@@ -432,6 +432,8 @@ def launch_shenango_program(cfg, experiment):
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr} ".format(**cfg["kona"])
         params += "EVICTION_BATCH_SIZE={evict_batch_sz} ".format(**cfg["kona"])
+        # fullcmd = "sudo {params} numactl -N {numa} -m {numa} gdb --args {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
+        #     params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)    # GDB
         fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
             params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
     elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
@@ -442,16 +444,26 @@ def launch_shenango_program(cfg, experiment):
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)
     print("Running " + fullcmd)
     # fullcmd = "sleep 3000"
-    if stopat == 2:     time.sleep(3000)
+    # if stopat == 2:   
+    #     print("Waiting 5 mins to memcached with gdb!")  
+    #     time.sleep(300)
 
     ### HACK
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
     #     fullcmd = "export RUST_BACKTRACE=1; " + fullcmd
 
+    # # GDB
+    # if "kona" in cfg:
+    #     proc = None
+    #     print("Waiting 1 min to start memcached with gdb!")  
+    #     print("Run 'handle SIG33 nostop' to avoid stopping at timer? events!")  
+    #     time.sleep(120)
+    #     return proc
+        
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
     time.sleep(3)
     proc.poll()
-    print(str(proc.pid) + " returns code: " + str(proc.returncode))
+    print(str(proc.pid) + " returns code: " + str(proc.returncode))  
     assert not proc.returncode
     return proc
 
@@ -688,12 +700,13 @@ def execute_experiment(experiment):
         error = True
         raise
     finally:
-        if not error:
-            dump_cores_if_asked(experiment)
+        # if not error:
+        #     dump_cores_if_asked(experiment)
         collect_logs(experiment, not error)
         for p in procs:
-            p.terminate()
-            p.wait()
+            if p is not None:
+                p.terminate()
+                p.wait()
             del p
         cleanup()
     return experiment

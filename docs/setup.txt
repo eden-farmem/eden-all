@@ -133,7 +133,15 @@ Linux Kernel Patching
   sudo make modules_install
   sudo make install
 
+  After patching, re-install ofed:
+    ./mlnxofedinstall --all --add-kernel-support
+  Without this, the NICs would still work but will cause issues when using RDMA + DPDK, 
+  especially the errors while writing PAGES back to remote memory in Kona:
+    "[./rdma.c][do_rdma_op2:109]: [try_write FLUSH_ENTIRE_PAGE] ibv_post_send op=0 errno=12 outstanding=0
+    ./rdma.c:110: do_rdma_op2: Assertion `(0)' failed."
+
 Cleaning up Boot Partition
 ==========================
 https://askubuntu.com/questions/345588/what-is-the-safest-way-to-clean-up-boot-partition
+
 

@@ -11,7 +11,7 @@ from collections import defaultdict
 import bisect
 
 PAGE_OFFSET = 12
-ADDR_PATTERN = "(read|write|eviction|writep) fault at ([a-z0-9]+)"
+ADDR_PATTERN = "^(read|write|eviction|writep) fault at ([a-z0-9]+)$"
 CHECKPT_PATTERN = "Checkpoint (\S+):([0-9]+)"
 ITEM_PATTERN = "SET new item at 0x([a-z0-9]+)"
 CLIENT_LOG = "0-sc2-hs2-b1607.memcached.out"

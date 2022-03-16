@@ -38,36 +38,36 @@ esac
 done
 
 
-# See latencies for various runs
-SUFFIX="12-06-11"
-LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
-numplots=0
-for exp in $LS_CMD; do
-    echo "Parsing $exp"
-    name=`basename $exp`
-    cfg="$exp/config.json"
-    sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
-    konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
-    konamem_mb=`echo $konamem | awk '{ print $1/1000000 }'`
-
-    # summarize results
-    statsdir=$exp/stats
-    statfile=$statsdir/stat.csv
-    if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-        python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --app --iok
-    fi
-    
-    datafiles="$datafiles -d $statsdir/latencies_1 -l $konamem_mb"
-done
-
-echo $datafiles
-plotname=${PLOTDIR}/latencies.${PLOTEXT}
-python3 ${SCRIPT_DIR}/plot.py ${datafiles} -z cdf           \
-    -yc "Latencies" -xl "Latency (µs)" --xmin 0 --xmax 50   \
-    --size 8 4 -fs 12 -of $PLOTEXT -o $plotname -lt "Kona Mem (MB)"
-display $plotname & 
-
 ############# ARCHIVED ##############################
+
+# # # See latencies for various runs
+# SUFFIX="12-06-11"
+# LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
+# numplots=0
+# for exp in $LS_CMD; do
+#     echo "Parsing $exp"
+#     name=`basename $exp`
+#     cfg="$exp/config.json"
+#     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $cfg`
+#     konamem=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.mlimit' $cfg`
+#     konamem_mb=`echo $konamem | awk '{ print $1/1000000 }'`
+
+#     # summarize results
+#     statsdir=$exp/stats
+#     statfile=$statsdir/stat.csv
+#     if [[ $FORCE ]] || [ ! -d $statsdir ]; then
+#         python ${SCRIPT_DIR}/summary.py -n $name --lat --kona --app --iok
+#     fi
+    
+#     datafiles="$datafiles -d $statsdir/latencies_1 -l $konamem_mb"
+# done
+
+# echo $datafiles
+# plotname=${PLOTDIR}/latencies.${PLOTEXT}
+# python3 ${SCRIPT_DIR}/plot.py ${datafiles} -z cdf           \
+#     -yc "Latencies" -xl "Latency (µs)" --xmin 0 --xmax 50   \
+#     --size 8 4 -fs 12 -of $PLOTEXT -o $plotname -lt "Kona Mem (MB)"
+# display $plotname & 
 
 # # # Varying evict threshold plots (with madvise notif)
 # bash scripts/plotg.sh -lt="Evict Threshold" ${FORCE_FLAG} ${FORCEP_FLAG} \

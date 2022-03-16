@@ -20,6 +20,7 @@ usage="\n
 -kf,--kona-cflags \t C flags passed to gcc when compiling kona\n
 -wk,--with-kona \t build shenango or apps linked with kona\n
 -a, --all \t\t build everything\n
+-g, --gdb \t\t build with symbols\n
 -h, --help \t\t this usage information message\n"
 
 # Parse command line arguments
@@ -48,6 +49,7 @@ case $i in
     
     -spf=*|--spgfaults=*)
     PAGE_FAULTS="${i#*=}"
+    KOPTS="$KOPTS -DSERVE_APP_FAULTS"
     ;;
 
     -m|--memcached)
@@ -71,11 +73,11 @@ case $i in
     ;;
     
     -kc=*|--kona-config=*)
-    kona_cfg="PBMEM_CONFIG=${i#*=}"
+    KCFG="PBMEM_CONFIG=${i#*=}"
     ;;
 
     -ko=*|--kona-cflags=*)
-    kona_cflags="${i#*=}"
+    KOPTS="$KOPTS ${i#*=}"
     ;;
 
     -wk|-mk|--with-kona)
@@ -91,6 +93,12 @@ case $i in
     # -o=*|--opts=*)    # options 
     # OPTS="${i#*=}"
     # ;;
+
+    -g|--gdb)
+    GDB=1
+    GDBFLAG="GDB=1"
+    GDBFLAG2="--enable-gdb"
+    ;;
 
     -h | --help)
     echo -e $usage
@@ -135,8 +143,11 @@ if [[ $SHENANGO ]]; then
     if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
     if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
     echo  ${PGFAULT_OPT}
-    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} 
+    make libs -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} ${GDBFLAG}
+    # iokernel seems to fail with gdb so don't pass along the GDB flag
+    make iok -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}
     popd 
 
     pushd shenango/scripts
@@ -153,7 +164,7 @@ if [[ $KONA ]]; then
     core_opts+="FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE "
     core_opts+="EVICTION_CORE=$KONA_EVICTION_CORE "
     core_opts+="ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE} "
-    make all -j $core_opts $kona_cfg PROVIDED_CFLAGS=$kona_cflags
+    make all -j $core_opts $KCFG PROVIDED_CFLAGS="""$KOPTS""" ${DEBUG} ${GDBFLAG}
     popd
 fi
 
@@ -176,7 +187,7 @@ if [[ $MEMCACHED ]]; then
     pushd memcached/
     ./autogen.sh 
     if [[ $WITH_KONA ]]; then   KONA_OPT="--with-kona=../kona"; fi
-    ./configure --with-shenango=$PWD/../shenango $KONA_OPT
+    ./configure --with-shenango=$PWD/../shenango ${KONA_OPT} ${GDBFLAG2}
     make clean
     make -j
     popd
@@ -189,7 +200,6 @@ if [[ $SBENCH ]]; then
     pushd shenango/apps/bench
     make clean && make all -j
     popd
-    # echo "Run `./shenango/iokerneld` and then `tbench tbench.config` "
 fi
 
 echo "ALL DONE!"

@@ -5,3 +5,4 @@ arxiv/
 */simulate
 sim/data/**
 !sim/data/**/*png
+tests/*/*/lat-*

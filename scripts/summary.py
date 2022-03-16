@@ -13,17 +13,24 @@ import numpy as np
 
 NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]
-KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", "n_net_page_out", 
-    "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty", "n_faults_wp", "n_flush_fail", "n_evictions"]                            
+KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", 
+    "n_net_page_out", "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty", 
+    "n_faults_wp", "n_flush_fail", "n_evictions", "n_afaults_r", "n_afaults_w"]                            
 KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
-    "PERF_EVICT_WRITE", "PERF_HANDLER_FAULT", "PERF_EVICT_MADVISE", "PERF_HANDLER_MADV_NOTIF",
-    "PERF_HANDLER_FAULT_Q"]
+    "PERF_EVICT_WRITE", "PERF_HANDLER_FAULT", "PERF_EVICT_MADVISE", 
+    "PERF_HANDLER_MADV_NOTIF", "PERF_HANDLER_FAULT_Q"]
 RSTAT_DISPLAY_FIELDS = ["rxpkt", "txpkt", "drops", "cpupct", "stolenpct", "migratedpct", 
-    "localschedpct", "parks", "rescheds"]
+    "localschedpct", "parks", "rescheds", "pf_retries"]
 
 suppress_warn = False
+
+def parse_int(s):
+    try: 
+        return int(s)
+    except ValueError:
+        return None
 
 def percentile(latd, target):
     # latd: ({microseconds: count}, number_dropped)
@@ -373,9 +380,13 @@ def parse_iokernel_log(dirn, experiment):
         RX_P = None
         for line in d.strip().splitlines():
             if "eth stats for port" in line: continue
+            if "rx:" in line: continue
             dats = line.split()
             tm = int(dats[0])
             for stat_name, stat_val in zip(dats[1::2], dats[2::2]):
+                if not stat_name.endswith(":") or parse_int(stat_val) is None:
+                    # not an effective filter but works for now
+                    continue   
                 stats[stat_name.replace(":", "")].append((tm, int(stat_val)))
                 if stat_name == "RX_PULLED:": RX_P = float(stat_val)
                 if stat_name == "BATCH_TOTAL:": stats['IOK_SATURATION'].append((tm, RX_P / float(stat_val)))
@@ -409,8 +420,8 @@ def parse_runtime_log(app, dirn):
     "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
     "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
     "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
-    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pgfaults_posted:(\d+),"
-    "pgfaults_returned:(\d+),pgfaults_post_retries:(\d+),cycles_per_us:(\d+)")
+    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pf_posted:(\d+),"
+    "pf_returned:(\d+),pf_retries:(\d+),pf_failed:(\d+),cycles_per_us:(\d+)")
     pattern = None
 
     stat_vec = defaultdict(list)
@@ -420,7 +431,7 @@ def parse_runtime_log(app, dirn):
         match = re.match(pattern_old, line)
         if not match:   match = re.match(pattern_new, line)
         if match:
-            assert len(match.groups()) == 20 or len(match.groups()) == 23
+            assert len(match.groups()) == 20 or len(match.groups()) == 24
             values = [int(match.group(i+1)) for i in range(len(match.groups()))]
             if not values_old:
                 values_old = values
@@ -448,11 +459,12 @@ def parse_runtime_log(app, dirn):
             rx_tcp_out_of_order = diff[17]
             rx_tcp_text_cycles = diff[18]
             cycles_per_us = values[19] 
-            if len(match.groups()) == 23:
-                pgfaults_posted = diff[19]
-                pgfaults_returned = diff[20]
-                pgfaults_post_retries = diff[21]
-                cycles_per_us = values[22] 
+            if len(match.groups()) == 24:
+                pf_posted = diff[19]
+                pf_returned = diff[20]
+                pf_retries = diff[21]
+                pf_failed = diff[22]
+                cycles_per_us = values[23] 
 
             # print(values)
             # print(diff)
@@ -478,6 +490,10 @@ def parse_runtime_log(app, dirn):
                 if (rx_tcp_in_order + rx_tcp_out_of_order) else 0))
             stat_vec['p_reorder_time'].append((ts, rx_tcp_text_cycles / (sched_cycles + program_cycles) * 100
                 if (sched_cycles + program_cycles) else 0))
+            stat_vec['pf_posted'].append((ts, pf_posted))
+            stat_vec['pf_returned'].append((ts, pf_returned))
+            stat_vec['pf_retries'].append((ts, pf_retries))
+            stat_vec['pf_failed'].append((ts, pf_retries))
             continue
         assert False, line
     

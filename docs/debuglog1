@@ -1,0 +1,185 @@
+[81334.690697] show_signal: 6 callbacks suppressed
+[81334.690697] traps: memcached[13981] general protection fault ip:4210de sp:7f605a49ec90 error:0 in memcached[403000+3a000]
+
+[251114.312324] iokerneld[156108]: segfault at 10 ip 000000000082a0f0 sp 00007fff7af625f0 error 4 in iokerneld[409000+b66000]
+[251114.312338] Code: 41 8b 02 4c 8b 44 24 18 41 89 42 08 64 41 8b 29 83 fd 7f 40 0f 97 c6 e9 af fd ff ff 66 0f 1f 44 00 00 4c 89 63 18 48 8d 70 10 <0f> b7 50 10 66 83 fa 01 0f 84 7a fe ff ff 66 f0 ff 0e 0f 85 3e fe
+
+q
+oops handler 
+run with gdb - 
+turn off ASLR and print some random ips - trail and error 
+
+
+sudo RDMA_RACK_CNTRL_IP=192.168.0.40 RDMA_RACK_CNTRL_PORT=9202 MEMORY_LIMIT=1600000000 EVICTION_THRESHOLD=0.99 EVICTION_DONE_THRESHOLD=0.99 EVICTION_BATCH_SIZE=1 numactl -N 1 -m 1 gdbserver :1234 /home/ayelam/rmem-scheduler/memcached/memcached memcached.config -u ayelam -t 4 -U 5033 -p 5033 -c 32768 -m 32000 -b 32768 -P memcached_pid -r -o hashpower=28,no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0 2>&1 | ts %s  > memcached.out
+
+
+sudo RDMA_RACK_CNTRL_IP=192.168.0.40 RDMA_RACK_CNTRL_PORT=9202 MEMORY_LIMIT=1600000000 EVICTION_THRESHOLD=0.99 EVICTION_DONE_THRESHOLD=0.99 EVICTION_BATCH_SIZE=1 numactl -N 1 -m 1 gdbserver :1234 /home/ayelam/rmem-scheduler/memcached/memcached memcached.config -u ayelam -t 4 -U 5035 -p 5035 -c 32768 -m 32000 -b 32768 -P memcached_pid -r -o hashpower=28,no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0
+
+
+sudo RDMA_RACK_CNTRL_IP=192.168.0.40 RDMA_RACK_CNTRL_PORT=9202 MEMORY_LIMIT=1600000000 EVICTION_THRESHOLD=0.99 EVICTION_DONE_THRESHOLD=0.99 EVICTION_BATCH_SIZE=1  numactl -N 1 -m 1 gdbserver :1234 /home/ayelam/rmem-scheduler/memcached/memcached memcached.config -u ayelam -t 4 -U 5231 -p 5231 -c 32768 -m 32000 -b 32768 -P memcached_pid -r -o hashpower=28,no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0 2>&1 | ts %s 
+
+
+
+Reading /lib/x86_64-linux-gnu/.debug/libnss_nis-2.31.so from remote target...
+Reading /usr/lib/debug//lib/x86_64-linux-gnu/libnss_nis-2.31.so from remote target...
+Reading /usr/lib/debug//lib/x86_64-linux-gnu/libnss_nis-2.31.so from remote target...
+Reading /lib/x86_64-linux-gnu/libnsl-2.31.so from remote target...
+Reading /lib/x86_64-linux-gnu/.debug/libnsl-2.31.so from remote target...
+Reading /usr/lib/debug//lib/x86_64-linux-gnu/libnsl-2.31.so from remote target...
+Reading /usr/lib/debug//lib/x86_64-linux-gnu/libnsl-2.31.so from remote target...
+Reading /lib/x86_64-linux-gnu/libnss_files-2.31.so from remote target...
+Reading /lib/x86_64-linux-gnu/.debug/libnss_files-2.31.so from remote target...
+Reading /usr/lib/debug//lib/x86_64-linux-gnu/libnss_files-2.31.so from remote target...
+Reading /usr/lib/debug//lib/x86_64-linux-gnu/libnss_files-2.31.so from remote target...
+
+
+[New Thread 165805.168653]
+[New Thread 165805.168608]
+[New Thread 165805.168609]
+[New Thread 165805.168610]
+[New Thread 165805.168611]
+[New Thread 165805.168651]
+[New Thread 165805.168652]
+--Type <RET> for more, q to quit, c to continue without paging--
+
+Thread 2 "memcached" received signal SIGSEGV, Segmentation fault.
+[Switching to Thread 165805.168653]
+0x00000000004210de in mbuf_free (m=0x7ff75446dea8) at ./inc/net/mbuf.h:265
+265             m->release(m);
+(gdb) 
+(gdb) backtrace
+#0  0x00000000004210de in mbuf_free (m=0x7ff75446dea8) at ./inc/net/mbuf.h:265
+#1  softirq_fn (arg=arg@entry=0x7ff7502d7cb0) at runtime/softirq.c:29
+#2  0x0000000000421850 in softirq_run (budget=budget@entry=16) at runtime/softirq.c:176
+#3  0x000000000041fcc8 in thread_yield () at runtime/sched.c:465
+#4  0x000000000041dacb in __possible_fault_on (flags=1, address=<optimized out>) at runtime/pgfault.c:137
+#5  possible_read_fault_on (address=address@entry=0x7ff813721669) at runtime/pgfault.c:176
+#6  0x0000000000416f5c in assoc_find (key=key@entry=0x6bd4b68 "9266215", 'K' <repeats 21 times>, nkey=nkey@entry=20, hv=hv@entry=4147491564)
+    at assoc.c:89
+#7  0x0000000000415f4c in do_item_get (key=key@entry=0x6bd4b68 "9266215", 'K' <repeats 21 times>, nkey=nkey@entry=20, hv=hv@entry=4147491564, 
+    c=c@entry=0x6bd49c0, do_update=do_update@entry=false) at items.c:936
+#8  0x000000000041758f in item_get (key=key@entry=0x6bd4b68 "9266215", 'K' <repeats 21 times>, nkey=nkey@entry=20, c=c@entry=0x6bd49c0, 
+    do_update=do_update@entry=false) at thread.c:598
+#9  0x000000000040a84d in process_bin_get_or_touch (c=0x6bd49c0) at memcached.c:1638
+#10 complete_nread_binary (c=c@entry=0x6bd49c0) at memcached.c:2668
+#11 0x000000000040d22c in complete_nread (c=0x6bd49c0) at memcached.c:2719
+#12 drive_machine (arg=0x6bd49c0) at memcached.c:5522
+#13 0x000000000041e9f0 in ?? () at runtime/sched.c:122
+
+fixed iokernel segfault bug, had to do with assert statement
+tried fixing double frees and got this error 
+
+1646417549 profiler,7046,0,14364,3247,0,0,0,574,31897,8444,0,1566,6936,0,9541,0,12034,6256,0,15136
+1646417550 *** stack smashing detected ***: terminated
+try again with gdb for more info?
+Still seeing the above segfault though 
+
+(gdb) backtrace
+#0  0x000000000041fc54 in mbuf_free (m=0x7ff7545b2d28) at ./inc/net/mbuf.h:265
+#1  softirq_fn (arg=arg@entry=0x7ff751ad7cb0) at runtime/softirq.c:31
+#2  0x00000000004202d6 in softirq_run (budget=budget@entry=16) at runtime/softirq.c:181
+#3  0x000000000041ebd8 in thread_yield () at runtime/sched.c:465
+#4  0x000000000041d56d in __possible_fault_on (flags=1, address=<optimized out>) at runtime/pgfault.c:137
+#5  possible_read_fault_on (address=address@entry=0x7ff81121d229) at runtime/pgfault.c:176
+#6  0x0000000000416ebc in assoc_find (key=key@entry=0x6c23be8 "0954242", 'K' <repeats 21 times>, 
+    nkey=nkey@entry=20, hv=hv@entry=196096119) at assoc.c:89
+#7  0x0000000000415edc in do_item_get (key=key@entry=0x6c23be8 "0954242", 'K' <repeats 21 times>, 
+    nkey=nkey@entry=20, hv=hv@entry=196096119, c=c@entry=0x6c23a40, do_update=do_update@entry=false)
+    at items.c:936
+#8  0x00000000004174af in item_get (key=key@entry=0x6c23be8 "0954242", 'K' <repeats 21 times>, 
+    nkey=nkey@entry=20, c=c@entry=0x6c23a40, do_update=do_update@entry=false) at thread.c:598
+#9  0x000000000040a84d in process_bin_get_or_touch (c=0x6c23a40) at memcached.c:1638
+#10 complete_nread_binary (c=c@entry=0x6c23a40) at memcached.c:2668
+#11 0x000000000040d22c in complete_nread (c=0x6c23a40) at memcached.c:2719
+#12 drive_machine (arg=0x6c23a40) at memcached.c:5522
+#13 0x000000000041e010 in ?? () at runtime/sched.c:739
+
+full trace:
+1647179146 No locals.
+1647179146 #1  softirq_fn (arg=0x7ff7520dafe0) at runtime/softirq.c:31
+1647179146         w = 0x7ff7520dafe0
+1647179146         i = <optimized out>
+1647179146 #2  0x000000000041e010 in ?? () at runtime/sched.c:739
+1647179147         thread_tcache = 0x5e4c60
+1647179147         thread_slab = {name = 0x441ecf "runtime_threads", size = 192, link = {next = 0x464f90 <smalloc_slabs+16>, prev = 0x54ad10 <node_slab+16>}, 
+1647179147           nodes = {0x1000000080c0, 0x1010000080c0, 0x0, 0x0}}
+1647179147         runtime_stack_base = <optimized out>
+1647179147         last_watchdog_tsc = 0
+1647179147         runtime_stack = 0x7ff75211bff8
+1647179147         last_tsc = 14354775559919106
+1647179147         disable_watchdog = true
+1647179147         __self = 0x100000009c00
+
+TODO print all mbufs at creation and check if the failed one shows up?
+
+REgion between 0x7ff774600000 and 0x7ff77464c000
+m = 0x7ff7544066e8
+
+1647308102 #0  0x000000000041fc4e in mbuf_free (m=0x7ff7544066e8) at ./inc/net/mbuf.h:265
+1647308102 No locals.
+1647308102 #1  softirq_fn (arg=0x7ff750e17fe0) at runtime/softirq.c:31
+1647308102         w = 0x7ff750e17fe0
+1647308102         i = <optimized out>
+1647308102 #2  0x000000000041e010 in ?? () at runtime/sched.c:739
+1647308102         thread_tcache = 0x5e4c60
+1647308102         thread_slab = {name = 0x441ecf "runtime_threads", size = 192, link = {
+1647308102             next = 0x464f90 <smalloc_slabs+16>, prev = 0x54ad10 <node_slab+16>}, 
+1647308102           nodes = {0x1000000080c0, 0x1010000080c0, 0x0, 0x0}}
+1647308102         runtime_stack_base = <optimized out>
+1647308102         last_watchdog_tsc = 0
+1647308102         runtime_stack = 0x7ff75211bff8
+1647308102         last_tsc = 14636964229855680
+1647308102         disable_watchdog = true
+1647308102         __self = 0x10000001dd80
+
+p ((struct softirq_work *)(0x7ff750e17fe0))->compl_cnt
+p ((struct softirq_work *)(0x7ff750e17fe0))->recv_cnt
+p ((struct softirq_work *)(0x7ff750e17fe0))->join_cnt
+p ((struct softirq_work *)(0x7ff750e17fe0))->fault_cnt
+
+budget_left was going negative, fixed it.
+but how exactly was that leading to a seg-fault? 
+
+now it crashes silently i.e., shenango threads crank to a halt.
+reserving budget for timers didn't help.
+no asserts triggered
+what if scheduler is stuck in threads that never progress?
+    try enabling watchdog but thread_yield() looks at softirqs all the time...
+    disabling steals and parks didn't help
+
+doesn;t look like the threads are stuck at transmit waiting for mbufs
+                do {
+                    static uint64_t __last_us = 0;
+                    static uint64_t __suppressed = 0;
+                    uint64_t __cur_us = microtime();
+                    if (__cur_us - __last_us >= ONE_SECOND) {
+                        if (__suppressed) {	
+                            printf("could not xmit: suppressed %ld times\n", __suppressed);
+                            __suppressed = 0;
+                        }			
+                        printf("could not xmit\n");
+                        __last_us = __cur_us;	
+                    } else				
+                        __suppressed++;	
+                } while(0);	
+
+    
+gdb collect traces; if not , try intel ptrace
+
+1647452760 
+1647452760 Thread 3 "kona_eviction" received signal SIG33, Real-time event 33.
+1647452760 
+1647452760 Thread 5 "kona_poller" received signal SIG33, Real-time event 33.
+1647452760 
+1647452760 Thread 8 "memcached" received signal SIG33, Real-time event 33.
+1647452760 
+1647452760 Thread 7 "memcached" received signal SIG33, Real-time event 33.
+1647452760 
+1647452760 Thread 1 "memcached" received signal SIG33, Real-time event 33.
+
+
+
+
+
+
+
