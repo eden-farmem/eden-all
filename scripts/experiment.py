@@ -88,6 +88,7 @@ class Role(Enum):
         return self.value
 role = None
 stopat = 0
+gdb = False
 
 binaries = {
     'iokerneld': {
@@ -432,10 +433,9 @@ def launch_shenango_program(cfg, experiment):
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr} ".format(**cfg["kona"])
         params += "EVICTION_BATCH_SIZE={evict_batch_sz} ".format(**cfg["kona"])
-        # fullcmd = "sudo {params} numactl -N {numa} -m {numa} gdb --args {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
-        #     params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)    # GDB
-        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
-            params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
+        gdbcmd = "gdb --args" if gdb else ""
+        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {gdb} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
+            params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], gdb=gdbcmd, args=args) 
     elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)  
@@ -443,22 +443,21 @@ def launch_shenango_program(cfg, experiment):
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)
     print("Running " + fullcmd)
-    # fullcmd = "sleep 3000"
-    # if stopat == 2:   
-    #     print("Waiting 5 mins to memcached with gdb!")  
-    #     time.sleep(300)
+    if stopat == 2:
+        print("Stopped for debugging at {}".format(stopat)) 
+        time.sleep(300)
 
     ### HACK
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
     #     fullcmd = "export RUST_BACKTRACE=1; " + fullcmd
 
-    # # GDB
-    # if "kona" in cfg:
-    #     proc = None
-    #     print("Waiting 1 min to start memcached with gdb!")  
-    #     print("Run 'handle SIG33 nostop' to avoid stopping at timer? events!")  
-    #     time.sleep(120)
-    #     return proc
+    # If GDB, prompt for manual start and wait
+    if gdb and "kona" in cfg:
+        proc = None
+        print("Waiting 2 min to start memcached with gdb!")  
+        print("Run 'handle SIG33 nostop' to avoid stopping at timer? events!")  
+        time.sleep(120)
+        return proc
         
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
     time.sleep(3)
@@ -606,7 +605,9 @@ def setup_and_run_apps(experiment):
                 cmd = "exec ssh -t -t {host} 'python {dir}/{script} -r app -n {dir} > {out} 2>&1'".format(
                     host=host, dir=experiment['name'], script=os.path.basename(__file__), out=outfile)
                 print(cmd)
-                if stopat == 1:     time.sleep(3000)
+                if stopat == 1:
+                    print("Stopped for debugging at {}".format(stopat)) 
+                    time.sleep(3000)
                 proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 time.sleep(10)
                 # TODO: Returncode doesn't seem to be working without ssh -t -t. CHECK!
@@ -690,11 +691,14 @@ def execute_experiment(experiment):
         setup_clients(experiment)
         time.sleep(10)              # WHY?
         if OBSERVER: procs.append(setup_observer(experiment)) 
-        if stopat == 3:     time.sleep(3000)
+        if stopat == 3:
+            print("Stopped for debugging at {}".format(stopat))   
+            time.sleep(3000)
         runremote("ulimit -S -c unlimited; python {dir}/{script} -r client -n {dir} > {dir}/py.{{}}.log 2>&1".format(
             dir=experiment['name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
-        print("DUMP MEMCACHED NOW!")
-        if stopat == 4:     time.sleep(3000)
+        if stopat == 4:
+            print("Stopped for debugging at {}".format(stopat))  
+            time.sleep(3000)
         # time.sleep(300) #UNDO: Wait some time to look at background numbers
     except:
         error = True
@@ -744,12 +748,14 @@ def main():
     parser.add_argument('-ket', '--konaet', action='store', help='kona evict threshold', type=float, default=DEFAULT_KONA_EVICT_THR)
     parser.add_argument('-kedt', '--konaedt', action='store', help='kona evict done threshold', type=float, default=DEFAULT_KONA_EVICT_DONE_THR)
     parser.add_argument('-kebs', '--konaebs', action='store', help='kona evict batch size', type=int, default=DEFAULT_EVICTION_BATCH_SIZE)
-    parser.add_argument('--stopat', action='store', help="stop program at a certain point (for debugging purposes)", type=int, default=0)
+    parser.add_argument('--gdb', action='store_true', help="wait to attach the main process to gdb (for debugging)", default=False)
+    parser.add_argument('--stopat', action='store', help="stop program at a certain point (for debugging)", type=int, default=0)
 
     args = parser.parse_args()
 
-    global role, stopat
+    global role, stopat, gdb
     stopat = args.stopat
+    gdb = args.gdb
     role = args.role
     if role == Role.host:
         assert is_server()

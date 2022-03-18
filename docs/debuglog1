@@ -1,3 +1,6 @@
+Segfault debug for Memcached with Async page faults
+===================================================
+
 [81334.690697] show_signal: 6 callbacks suppressed
 [81334.690697] traps: memcached[13981] general protection fault ip:4210de sp:7f605a49ec90 error:0 in memcached[403000+3a000]
 
@@ -177,6 +180,12 @@ gdb collect traces; if not , try intel ptrace
 1647452760 
 1647452760 Thread 1 "memcached" received signal SIG33, Real-time event 33.
 
+Looks like the block is happening in Kona.
+
+try no writes to avoid write protection faults to Kona?
+
+introduced throtting in kona where requests are not accepted if response queue is 
+filling fast. that solved it!
 
 
 

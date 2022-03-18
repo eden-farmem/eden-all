@@ -2,6 +2,14 @@
 # Run experiments
 #
 RUNTIME=20
+KONA_RCNTRL_SSH="sc40"
+KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
+KONA_CLIENT_SSH="sc07"
+
+# Default Server Params
+SCORES=4
+MEM=1600
+PAGE_FAULTS=SYNC
 
 # # Kona Params
 # KCFG=CONFIG_NO_DIRTY_TRACK
@@ -15,32 +23,75 @@ EVICT_THR=.99
 EVICT_DONE_THR=.99
 EVICT_BATCH_SIZE=1
 
-# Client Params
+# Default client settings
 CONNS=100
-MPPS=2           #undo
+MPPS=2              #undo
 KEYSPACE=10M        #not configurable yet
-MEM=1600
 
-# Client debugging config
-# CONNS=5
-# MPPS=1e-2
-# MEM=.5
-# KEYSPACE=10K  #not configurable yet, 10MB remote mem?
-# DEBUG_FLAG="--debug"
+usage="\n
+-d, --debug \t\t build debug and run with debug client load\n
+-spf,--spgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
+-kc,--kona-config \t kona build configuration (NO_KONA/CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
+-g, --gdb \t\t build with symbols\n
+-h, --help \t\t this usage information message\n"
 
-# # Server Params
-SCORES=4
+# Parse command line arguments
+for i in "$@"
+do
+case $i in
+    -d|--debug) # debug config
+    DEBUG=1
+    CONNS=5
+    MPPS=1e-2
+    MEM=.5
+    KEYSPACE=10K  #not configurable yet, 10MB remote mem?
+    DEBUG_FLAG="--debug"
+    ;;
+
+    -spf=*|--spgfaults=*)
+    PAGE_FAULTS="${i#*=}"
+    ;;
+
+    -kc=*|--kona-config=*)
+    KCFG=${i#*=}
+    ;;
+
+    -g|--gdb)
+    GDB=1
+    GDBFLAG="--gdb"
+    ;;
+
+    -h | --help)
+    echo -e $usage
+    exit
+    ;;
+
+    *)                      # unknown option
+    echo "Unkown Option: $i"
+    echo -e $usage
+    exit
+    ;;
+esac
+done
+
 
 # # Build
 set -e
 if [[ "$KCFG" == "NO_KONA" ]]; then
     bash build.sh --shenango --memcached
 else
+    if [[ ${PAGE_FAULTS} ]]; then   SPFLAG="-spf=${PAGE_FAULTS}";  fi
     bash build.sh ${DEBUG_FLAG} --shenango --memcached --kona   \
-        -wk --kona-config=$KCFG --kona-cflags=${KFLAGS} -spf=ASYNC #--gdb
+        -wk --kona-config=$KCFG --kona-cflags=${KFLAGS} ${SPFLAG} ${GDBFLAG}
 fi
 
 set +e
+
+cleanup() {
+    sudo pkill iokerneld
+    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
+    ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
+}
 
 # # Run
 # for warmup in "--warmup"; do 
@@ -53,23 +104,25 @@ set +e
         # for mem in `seq 1000 200 2000`; do
         for mem in $MEM; do
         # for SCORES in 1 2 4 6 8 10; do
+            cleanup
+
             echo "Syncing clocks"
             ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            DESC="debugging silent crash; no stealing; no parks; with gdb"
+            DESC="debugging silent crash; bigger kona response q"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
-            STOPAT="--stopat 4"     
+            if [[ $GDB ]]; then  STOPAT="--stopat 4";     fi   # to allow debugging
             # debugging
             if [[ "$KCFG" == "NO_KONA" ]]; then
-                python scripts/experiment.py --nokona -p udp -nc $CONNS --time $RUNTIME             \
+                python scripts/experiment.py --nokona -p udp -nc $CONNS --time $RUNTIME $GDBFLAG    \
                     --start $MPPS --finish $MPPS --scores $SCORES ${warmup} ${STOPAT} ${kona_evict} \
                     -d "$KEYSPACE keys; No Kona; $DESC"
             else
                 python scripts/experiment.py -km ${kona_mem_bytes} -p udp -nc $CONNS --time $RUNTIME    \
                     --start $MPPS --finish $MPPS --scores $SCORES ${warmup} ${STOPAT} ${kona_evict}     \
-                    -d "$KEYSPACE keys; PBMEM=${KCFG} KonaFlags=${KFLAGS}; $DESC"
+                    ${GDBFLAG} -d "$KEYSPACE keys; PBMEM=${KCFG} KonaFlags=${KFLAGS}; $DESC"
             fi
 
             sleep 5
