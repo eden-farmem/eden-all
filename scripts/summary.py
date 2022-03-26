@@ -260,6 +260,16 @@ def parse_kona_accounting_log(dirn, experiment):
     "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
     "madvise_size,mem_pressure,n_kapi_fetch_succ,n_afaults_r,n_afaults_w,"
     "n_af_waitq,n_af_transitq").split(",")   # app fault changes
+    header_list_v3 = ("counters,n_faults_r,n_faults_w,n_faults_wp,n_wp_rm_upgrade_write,n_"
+    "wp_rm_fail,n_rw_fault_q,n_r_from_w_q,n_r_from_w_q_fail,n_evictions,n_evictable,"
+    "n_eviction_batches,n_madvise,n_"
+    "page_dirty,n_wp_install_fail,n_cl_dirty_try,n_cl_dirty_success,n_"
+    "flush_try,n_flush_success,n_madvise_try,n_poller_copy_fail,n_net_"
+    "page_in,n_net_page_out,n_net_writes,n_net_write_comp,page_lifetime_"
+    "sum,net_read_sum,n_zp_fail,n_uffd_wake,malloc_size,munmap_size,"
+    "madvise_size,mem_pressure,n_kapi_fetch_succ,n_afaults,n_afaults_r,n_afaults_w,"
+    "n_afaults_done,n_af_waitq,n_af_waitq_done,n_af_transitq,n_af_transitq_done,n_af_readyq,"
+    "n_af_readyq_done,n_kfaults,n_kfaults_done,n_kfaults_concur").split(",")   # debugging
     
     header_list = None
     COL_IDX = None
@@ -271,6 +281,8 @@ def parse_kona_accounting_log(dirn, experiment):
             time = int(dats[0])
             values = dats[1].split(",")
             if not header_list:
+                if len(values) == len(header_list_v3):
+                    header_list = header_list_v3
                 if len(values) == len(header_list_v2):
                     header_list = header_list_v2
                 if len(values) == len(header_list_v1):

@@ -52,6 +52,10 @@ case $i in
     KOPTS="$KOPTS -DSERVE_APP_FAULTS"
     ;;
 
+    -so=*|--shenango-cflags=*)
+    SOPTS="$SOPTS ${i#*=}"
+    ;;
+
     -m|--memcached)
     SHENANGO=1
     MEMCACHED=1
@@ -66,7 +70,6 @@ case $i in
     SHENANGO=1
     SBENCH=1
     ;;
-
 
     -k|--kona)
     KONA=1
@@ -122,7 +125,9 @@ KONA_POLLER_CORE=53
 KONA_EVICTION_CORE=54
 KONA_FAULT_HANDLER_CORE=55
 KONA_ACCOUNTING_CORE=52
-SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE}
+SHENANGO_STATS_CORE=51
+SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},\
+${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 
 if [[ $ONETIME ]]; then
     git submodule update --init --recursive
@@ -143,11 +148,11 @@ if [[ $SHENANGO ]]; then
     if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
     if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
     echo  ${PGFAULT_OPT}
-    make libs -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} ${GDBFLAG}
-    # iokernel seems to fail with gdb so don't pass along the GDB flag
-    make iok -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}
+
+    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} \
+        STATS_CORE=${SHENANGO_STATS_CORE} ${GDBFLAG}            \
+        PROVIDED_CFLAGS="""$SOPTS"""
     popd 
 
     pushd shenango/scripts

@@ -187,7 +187,166 @@ try no writes to avoid write protection faults to Kona?
 introduced throtting in kona where requests are not accepted if response queue is 
 filling fast. that solved it!
 
+Ok i called it too soon. It's still there and in a more elusive form.
+Mar 18 20:28:06 sc2-hs2-b1630 gnome-shell[3054]: No cursor theme available, please install a cursor theme
+Mar 18 20:28:30 sc2-hs2-b1630 systemd[1]: fprintd.service: Succeeded.
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449513] INFO: task memcached:13482 blocked for more than 120 seconds.
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449522]       Tainted: G           OE     5.11.0-rc1+ #8
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449524] "echo 0 > /proc/sys/kernel/hung_task_timeout_secs" disables this message.
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449527] task:memcached       state:D stack:    0 pid:13482 ppid: 13321 flags:0x00000000
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449532] Call Trace:
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449537]  __schedule+0x44c/0x8a0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449545]  schedule+0x4f/0xc0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449549]  rwsem_down_read_slowpath+0x184/0x3c0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449555]  down_read+0x43/0xa0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449559]  do_user_addr_fault+0x3a7/0x540
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449564]  exc_page_fault+0x6c/0x150
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449570]  ? asm_exc_page_fault+0x8/0x30
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449572]  asm_exc_page_fault+0x1e/0x30
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449575] RIP: 0033:0x7ffff7fcde07
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449578] RSP: 002b:00007ff6b021ed00 EFLAGS: 00010246
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449582] RAX: 0000000000000000 RBX: 0000000000000014 RCX: 000000000000001c
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449584] RDX: 00000000077f6680 RSI: 000000000000001c RDI: 00007ff7fc302000
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449586] RBP: 00007ff6b021ed00 R08: 0000000000000000 R09: 0000000005f58968
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449588] R10: 0000000000000000 R11: 0000000000000000 R12: 00007ff7fc302980
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449590] R13: 00000000a77f6680 R14: 00000000a77f6680 R15: 0000000005f587c0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449595] INFO: task kona_eviction:13493 blocked for more than 120 seconds.
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449598]       Tainted: G           OE     5.11.0-rc1+ #8
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449600] "echo 0 > /proc/sys/kernel/hung_task_timeout_secs" disables this message.
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449601] task:kona_eviction   state:D stack:    0 pid:13493 ppid: 13321 flags:0x00000000
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449605] Call Trace:
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449607]  __schedule+0x44c/0x8a0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449611]  schedule+0x4f/0xc0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449615]  rwsem_down_read_slowpath+0x184/0x3c0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449619]  down_read+0x43/0xa0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449623]  do_madvise+0x86e/0xda0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449628]  ? recalibrate_cpu_khz+0x10/0x10
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449635]  ? lapic_next_deadline+0x26/0x30
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449640]  ? hrtimer_interrupt+0x13b/0x220
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449647]  __x64_sys_madvise+0x2a/0x30
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449650]  ? syscall_exit_to_user_mode+0x27/0x50
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449655]  ? __x64_sys_madvise+0x2a/0x30
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449657]  do_syscall_64+0x38/0x90
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449661]  entry_SYSCALL_64_after_hwframe+0x44/0xa9
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449663] RIP: 0033:0x7ffff7e63bdb
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449665] RSP: 002b:00007ffff6850de8 EFLAGS: 00000206 ORIG_RAX: 000000000000001c
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449669] RAX: ffffffffffffffda RBX: 0000000000000001 RCX: 00007ffff7e63bdb
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449671] RDX: 0000000000000004 RSI: 0000000000001000 RDI: 00007ff817d0e000
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449672] RBP: 000000000036c049 R08: 00007ffff5842188 R09: 00007ffff6850cc0
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449674] R10: 0000000000000001 R11: 0000000000000206 R12: 00000000af418cea
+Mar 18 20:28:36 sc2-hs2-b1630 kernel: [ 1089.449676] R13: 00007ff817d0e000 R14: 000000000054d540 R15: 00007ffff7fa2000
 
+can't work with gdb. the terminals hang the moment crash occurs. 
+try logging in from the ILO?
+Evne with ILO, gdb loses control of the process after the error - this bug just got worse.
+Even external kill signals won't deliver.
+OK NOTHING WORKS. can't get a coredump.
+
+try strace?
+TODO: try allowing new rx only if pf_pending is small
+try lower load again
+
+1647823638 counters,463744,469139,3425,0,0,350889,0,0,
+541544,541545,541544,541545,469871,0,0,0,469871,469871,541545,68,463173,469871,469871,469871,0,0,0,0,1920991232,0,0,1600000000,0,
+450435,450073,0,450407,362,362,449406,449406,0,0
+
+TODO
+steadily increase max in flight..
+also, try lower load
+TODO: try allowing new rx only if pf_pending is small
+
+saw shenango stuck at this:
+50321,50321,0,50321,0,0,50315,50315,0,0
+even when all the app faults are serviced! 
+so kona is not servicing normal faults still? 
+TODO make sure kona is handling all the normal faults as well.
+TODO instrument normal faults...
+if it does not, how does the SYNC case work? Try it once.
+
+EDGE CASE: what if there are concurrent faults one from app fault and one from kernel?
+when an app fault is in progress, if there is a kernel fault on the same page,
+then we let the kernel fault dissipate - but we never respond to it to release the 
+thread - or does the uffd_copy do that? Print that case to see if it correlates with the bug!
+what if there is a race?
+TODO how about collecting a detailed trace of the lifestages of the kernel and app faults?
+
+EDGE CASE: Could the madvise notif race be manifesting as this bug now?
+
+Kona doesn't seem to be the problematic component anymore. every fault, kernel and the app ones, return 
+and there doesn;t seem to be any concurrent faults that might cause issues like leaving kernel threads hanging.
+are coming back. Focus on shenango now?
+
+thread states:
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND                                                                                                                                             
+  67288 ayelam    20   0   37.1g   3.6g   4268 t   0.0   1.9   0:14.63 memcached                                                                                                                                           
+  67289 root      20   0   37.1g   3.6g   4268 t   0.0   1.9   1:41.42 kona_fault                                                                                                                                          
+  67290 root      20   0   37.1g   3.6g   4268 D   0.0   1.9   1:37.23 kona_eviction                                                                                                                                       
+  67291 root      20   0   37.1g   3.6g   4268 t   0.0   1.9   0:00.00 kona_accnt                                                                                                                                          
+  67292 root      20   0   37.1g   3.6g   4268 t   0.0   1.9   1:41.40 kona_poller                                                                                                                                         
+  67293 ayelam    20   0   37.1g   3.6g   4268 D   0.0   1.9   0:14.19 memcached                                                                                                                                           
+  67294 root      20   0   37.1g   3.6g   4268 D   0.0   1.9   0:14.02 memcached                                                                                                                                           
+  67295 root      20   0   37.1g   3.6g   4268 D   0.0   1.9   0:13.94 memcached  
+
+QUESTION why is eviction getting blocked? is it getting blocked right away?
+
+[77335.544668] INFO: task kona_eviction:55770 blocked for more than 362 seconds.
+[77335.544670]       Tainted: G           OE     5.11.0-rc1+ #8
+[77335.544673] "echo 0 > /proc/sys/kernel/hung_task_timeout_secs" disables this message.
+[77335.544674] task:kona_eviction   state:D stack:    0 pid:55770 ppid: 55766 flags:0x00000000
+[77335.544677] Call Trace:
+[77335.544679]  __schedule+0x44c/0x8a0
+[77335.544683]  ? free_pages_and_swap_cache+0xb9/0xd0
+[77335.544689]  schedule+0x4f/0xc0
+[77335.544692]  rwsem_down_read_slowpath+0x184/0x3c0
+[77335.544696]  down_read+0x43/0xa0
+[77335.544700]  mwriteprotect_range+0x5b/0x150
+[77335.544705]  userfaultfd_ioctl+0x126/0x1090
+[77335.544711]  ? _copy_from_user+0x3f/0x80
+[77335.544717]  __x64_sys_ioctl+0x91/0xc0
+[77335.544720]  ? __x64_sys_ioctl+0x91/0xc0
+[77335.544722]  do_syscall_64+0x38/0x90
+[77335.544726]  entry_SYSCALL_64_after_hwframe+0x44/0xa9
+
+Smells like a deadlock in the kernel. 
+TODO (done): register madvise notif and re-run. If that's the issue, then why block in write-protect? -- this is of no help.
+TODO: go look at uffd kernel code at the these places.
+TODO (done): run with write faults annotated   -- same issue. annotating at a known location removed write faults 
+        but there are still a bunch of pure WRITE fault locations that take the kernel path.
+Think about the deadlock!
+
+Error with register madvise notif:
+1647969089 profiler,11539,0,0,0,8912,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+1647969089 [32m++[klib_uffd.c] uffd_copy err EEXIST but wake_on_exist=false: 7fe94bb49000
+1647969089 [0mmemcached: klib_uffd.c:194: uffd_copy: Assertion `(0)' failed.
+
+TODO Intel PT:
+WARNING: perf not found for kernel 5.11.0: 
+Ask Radhika about building perf tools
+Ask for help with PT as well
+
+TODO: Is the do-not-evict invariant getting violated? Increase the size of DNE? -- did not seem to have any effect
+TODO: Notes/suggestions from Marcos
+1. Try with a simpler setting that still reproes the bug
+trying with one core:
+run-03-24-18-24 SYNC case
+run-03-24-18-36 ASYNC case - sees a drop in throughput. WHY? -- actually xput is much better but the 
+charts don't show it because the printing is messed up in the ASYNC case. Why?
+Trying 2 cores now: repro'ed.
+there are considerably more mmaps in the ASYNC case.. which is understandable?
+
+
+Limiting the number of outstanding threads to READY_Q_SIZE sidestepped the bug.
+
+But there seem to be some variables controlling this, so these may be valuable in future as well?
+TODO Need to make the throttling logic work stealing-safe.
+TODO How does the number of active threads affect the final performance 
+TODO How does max kona faults in flight affect the performance 
+TODO Need to only block RX in case of throttling, not TX completions and other softirqs. 
+TODO How did this bug happen? 
+TODO Need to do a post-mortem and what I learned 
+
+The limiting factor doesn't seem to have any effect on performance: run-03-25-16*
+Increasing kona concurrent fault handling limit increases performance but only modestly: run-03-25-21
 
 
 

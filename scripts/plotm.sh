@@ -196,39 +196,37 @@ if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
 fi
 files="$files $plotname"
 
-# Plot runtime stats
-plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
-        -yc "rxpkt" -l "From I/O Core" -ls solid                \
-        -yc "txpkt" -l "To I/O Core" -ls solid                  \
-        -yc "drops" -l "Pkt drops" -ls solid                    \
-        -yc "cpupct" -l "CPU Utilization" -ls dashed            \
-        -xc $XCOL -xl "$XLABEL" --xstr $XMUL                    \
-        -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
-        --twin 4  -tyl "CPU Cores" --tymul 1e-2 --tymin 0       \
-        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Shenango Resources"
-    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
-fi
-files="$files $plotname"
+# # Plot runtime stats
+# plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
+# if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+#     python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                \
+#         -yc "rxpkt" -l "From I/O Core" -ls solid                \
+#         -yc "txpkt" -l "To I/O Core" -ls solid                  \
+#         -yc "drops" -l "Pkt drops" -ls solid                    \
+#         -yc "cpupct" -l "CPU Utilization" -ls dashed            \
+#         -xc $XCOL -xl "$XLABEL" --xstr $XMUL                    \
+#         -yl "Million pkts/sec" --ymul 1e-6 --ymin 0             \
+#         --twin 4  -tyl "CPU Cores" --tymul 1e-2 --tymin 0       \
+#         --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Shenango Resources"
+#     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
+# fi
+# files="$files $plotname"
 
-plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
-if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
-    python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
-        -yc "stolenpct" -l "Stolen Work %" -ls solid            \
-        -yc "migratedpct" -l "Core Migration %" -ls solid       \
-        -yc "localschedpct" -l "Core Local Work %" -ls solid    \
-        -yc "rescheds" -l "Reschedules" -ls dashed              \
-        -yc "parks" -l "KThread Parks" -ls dashed               \
-        -xc $XCOL -xl "$XLABEL" --xstr $XMUL                    \
-        -yl "Percent" --ymin 0 --ymax 110                       \
-        --twin 4  -tyl "Million Times" --tymul 1e-6 --tymin 0   \
-        --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Shenango Scheduler" 
-    if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
-fi
-files="$files $plotname"
-
-
+# plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
+# if [[ $FORCE ]] || [ ! -f "$plotname" ]; then
+#     python3 ${SCRIPT_DIR}/plot.py -d ${datafile}                        \
+#         -yc "stolenpct" -l "Stolen Work %" -ls solid            \
+#         -yc "migratedpct" -l "Core Migration %" -ls solid       \
+#         -yc "localschedpct" -l "Core Local Work %" -ls solid    \
+#         -yc "rescheds" -l "Reschedules" -ls dashed              \
+#         -yc "parks" -l "KThread Parks" -ls dashed               \
+#         -xc $XCOL -xl "$XLABEL" --xstr $XMUL                    \
+#         -yl "Percent" --ymin 0 --ymax 110                       \
+#         --twin 4  -tyl "Million Times" --tymul 1e-6 --tymin 0   \
+#         --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname -lt "Shenango Scheduler" 
+#     if [[ $DISPLAY_EACH ]]; then display $plotname &    fi
+# fi
+# files="$files $plotname"
 
 # Write config params 
 echo "text 3,6 \"" > temp_cfg 
