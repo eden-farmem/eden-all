@@ -1,14 +1,14 @@
 #
 # Run experiments
 #
-RUNTIME=20
+RUNTIME=30
 KONA_RCNTRL_SSH="sc40"
 KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
 KONA_CLIENT_SSH="sc07"
 
 # Default Server Params
-SCORES=4
-MEM=1600
+SCORES=5
+MEM=2000
 PAGE_FAULTS=ASYNC
 
 # # Kona Params
@@ -84,17 +84,17 @@ done
 
 
 # # Build
-# if ! [[ $SKIP_BUILD ]]; then
-#     set -e
-#     if [[ "$KCFG" == "NO_KONA" ]]; then
-#         bash build.sh --shenango --memcached
-#     else
-#         if [[ ${PAGE_FAULTS} ]]; then   SPFLAG="-spf=${PAGE_FAULTS}";  fi
-#         bash build.sh ${DEBUG_FLAG} --shenango --memcached --kona   \
-#             -wk --kona-config=$KCFG --kona-cflags=${KFLAGS} ${SPFLAG} ${GDBFLAG}
-#     fi
-#     set +e
-# fi
+if ! [[ $SKIP_BUILD ]]; then
+    set -e
+    if [[ "$KCFG" == "NO_KONA" ]]; then
+        bash build.sh --shenango --memcached
+    else
+        if [[ ${PAGE_FAULTS} ]]; then   SPFLAG="-spf=${PAGE_FAULTS}";  fi
+        bash build.sh ${DEBUG_FLAG} --shenango --memcached --kona   \
+            -wk --kona-config=$KCFG --kona-cflags=${KFLAGS} ${SPFLAG} ${GDBFLAG}
+    fi
+    set +e
+fi
 
 
 cleanup() {
@@ -108,21 +108,13 @@ cleanup() {
 # for warmup in "--warmup"; do 
 # for KFLAGS in ""; do
 # for KFLAGS in "" "-DREGISTER_MADVISE_NOTIF"; do
-# for CONWIND in 10 50 100 200 300; do
-for KFAULTS in 10 50 100 200 300; do
     # for EVICT_THR in 0.9; do
     # for EVICT_DONE_THR in 0.92 0.94 0.96; do
     # for EVICT_BATCH_SIZE in 2 4; do
     for scores in $SCORES; do
+    # for scores in 4 5; do
         # for mem in `seq 1000 200 2000`; do
         for mem in $MEM; do
-        # for scores in 1 2 4 6 8 10; do
-            if [[ ${PAGE_FAULTS} ]]; then   SPFLAG="-spf=${PAGE_FAULTS}";  fi
-            KFLAGS="$KFLAGS -DAPP_FAULT_MAX_IN_FLIGHT=$KFAULTS"
-            bash build.sh ${DEBUG_FLAG} --shenango --memcached --kona   \
-                -wk --kona-config=$KCFG --kona-cflags="""${KFLAGS}""" ${SPFLAG} ${GDBFLAG}    \
-                # --shenango-cflags="-DCONGESTION_THRESHOLD=$CONWIND"
-
             cleanup
 
             echo "Syncing clocks"
@@ -130,7 +122,7 @@ for KFAULTS in 10 50 100 200 300; do
             ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
             # DESC="varying mem; async app faults (it was actually sync before)"
-            DESC="changing kona max in flight: $KFAULTS"
+            DESC="running SYNC vs ASYNC"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
             GDBFLAG=
@@ -149,7 +141,7 @@ for KFAULTS in 10 50 100 200 300; do
             sleep 5
         done
     done
-done
+# done
 
 
 ############# ARCHIVED #################

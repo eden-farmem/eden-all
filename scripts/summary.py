@@ -15,7 +15,7 @@ NUMA_NODE = 1
 IOK_DISPLAY_FIELDS = ["TX_PULLED", "RX_PULLED", "IOK_SATURATION", "RX_UNICAST_FAIL"]
 KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in", 
     "n_net_page_out", "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty", 
-    "n_faults_wp", "n_flush_fail", "n_evictions", "n_afaults_r", "n_afaults_w"]                            
+    "n_faults_wp", "n_flush_fail", "n_evictions", "n_afaults_r", "n_afaults_w", "n_afaults"]                            
 KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure"]
 KONA_DISPLAY_FIELDS_EXTENDED = ["PERF_EVICT_TOTAL", "PERF_EVICT_WP", "PERF_RDMA_WRITE", 
     "PERF_POLLER_READ", "PERF_POLLER_UFFD_COPY", "PERF_HANDLER_RW", "PERF_PAGE_READ", 
@@ -678,13 +678,13 @@ def arrange_2d_results(experiment):
 
             # Stats from Kona
             for field in KONA_DISPLAY_FIELDS:
-                if experiment['konalog']:   
+                if experiment['konalog'] and field in experiment['konalog']:   
                     out.append(extract_window(experiment['konalog'][field], time, runtime, 
                         accumulated=(field in KONA_FIELDS_ACCUMULATED)))
                 else:  out.append(None)
             out.append(extract_window_max(experiment['konalog']["n_poller_copy_fail"], time, runtime))
             for field in KONA_DISPLAY_FIELDS_EXTENDED:
-                if experiment['konalogext']:   
+                if experiment['konalogext'] and field in experiment['konalogext']:   
                     out.append(extract_window(experiment['konalogext'][field], time, runtime, 
                         accumulated=(field in KONA_FIELDS_ACCUMULATED)))
                 else:   out.append(None)

@@ -338,16 +338,94 @@ there are considerably more mmaps in the ASYNC case.. which is understandable?
 Limiting the number of outstanding threads to READY_Q_SIZE sidestepped the bug.
 
 But there seem to be some variables controlling this, so these may be valuable in future as well?
-TODO Need to make the throttling logic work stealing-safe.
-TODO How does the number of active threads affect the final performance 
-TODO How does max kona faults in flight affect the performance 
+TODO (done) Need to make the throttling logic work stealing-safe.
+TODO (done) How does the number of active threads affect the final performance 
+TODO (done) How does max kona faults in flight affect the performance 
 TODO Need to only block RX in case of throttling, not TX completions and other softirqs. 
 TODO How did this bug happen? 
 TODO Need to do a post-mortem and what I learned 
 
-The limiting factor doesn't seem to have any effect on performance: run-03-25-16*
+Maintianing more active threads doesn't seem to have any effect on performance: run-03-25-16*
 Increasing kona concurrent fault handling limit increases performance but only modestly: run-03-25-21
 
+Got full set of runs.
+Overall Baseline: Kernel faults
+1 core: 03-25-23 
+2 cores: 03-26-00
+3 cores: 03-26-01-[0123]
+4 cores: run-03-26-\(01-[45]\|02-[012]\)
+5 cores: run-03-26-\(02-[345]\|03-[01]\)
+Scheduler faults Baseline - Synchronous case 
+1 core: 03-26-09-[0-5]
+2 cores: 03-26-10-[0-3]
+3 cores: run-03-26-\(10-[45]\|11-[012]\)
+4 cores: run-03-26-\(11-[345]\|12-[01]\)
+5 cores: 03-26-12-[2-5]
+Scheduler faults Baseline - Asynchronous case 
+1 core: run-03-26-\(16-[345]\|17-[01]\)
+2 cores: 03-26-17-[2345]
+3 cores: 03-26-18
+4 cores: 03-27-14-[0123]
+5 cores: run-03-27-\(14-[45]\|15\)
 
+
+** per fault kind **
+bash scripts/plotg.sh -s1="03-25-23" -l1="1" -s2="03-26-00" -l2="2"                 \
+    -s3="03-26-01-[0123]" -l3="3" -cs4="run-03-26-\(01-[45]\|02-[012]\)" -l4="4"    \
+    -cs5="run-03-26-\(02-[345]\|03-[01]\)" -l5="5" -lt="App CPU"
+
+bash scripts/plotg.sh -s1="03-26-09-[0-5]" -l1="1" -s2="03-26-10-[0-3]" -l2="2"     \
+    -cs3="run-03-26-\(10-[45]\|11-[012]\)" -l3="3" -s5="03-26-12-[2-5]" -l5="5"     \
+    -cs4="run-03-26-\(11-[345]\|12-[01]\)" -l4="4" -lt="App CPU (SYNC)"
+
+bash scripts/plotg.sh -cs1="run-03-26-\(16-[345]\|17-[01]\)" -l1="1"                \
+    -s2="03-26-17-[2345]" -l2="2" -s3="03-26-18" -l3="3" -s4="03-27-14-[0123]"       \
+    -l4="4" -cs5="run-03-27-\(14-[45]\|15\)" -l5="5" -lt="App CPU (ASYNC)"
+
+** per core **
+bash scripts/plotg.sh -lt="Fault Type (1 core)"                         \
+    -s1="03-25-23"                              -l1="Kernel"            \
+    -s2="03-26-09-[0-5]"                        -l2="Scheduler(SYNC)"   \
+    -cs3="run-03-26-\(16-[345]\|17-[01]\)"      -l3="Scheduler(ASYNC)"
+
+bash scripts/plotg.sh -lt="Fault Type (2 cores)"                        \
+    -s1="03-26-00"                              -l1="Kernel"            \
+    -s2="03-26-10-[0-3]"                       -l2="Scheduler(SYNC)"    \
+    -s3="03-26-17-[2345]"                       -l3="Scheduler(ASYNC)"
+
+bash scripts/plotg.sh -lt="Fault Type (3 cores)"                        \
+    -s1="03-26-01-[0123]"                       -l1="Kernel"            \
+    -cs2="run-03-26-\(10-[45]\|11-[012]\)"      -l2="Scheduler(SYNC)"   \
+    -s3="03-26-18"                              -l3="Scheduler(ASYNC)"
+
+bash scripts/plotg.sh -lt="Fault Type (4 cores)"                        \
+    -cs1="run-03-26-\(01-[45]\|02-[012]\)"      -l1="Kernel"            \
+    -cs2="run-03-26-\(11-[345]\|12-[01]\)"      -l2="Scheduler(SYNC)"   \
+    -s3="03-27-14-[0123]"                       -l3="Scheduler(ASYNC)"
+
+
+
+*** specific format to compare with the similation results ***
+krate=150000
+outdir=.
+bash scripts/plotg.sh -s1="03-25-23" -l1="1" -s2="03-26-00" -l2="2"                 \
+    -s3="03-26-01-[0123]" -l3="3" -cs4="run-03-26-\(01-[45]\|02-[012]\)" -l4="4"    \
+    -cs5="run-03-26-\(02-[345]\|03-[01]\)" -l5="5" -lt="noup"
+bash scripts/plotg.sh -cs1="run-03-26-\(16-[345]\|17-[01]\)" -l1="1"                \
+    -s2="03-26-17-[2345]" -l2="2" -s3="03-26-18" -l3="3" -s4="03-27-14-[0123]"      \
+    -l4="4" -cs5="run-03-27-\(14-[45]\|15\)" -l5="5" -lt="up"
+python3 scripts/plot.py    \
+    -xc konamem -xl "Local Hit Ratio" -yc achieved -yl "MOPS" --ymul 1e-6  \
+    -d ${outdir}/xput_up_1_${krate}    -l "1"   -ls solid   -cmi 0      \
+    -d ${outdir}/xput_noup_1_${krate}    -l ""    -ls dashed  -cmi 1    \
+    -d ${outdir}/xput_up_2_${krate}    -l "2"   -ls solid   -cmi 0      \
+    -d ${outdir}/xput_noup_2_${krate}    -l ""    -ls dashed  -cmi 1    \
+    -d ${outdir}/xput_up_3_${krate}    -l "3"   -ls solid   -cmi 0      \
+    -d ${outdir}/xput_noup_3_${krate}    -l ""    -ls dashed  -cmi 1    \
+    -d ${outdir}/xput_up_4_${krate}    -l "4"   -ls solid   -cmi 0      \
+    -d ${outdir}/xput_noup_4_${krate}    -l ""    -ls dashed  -cmi 1    \
+    -d ${outdir}/xput_up_5_${krate}    -l "5"   -ls solid   -cmi 0      \
+    -d ${outdir}/xput_noup_5_${krate}    -l ""    -ls dashed  -cmi 1    \
+    --size 4.5 3 -fs 11 -of png -o plots/sim_vs_real_xput.png -s
 
 

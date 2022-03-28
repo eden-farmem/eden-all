@@ -185,13 +185,15 @@ fi
 ## 4. simulation with and without upcalls, varying kona rate
 if [ "$PLOTID" == "4" ]; then
     montagename=${outdir}/xput_up_noup.${PLOTEXT}
-    for krate in 30000 100000 500000; do 
+    # for krate in 30000 100000 500000; do 
+    for krate in 150000; do 
         plotname=${outdir}/xput_up_noup_kr${krate}.${PLOTEXT}
         if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
             if [[ $FORCE ]]; then   #generate data
                 for mode in "up" "noup"; do 
                     gcc simulate.c -lpthread -o simulate $DEBUG_FLAG
-                    for cores in 2 4 6 8; do
+                    # for cores in 2 4 6 8; do
+                    for cores in 1 2 3 4 5; do
                         out=$outdir/xput_${mode}_${cores}_${krate}
                         echo "cores,pfcost,hitratio,hitcost,xput1,xput,faults" > $out
                         for hr in $(seq 0.5 0.1 1); do
@@ -208,14 +210,16 @@ if [ "$PLOTID" == "4" ]; then
             fi
             python3 ${SCRIPT_DIR}/../scripts/plot.py    \
                 -xc hitratio -xl "Local Hit Ratio" -yc xput -yl "MOPS" --ymul 1e-6  \
+                -d ${outdir}/xput_up_1_${krate}    -l "1"   -ls solid   -cmi 0      \
+                -d ${outdir}/xput_noup_1_${krate}    -l ""    -ls dashed  -cmi 1    \
                 -d ${outdir}/xput_up_2_${krate}    -l "2"   -ls solid   -cmi 0      \
                 -d ${outdir}/xput_noup_2_${krate}    -l ""    -ls dashed  -cmi 1    \
+                -d ${outdir}/xput_up_3_${krate}    -l "3"   -ls solid   -cmi 0      \
+                -d ${outdir}/xput_noup_3_${krate}    -l ""    -ls dashed  -cmi 1    \
                 -d ${outdir}/xput_up_4_${krate}    -l "4"   -ls solid   -cmi 0      \
                 -d ${outdir}/xput_noup_4_${krate}    -l ""    -ls dashed  -cmi 1    \
-                -d ${outdir}/xput_up_6_${krate}    -l "6"   -ls solid   -cmi 0      \
-                -d ${outdir}/xput_noup_6_${krate}    -l ""    -ls dashed  -cmi 1    \
-                -d ${outdir}/xput_up_8_${krate}    -l "8"   -ls solid   -cmi 0      \
-                -d ${outdir}/xput_noup_8_${krate}    -l ""    -ls dashed  -cmi 1    \
+                -d ${outdir}/xput_up_5_${krate}    -l "5"   -ls solid   -cmi 0      \
+                -d ${outdir}/xput_noup_5_${krate}    -l ""    -ls dashed  -cmi 1    \
                 -lt "App CPU" -t "Kona $((krate/1000))k"                          \
                 --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname 
         fi
