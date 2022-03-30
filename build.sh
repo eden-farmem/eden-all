@@ -177,6 +177,7 @@ if [[ $SYNTHETIC ]]; then
     if [[ $ONETIME ]]; then 
         # Install rust
         curl https://sh.rustup.rs -sSf | sh
+        source $HOME/.cargo/env
         rustup default nightly-2020-06-06
     fi
     

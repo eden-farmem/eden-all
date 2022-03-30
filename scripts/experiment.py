@@ -31,27 +31,32 @@ IP_MAP = {
     'sc2-hs2-b1607': IP(7),
     'sc2-hs2-b1630': IP(30),
     'sc2-hs2-b1640': IP(40),
+    'sc2-hs2-b1632': IP(32),
 }
 MAC_MAP = {
     'sc2-hs2-b1607': '50:6b:4b:23:a8:25',
     'sc2-hs2-b1630': '50:6b:4b:23:a8:2d',
     'sc2-hs2-b1640': '50:6b:4b:23:a8:a4',
+    'sc2-hs2-b1632': '50:6b:4b:23:a8:1d',
 }
 NIC_PCIE_MAP = {
     'sc2-hs2-b1607': '0000:d8:00.1',
     'sc2-hs2-b1630': '0000:d8:00.1',
     'sc2-hs2-b1640': '0000:d8:00.0',
+    'sc2-hs2-b1632': '0000:d8:00.1',
 }
 IFNAME_MAP = {
     'sc2-hs2-b1607': 'enp216s0f1',
     'sc2-hs2-b1630': 'enp216s0f1',
     'sc2-hs2-b1640': 'enp216s0f0',
+    'sc2-hs2-b1632': 'enp216s0f1',
 }
 
 # Memcached host settings
 SERVER = "sc2-hs2-b1630"
 # CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
-CLIENT_SET = ["sc2-hs2-b1607"]
+# CLIENT_SET = ["sc2-hs2-b1607"]
+CLIENT_SET = ["sc2-hs2-b1632"]
 CLIENT_MACHINE_NCORES = 12
 SERVER_CORES = 4
 NEXT_CLIENT_ASSIGN = 0
