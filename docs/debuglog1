@@ -396,7 +396,7 @@ bash scripts/plotg.sh -lt="Fault Type (2 cores)"                        \
 bash scripts/plotg.sh -lt="Fault Type (3 cores)"                        \
     -s1="03-26-01-[0123]"                       -l1="Kernel"            \
     -cs2="run-03-26-\(10-[45]\|11-[012]\)"      -l2="Scheduler(SYNC)"   \
-    -s3="03-26-18"                              -l3="Scheduler(ASYNC)"
+    -s3="03-28-11"                              -l3="Scheduler(ASYNC)"
 
 bash scripts/plotg.sh -lt="Fault Type (4 cores)"                        \
     -cs1="run-03-26-\(01-[45]\|02-[012]\)"      -l1="Kernel"            \
@@ -428,4 +428,4 @@ python3 scripts/plot.py    \
     -d ${outdir}/xput_noup_5_${krate}    -l ""    -ls dashed  -cmi 1    \
     --size 4.5 3 -fs 11 -of png -o plots/sim_vs_real_xput.png -s
 
-
+** ASYNC run with warmup to avoid eviction step: run-03-28-11

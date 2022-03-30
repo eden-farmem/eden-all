@@ -8,7 +8,7 @@ PLOTEXT=png
 DATADIR=data
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
 ANNOTATE=1  #Default
 
 usage="\n

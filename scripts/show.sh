@@ -10,7 +10,7 @@ usage="\n
 -cs, --csuffix \t\t same as suffix but a more complex one (with regexp pattern)\n"
 
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
 
 # Read parameters
 for i in "$@"

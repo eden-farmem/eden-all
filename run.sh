@@ -4,12 +4,12 @@
 RUNTIME=30
 KONA_RCNTRL_SSH="sc40"
 KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
-KONA_CLIENT_SSH="sc07"
+CLIENT_SSH="sc32"
 
 # Default Server Params
-SCORES=5
-MEM=2000
-PAGE_FAULTS=ASYNC
+SCORES=6
+MEM=1600
+# PAGE_FAULTS=ASYNC
 
 # # Kona Params
 # KCFG=CONFIG_NO_DIRTY_TRACK
@@ -101,7 +101,7 @@ cleanup() {
     sudo pkill iokerneld
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
-    ssh ${KONA_CLIENT_SSH} "sudo pkill iokerneld"
+    ssh ${CLIENT_SSH} "sudo pkill iokerneld"
 }
 
 # # Run
@@ -113,15 +113,15 @@ cleanup() {
     # for EVICT_BATCH_SIZE in 2 4; do
     for scores in $SCORES; do
     # for scores in 4 5; do
-        # for mem in `seq 1000 200 2000`; do
-        for mem in $MEM; do
+        for mem in `seq 1000 200 2000`; do
+        # for mem in $MEM; do
             cleanup
 
             echo "Syncing clocks"
-            ssh sc40 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
-            ssh sc07 "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+            ssh $KONA_RCNTRL_SSH "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
+            ssh $CLIENT_SSH "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            # DESC="varying mem; async app faults (it was actually sync before)"
+            # DESC="testing sc32 as client"
             DESC="running SYNC vs ASYNC"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
