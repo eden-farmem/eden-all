@@ -64,9 +64,9 @@ for exp in $LS_CMD; do
     konaedt=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_done_thr' $f`
     konaebs=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_batch_sz' $f`
     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $f`
-    prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $f`
-    nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $f`
-    mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $f`
+    prot=`jq -r '.clients[][0] | select(.app=="synthetic") | .transport' $f`
+    nconns=`jq '.clients[][0] | select(.app=="synthetic") | .client_threads' $f`
+    mpps=`jq '.clients[][0] | select(.app=="synthetic") | .mpps' $f`
     desc=`jq '.desc' $f`
 
     # Print all

@@ -153,6 +153,10 @@ int main(int argc, char **argv)
 	ASSERT(uffd_info.userfault_fd >= 0);
 	init_uffd_evt_fd();
 
+	int fd2 = uffd_init();
+	ASSERT(fd2 >= 0);
+	printf("fds: %d, %d\n", uffd_info.userfault_fd, fd2);
+
 	/*create/register uffd region*/
 	int writeable = 1;
 	size = 128*GIGA;

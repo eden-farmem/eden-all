@@ -57,13 +57,13 @@ for thr in 1 2 4 8 16; do
 done
 
 cat $datafile
-mkdir -p ${PLOTDIR}
-plotname=uffd_copy_xput.${PLOTEXT}
-python ${PLOTSRC} -d $datafile -l "UFFD Copy"       \
-    -xc cores -xl "Cores"  --ymin 0 --ymax 0.5      \
-    -yc xput_per_core -yl "Mops/core" --ymul 1e-6   \
-    --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname & 
+# mkdir -p ${PLOTDIR}
+# plotname=uffd_copy_xput.${PLOTEXT}
+# python ${PLOTSRC} -d $datafile -l "UFFD Copy"       \
+#     -xc cores -xl "Cores"  --ymin 0 --ymax 0.5      \
+#     -yc xput_per_core -yl "Mops/core" --ymul 1e-6   \
+#     --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+# display $plotname & 
 
 # cleanup
 rm ${OUTFILE}

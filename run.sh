@@ -1,13 +1,13 @@
 #
 # Run experiments
 #
-RUNTIME=30
-KONA_RCNTRL_SSH="sc40"
+RUNTIME=20
+KONA_RCNTRL_SSH="sc07"
 KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
 CLIENT_SSH="sc32"
 
 # Default Server Params
-SCORES=6
+SCORES=4
 MEM=1600
 # PAGE_FAULTS=ASYNC
 
@@ -113,16 +113,16 @@ cleanup() {
     # for EVICT_BATCH_SIZE in 2 4; do
     for scores in $SCORES; do
     # for scores in 4 5; do
-        for mem in `seq 1000 200 2000`; do
-        # for mem in $MEM; do
+        # for mem in `seq 1000 200 2000`; do
+        for mem in $MEM; do
             cleanup
 
             echo "Syncing clocks"
             ssh $KONA_RCNTRL_SSH "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh $CLIENT_SSH "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            # DESC="testing sc32 as client"
-            DESC="running SYNC vs ASYNC"
+            DESC="testing sc07 as server"
+            # DESC="running SYNC vs ASYNC"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
             GDBFLAG=
