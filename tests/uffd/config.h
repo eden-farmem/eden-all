@@ -35,7 +35,8 @@
 
 #include "utils.h"
 
-#define MAX_EVENT_FD 100
+#define MAX_UFFD        100
+#define MAX_EVENT_FD    100
 
 #define PAGE_SHIFT (12)
 #define PAGE_SIZE (1ull << PAGE_SHIFT)

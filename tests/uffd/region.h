@@ -8,7 +8,7 @@
 #include "uffd.h"
 #include "pflags.h"
 
-struct uffd_region_t *create_uffd_region(size_t size, int writeable);
+struct uffd_region_t *create_uffd_region(int uffd, size_t size, int writeable);
 void delete_region_list(void);
 void __delete_uffd_region(struct uffd_region_t *mr);
 

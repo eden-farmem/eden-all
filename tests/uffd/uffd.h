@@ -36,6 +36,7 @@
 #include "utils.h"
 
 struct uffd_region_t {
+  int uffd;
   volatile size_t size;
   uint64_t flags;
   unsigned long addr;
@@ -51,7 +52,8 @@ SLIST_HEAD(region_listhead, uffd_region_t);
 
 struct uffd_info_t {
   /* file descriptors that are used for management */
-  int userfault_fd;
+  int userfault_fds[MAX_UFFD];
+  int fd_count;
   struct pollfd *evt;
   int evt_count;
   /*regions*/
