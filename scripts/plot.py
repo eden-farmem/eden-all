@@ -48,6 +48,7 @@ class PlotType(Enum):
 class LegendLoc(Enum):
     none = "none"
     best = 'best'
+    top = "top"
     topout = "topout"
     rightout = "rightout"
     rightin = "rightin"
@@ -58,6 +59,7 @@ class LegendLoc(Enum):
         if self.value == LegendLoc.best:       return 'best'
         if self.value == LegendLoc.rightin:    return 'right'
         if self.value == LegendLoc.center:     return 'center'
+        if self.value == LegendLoc.top:     return 'upper center'
         if self.value == LegendLoc.topout:     return 'lower left'
         if self.value == LegendLoc.rightout:   return 'upper left'
 
@@ -67,13 +69,25 @@ class LegendLoc(Enum):
 def set_axes_legend_loc(ax, lns, labels, loc, title=None):
     if loc == LegendLoc.none:
         return
-    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center):
+    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center, LegendLoc.top):
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), ncol=1, fancybox=True, title=title)
     if loc == LegendLoc.topout:
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(0, 1, 1.2, 0.3), ncol=2, 
             fancybox=True, title=title)
     if loc == LegendLoc.rightout:
         ax.legend(lns, labels, loc=loc.matplotlib_loc(), bbox_to_anchor=(1.05, 1), ncol=1, 
+            fancybox=True, title=title)
+
+def set_plot_legend_loc(plt, loc, title=None):
+    if loc == LegendLoc.none:
+        return
+    if loc in (LegendLoc.best, LegendLoc.rightin, LegendLoc.center, LegendLoc.top):
+        plt.legend(loc=loc.matplotlib_loc(), ncol=1, fancybox=True, title=title)
+    if loc == LegendLoc.topout:
+        plt.legend(loc="lower left", bbox_to_anchor=(-.5, 1, 1, 0.8), ncol=1, 
+            fancybox=True, title=title)
+    if loc == LegendLoc.rightout:
+        plt.legend(loc=loc.matplotlib_loc(), bbox_to_anchor=(1.05, 1), ncol=1, 
             fancybox=True, title=title)
 
 
@@ -525,7 +539,7 @@ def main():
             xc = [x * args.xmul for x in xc]
             yc = np.array([y * ymul for y in yc])
             if args.xstr:   xc = [str(x) for x in xc]
-            ax.bar(xc, yc, bottom=base_dataset, label=label, color=colors[cidx])
+            ax.bar(xc, yc, width=args.barwidth, bottom=base_dataset, label=label, color=colors[cidx])
             if plot_num == num_plots - 1:
                 ax.set_xticks(xc)
                 ax.set_xticklabels(xc, rotation='15' if args.xstr else 0)
@@ -603,7 +617,8 @@ def main():
             args.ptype in [PlotType.scatter, PlotType.bar, PlotType.barstacked, PlotType.hist]:
         # FIXME: We don't get ln objects for these plot types. So legends generated in this path 
         # miss some custom features like the ability to skip some labels or legend location
-        plt.legend(loc=args.lloc.matplotlib_loc(), title=args.ltitle)
+        # plt.legend(loc="upper center", title=args.ltitle)
+        set_plot_legend_loc(plt, args.lloc, args.ltitle)
     else:
         # Skip a label if an empty string is provided
         labels_adjusted = [l for l in labels if l != ""]

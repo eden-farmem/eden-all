@@ -375,15 +375,15 @@ Scheduler faults Baseline - Asynchronous case
 ** per fault kind **
 bash scripts/plotg.sh -s1="03-25-23" -l1="1" -s2="03-26-00" -l2="2"                 \
     -s3="03-26-01-[0123]" -l3="3" -cs4="run-03-26-\(01-[45]\|02-[012]\)" -l4="4"    \
-    -cs5="run-03-26-\(02-[345]\|03-[01]\)" -l5="5" -s6="03-29-1[67]" -l6="6" -lt="App CPU (KERNEL)"
+    -cs5="run-03-26-\(02-[345]\|03-[01]\)" -l5="5" -s6="03-29-1[67]" -l6="6" -lt="App CPU (KERNEL)" -of=paper/3/kernel
 
 bash scripts/plotg.sh -s1="03-26-09-[0-5]" -l1="1" -s2="03-26-10-[0-3]" -l2="2"     \
     -cs3="run-03-26-\(10-[45]\|11-[012]\)" -l3="3" -s5="03-26-12-[2-5]" -l5="5"     \
-    -cs4="run-03-26-\(11-[345]\|12-[01]\)" -l4="4" -s6="03-29-22" -l6="6" -lt="App CPU (SYNC)"
+    -cs4="run-03-26-\(11-[345]\|12-[01]\)" -l4="4" -s6="03-29-22" -l6="6" -lt="App CPU (SYNC)" -of=paper/3/sync
 
 bash scripts/plotg.sh -cs1="run-03-26-\(16-[345]\|17-[01]\)" -l1="1"                \
     -s2="03-26-17-[2345]" -l2="2" -s3="03-26-18" -l3="3" -s4="03-27-14-[0123]"       \
-    -l4="4" -cs5="run-03-27-\(14-[45]\|15\)" -l5="5" -s6="03-30-[01]" -l6="6" -lt="App CPU (ASYNC)"
+    -l4="4" -cs5="run-03-27-\(14-[45]\|15\)" -l5="5" -s6="03-30-[01]" -l6="6" -lt="App CPU (ASYNC)" -of=paper/3/async
 
 ** per core **
 bash scripts/plotg.sh -lt="Fault Type (1 core)"                         \

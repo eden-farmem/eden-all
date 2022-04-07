@@ -35,7 +35,8 @@ usage="\n
 -f,   --force     \t\t\t force re-summarize data and re-generate plots\n
 -fp,  --force-plots \t\t force re-generate just the plots\n
 -h,  --head \t\t\t consider first specified number of rows while plotting \n
--t,  --tail \t\t\t consider last specified number of rows while plotting \n"
+-t,  --tail \t\t\t consider last specified number of rows while plotting \n
+-of,  --outfile \t\t write collected data for each group to file named outfile+label.dat\n"
 
 # Defaults
 XCOL=konamem
@@ -160,6 +161,10 @@ case $i in
     COLIDX=4
     ;;
 
+    -of=*|--outfile=*)
+    OUTDATAFILE="${i#*=}"
+    ;;
+
     *)                      # unknown option
     echo "Unkown Option: $i"
     echo -e $usage
@@ -169,17 +174,20 @@ esac
 done
 
 if [[ ! $SUFFIX1 ]] && [[ ! $CSUFFIX1 ]]; then echo "must provide -s1/-cs1"; echo -e $usage; exit 1; fi
-# if [[ ! $SUFFIX2 ]] && [[ ! $CSUFFIX2 ]]; then echo "must provide -s2/-cs2"; echo -e $usage; exit 1; fi
 LABEL1=${LABEL1:-$SUFFIX1};  LABEL1=${LABEL1:-$CSUFFIX1}
 LABEL2=${LABEL2:-$SUFFIX2};  LABEL2=${LABEL2:-$CSUFFIX2}
 LABEL3=${LABEL3:-$SUFFIX3};  LABEL3=${LABEL3:-$CSUFFIX3}
+LABEL4=${LABEL4:-$SUFFIX4};  LABEL4=${LABEL4:-$CSUFFIX4}
+LABEL5=${LABEL5:-$SUFFIX5};  LABEL5=${LABEL5:-$CSUFFIX5}
+LABEL6=${LABEL6:-$SUFFIX6};  LABEL6=${LABEL6:-$CSUFFIX6}
 
 # Prepare data for each group
 parse_runs_prepare_data() {
     SUFFIX=$1
     CSUFFIX=$2
     OUTFILE=$3
-    FORCE=$4
+    LABEL=$4
+    FORCE=$5
 
     if [[ $SUFFIX ]]; then 
         LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
@@ -235,11 +243,14 @@ parse_runs_prepare_data() {
     sed -i "1s/^/$header/" $OUTFILE
     sed -i "s/$SOME_BIG_NUMBER/NoKona/" $OUTFILE
     cat $OUTFILE
+    if [[ $OUTDATAFILE ]]; then     
+        cat $OUTFILE > ${OUTDATAFILE}_${LABEL}.dat
+    fi
 }
 
 # Group 1
 tmpfile1=${TMPFILE_PFX}1
-parse_runs_prepare_data "$SUFFIX1" "$CSUFFIX1" "$tmpfile1" "$FORCE"
+parse_runs_prepare_data "$SUFFIX1" "$CSUFFIX1" "$tmpfile1" "$LABEL1" "$FORCE"
 datapoints1=$(wc -l < $tmpfile1)
 plots="$plots -d $tmpfile1 -l """""$LABEL1""""
 fsuffix=${SUFFIX1:-$CSUFFIX1}
@@ -253,7 +264,7 @@ add_plot_group() {
     local FORCE=$5
     local tmpfile=${TMPFILE_PFX}${GID}
     if [[ $SUFFIX ]] || [[ $CSUFFIX ]]; then
-        parse_runs_prepare_data "$SUFFIX" "$CSUFFIX" "$tmpfile" "$FORCE"
+        parse_runs_prepare_data "$SUFFIX" "$CSUFFIX" "$tmpfile" "$LABEL" "$FORCE"
         local dps=$(wc -l < $tmpfile)
         if [ $datapoints1 != $dps ]; then 
             echo "ERROR! group ${GID} has different number of runs/data points"; 
@@ -264,7 +275,7 @@ add_plot_group() {
     fi
 }
 
-add_plot_group 2 "$SUFFIX2" "$CSUFFIX2" "$LABEL2" "$FORCE"
+add_plot_group 2 "$SUFFIX2" "$CSUFFIX2" "$LABEL2" "$FORCE" 
 add_plot_group 3 "$SUFFIX3" "$CSUFFIX3" "$LABEL3" "$FORCE"
 add_plot_group 4 "$SUFFIX4" "$CSUFFIX4" "$LABEL4" "$FORCE"
 add_plot_group 5 "$SUFFIX5" "$CSUFFIX5" "$LABEL5" "$FORCE"
