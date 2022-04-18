@@ -193,5 +193,97 @@ if [ "$PLOTID" == "3" ]; then
     fi
 fi
 
+## Figure 4: simulations - overall performance kernel vs scheduler faults with higher kona rate
+## Data
+# bash sim/plot.sh -id=4 -f and data in sim/data/4/xput_*_50000
+if [ "$PLOTID" == "4" ]; then
+    mkdir -p ${DATADIR}
+    PFRATE=500000
+    for PFRATE in 125000 250000 500000; do 
+        cp ${SCRIPT_DIR}/../sim/data/4/xput_*_${PFRATE} ${DATADIR}/
+        # plotname=${PLOTDIR}/fig${PLOTID}_sim_xput_kernel.${PLOTEXT}
+        # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        #     python3 ${SCRIPT_DIR}/../scripts/plot.py                    \
+        #         -yc xput -yl "MOPS" --ymul 1e-6                         \
+        #         -xc hitratio  -xl "Local Hit Ratio"                     \
+        #         -d ${PLOTID}/xput_noup_1_${PFRATE}   -l "1" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_2_${PFRATE}   -l "2" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_3_${PFRATE}   -l "3" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_4_${PFRATE}   -l "4" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_5_${PFRATE}   -l "5" -ls dashed  \
+        #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU Cores"
+        #         display $plotname & 
+        # fi
+
+        # plotname=${PLOTDIR}/fig${PLOTID}_sim_xput_scheduler.${PLOTEXT}
+        # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        #     python3 ${SCRIPT_DIR}/../scripts/plot.py                \
+        #         -yc xput -yl "MOPS" --ymul 1e-6                     \
+        #         -xc hitratio  -xl "Local Hit Ratio"                 \
+        #         -d ${PLOTID}/xput_up_1_${PFRATE}   -l "1" -ls solid \
+        #         -d ${PLOTID}/xput_up_2_${PFRATE}   -l "2" -ls solid \
+        #         -d ${PLOTID}/xput_up_3_${PFRATE}   -l "3" -ls solid \
+        #         -d ${PLOTID}/xput_up_4_${PFRATE}   -l "4" -ls solid \
+        #         -d ${PLOTID}/xput_up_5_${PFRATE}   -l "5" -ls solid \
+        #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU Cores"
+        #         display $plotname & 
+        # fi
+
+        # compute xput gain
+        for cores in 1 2 3 4 5; do
+            cat ${PLOTID}/xput_noup_${cores}_${PFRATE} | awk -F, '{ print $3 }' | tail -n +2 > tmp_hitr
+            cat ${PLOTID}/xput_noup_${cores}_${PFRATE} | awk -F, '{ print $6 }' | tail -n +2 > tmp_kernel
+            cat ${PLOTID}/xput_up_${cores}_${PFRATE}   | awk -F, '{ print $6 }' | tail -n +2 > tmp_sched
+            paste tmp_kernel tmp_sched | awk '{ printf("%.2lf\n",$2/$1) }' > tmp_gain
+            { echo -e "hitratio,gain";  paste -d, tmp_hitr tmp_gain; } > ${PLOTID}/gain_${PFRATE}_${cores}.dat
+            rm -f tmp_*
+        done
+
+        plotname=${PLOTDIR}/fig${PLOTID}_xput_gain_${PFRATE}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${SCRIPT_DIR}/../scripts/plot.py            \
+                -yc gain -yl "Gain"                             \
+                -xc hitratio  -xl "Local Hit Ratio"             \
+                -d ${PLOTID}/gain_${PFRATE}_1.dat   -l "1" -ls solid      \
+                -d ${PLOTID}/gain_${PFRATE}_2.dat   -l "2" -ls solid      \
+                -d ${PLOTID}/gain_${PFRATE}_3.dat   -l "3" -ls solid      \
+                -d ${PLOTID}/gain_${PFRATE}_4.dat   -l "4" -ls solid      \
+                -d ${PLOTID}/gain_${PFRATE}_5.dat   -l "5" -ls solid      \
+                --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU Cores"
+            display $plotname & 
+        fi
+
+        # plotname=${PLOTDIR}/fig${PLOTID}_faults_kernel.${PLOTEXT}
+        # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        #     python3 ${SCRIPT_DIR}/../scripts/plot.py                \
+        #         -yc faults -yl "Faults (MOPS)" --ymul 1e-6          \
+        #         -xc hitratio  -xl "Local Hit Ratio"                 \
+        #         --ymin 0 --ymax 0.5                                 \
+        #         -d ${PLOTID}/xput_noup_1_${PFRATE}   -l "1" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_2_${PFRATE}   -l "2" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_3_${PFRATE}   -l "3" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_4_${PFRATE}   -l "4" -ls dashed  \
+        #         -d ${PLOTID}/xput_noup_5_${PFRATE}   -l "5" -ls dashed  \
+        #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU Cores"
+        #         display $plotname & 
+        # fi
+
+        # plotname=${PLOTDIR}/fig${PLOTID}_faults_scheduler.${PLOTEXT}
+        # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        #     python3 ${SCRIPT_DIR}/../scripts/plot.py                \
+        #         -yc faults -yl "Faults (MOPS)" --ymul 1e-6          \
+        #         --ymin 0 --ymax 0.5                                 \
+        #         -xc hitratio  -xl "Local Hit Ratio"                 \
+        #         -d ${PLOTID}/xput_up_1_${PFRATE}   -l "1" -ls solid \
+        #         -d ${PLOTID}/xput_up_2_${PFRATE}   -l "2" -ls solid \
+        #         -d ${PLOTID}/xput_up_3_${PFRATE}   -l "3" -ls solid \
+        #         -d ${PLOTID}/xput_up_4_${PFRATE}   -l "4" -ls solid \
+        #         -d ${PLOTID}/xput_up_5_${PFRATE}   -l "5" -ls solid \
+        #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU Cores"
+        #         display $plotname & 
+        # fi
+    done
+fi
+
 # cleanup
 rm -f ${TMP_FILE_PFX}*

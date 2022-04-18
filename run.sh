@@ -13,8 +13,8 @@ MEM=1600
 
 # # Kona Params
 # KCFG=CONFIG_NO_DIRTY_TRACK
-KCFG=CONFIG_WP
-# KCFG=NO_KONA
+# KCFG=CONFIG_WP
+KCFG=NO_KONA
 # KFLAGS="-DPRINT_FAULT_ADDRS"
 # KFLAGS="-DREGISTER_MADVISE_NOTIF"
 # KFLAGS="-DBATCH_EVICTION"
@@ -29,7 +29,7 @@ EVICT_BATCH_SIZE=1
 
 # Default client settings
 CONNS=100
-MPPS=2              #undo
+MPPS=4              #undo
 KEYSPACE=10M        #not configurable yet
 
 usage="\n
@@ -111,8 +111,8 @@ cleanup() {
     # for EVICT_THR in 0.9; do
     # for EVICT_DONE_THR in 0.92 0.94 0.96; do
     # for EVICT_BATCH_SIZE in 2 4; do
-    for scores in $SCORES; do
-    # for scores in 4 5; do
+    # for scores in $SCORES; do
+    for scores in 1 2 3 4 5; do
         # for mem in `seq 1000 200 2000`; do
         for mem in $MEM; do
             cleanup
@@ -121,7 +121,7 @@ cleanup() {
             ssh $KONA_RCNTRL_SSH "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
             ssh $CLIENT_SSH "sudo systemctl stop ntp; sudo ntpd -gq; sudo systemctl start ntp;"
 
-            DESC="testing sc07 as server"
+            DESC="shenango + memcached base xput"
             # DESC="running SYNC vs ASYNC"
             kona_evict="--konaet ${EVICT_THR} --konaedt ${EVICT_DONE_THR} --konaebs ${EVICT_BATCH_SIZE}"
             kona_mem_bytes=`echo $mem | awk '{ print $1*1000000 }'`
@@ -130,7 +130,7 @@ cleanup() {
             # debugging
             if [[ "$KCFG" == "NO_KONA" ]]; then
                 python scripts/experiment.py --nokona -p udp -nc $CONNS --time $RUNTIME $GDBFLAG    \
-                    --start $MPPS --finish $MPPS --scores $scores ${warmup} ${STOPAT} ${kona_evict} \
+                    --start $MPPS --finish $MPPS --scores $scores ${warmup} ${STOPAT}               \
                     -d "$KEYSPACE keys; No Kona; $DESC"
             else
                 python scripts/experiment.py -km ${kona_mem_bytes} -p udp -nc $CONNS --time $RUNTIME    \
