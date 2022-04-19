@@ -300,16 +300,6 @@ int uffd_wake(int fd, unsigned long addr, size_t size) {
   return r;
 }
 
-// void init_uffd_evt_fd(void) {
-//   uffd_info.evt = xmalloc(MAX_EVENT_FD * sizeof(struct pollfd));
-//   for (int i = 0; i < MAX_EVENT_FD; i++) {
-//     uffd_info.evt[i] = (struct pollfd){.fd = -1, .events = POLLIN};
-//   }
-
-//   uffd_info.evt_count = 2;
-//   uffd_info.evt[1].fd = uffd_info.userfault_fd;
-// }
-
 void add_uffd_evt_fd(int fd) {
 #ifdef FORK_SUPPORT
   uffd_info.evt[uffd_info.evt_count++].fd = fd;

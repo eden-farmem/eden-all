@@ -9,18 +9,24 @@ set -e
 
 usage="\n
 -d, --debug \t\t build debug\n
--f, --force \t\t force re-run experiments\n
+-o, --opts \t\t CFLAGS to include during build\n
+-t, --thr \t\t number of threads/cores to run with\n
+-nsu, --nosharefd \t do not a share uffd across threads\n
+-th, --handlers \t\t number of handler threads/cores to handle fds\n
+-of, --outfile \t\t append results to this file\n
 -h, --help \t\t this usage information message\n"
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
 DATADIR=${SCRIPT_DIR}/data
-OUTFILE="prefetch.out"
+BINFILE="measure.out"
 TEMP_PFX=tmp_uffd_
 PLOTSRC=${SCRIPT_DIR}/../../scripts/plot.py
 PLOTDIR=${SCRIPT_DIR}/plots 
 PLOTEXT=png
-# UFFD_PER_THREAD=1   #assign different fd to each core
+NTHREADS=1
+SHARE_UFFD=1
+NHANDLERS=1
 
 # parse cli
 for i in "$@"
@@ -30,13 +36,25 @@ case $i in
     CFLAGS="$CFLAGS -DDEBUG"
     ;;
 
-    -f|--force)
-    FORCE=1
+    -o=*|--opts=*)
+    CFLAGS="$CFLAGS ${i#*=}"
     ;;
 
-    -p|--prefetch)
-    CFLAGS="$CFLAGS -DUSE_PREFETCH"
-    ;;  
+    -t=*|--thr=*)
+    NTHREADS="${i#*=}"
+    ;;
+
+    -nsu|--nosharefd)
+    SHARE_UFFD=0
+    ;;
+
+    -th=*|--handlers=*)
+    NHANDLERS="${i#*=}"
+    ;;
+
+    -of=*|--outfile=*)
+    OUTFILE="${i#*=}"
+    ;;
 
     -h | --help)
     echo -e $usage
@@ -52,43 +70,16 @@ esac
 done
 
 # build
-rm -f ${OUTFILE}
+rm -f ${BINFILE}
 LDFLAGS="$LDFLAGS -lpthread"
-gcc measure.c region.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${OUTFILE}
+gcc measure.c region.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 # run
-set +e    #to continue to cleanup even on failure
-mkdir -p ${DATADIR}
-for UFFD_PER_THREAD in 0 1; do
-    if [ "$UFFD_PER_THREAD" == "0" ]; then  label="one_fd_per_proc";    fi
-    if [ "$UFFD_PER_THREAD" == "1" ]; then  label="one_fd_per_core";    fi
-    datafile=${DATADIR}/uffd_xput_${label}
-    if [ ! -f $datafile ] || [[ $FORCE ]]; then
-        echo "cores,uffd_xput,uffd_err,madv_xput,madv_err" > $datafile
-        for thr in 1 2 4 8 16; do 
-            sudo ./${OUTFILE} $thr ${UFFD_PER_THREAD} >> $datafile
-        done
-    fi
-    cat $datafile
-    plots="$plots -d $datafile -l $label"
-done
-
-mkdir -p ${PLOTDIR}
-plotname=${PLOTDIR}/uffd_copy_xput.${PLOTEXT}
-python ${PLOTSRC} ${plots}          \
-    -yc uffd_xput -yl "MOPS" --ymul 1e-6 \
-    -xc cores -xl "Cores" --hlines 1 \
-    --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname & 
-
-plotname=${PLOTDIR}/madvise_xput.${PLOTEXT}
-python ${PLOTSRC} ${plots}          \
-    -yc madv_xput -yl "MOPS" --ymul 1e-6 \
-    -xc cores -xl "Cores" --hlines 1 \
-    --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname & 
-
+if [[ $OUTFILE ]]; then
+    sudo ./${BINFILE} $NTHREADS $SHARE_UFFD $NHANDLERS | tee -a $OUTFILE
+else 
+    sudo ./${BINFILE} $NTHREADS $SHARE_UFFD $NHANDLERS 
+fi
 
 # cleanup
-rm ${OUTFILE}
-rm ${TEMP_PFX}*
+rm ${BINFILE}

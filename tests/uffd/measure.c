@@ -48,6 +48,7 @@ static prefetch_page_t prefetch_page;
 #define GIGA 			(1ULL << 30)
 #define MAX_CORES 		28	/*cores per numa node*/
 #define MAX_THREADS 	(MAX_CORES-1)
+#define MAX_FDS			MAX_THREADS
 #define MAX_MEMORY 		(128*GIGA)
 #define RUNTIME_SECS 	5
 
@@ -61,6 +62,12 @@ const int NODE0_CORES[MAX_CORES] = {
 #define CORELIST NODE0_CORES
 int start_button = 0, stop_button = 0;
 
+enum app_op {
+	OP_MAP_PAGE,
+	OP_UNMAP_PAGE,
+	OP_ACCESS_PAGE
+};
+
 struct thread_data {
     int tid;
 	int core;
@@ -70,6 +77,21 @@ struct thread_data {
 	int xput_ops;
 	int errors;
 	int uffd;
+	enum app_op optype;
+} CACHE_ALIGN;
+
+struct handler_data {
+    int tid;
+	int core;
+	int xput_ops;
+	int errors;
+	int uffds[MAX_FDS];
+	int nfds;
+	/* allocating some per-thread data here to make sure  
+	 * they go in different cachelines. easier than ensuring 
+	 * that malloc'd data from different threads goes on 
+	 * separate cachelines */
+	struct pollfd evt[MAX_FDS];	
 } CACHE_ALIGN;
 
 int is_page_mapped(const void* p) {
@@ -89,7 +111,8 @@ int is_page_mapped(const void* p) {
 #endif
 }
 
-void* uffd_copy_main(void* args) {
+/* main for measuring threads */
+void* app_main(void* args) {
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
     int self = tdata->tid;
@@ -103,35 +126,132 @@ void* uffd_copy_main(void* args) {
 	while(!start_button)	cpu_relax();
 	while(!stop_button) {
 		p = (void*) page_align(p);
-		r = uffd_copy(tdata->uffd, (unsigned long)p, 
-			(unsigned long) page_buf, 0, true, &retries, false);
+		switch(tdata->optype) {
+			case OP_MAP_PAGE:
+				r = uffd_copy(tdata->uffd, (unsigned long)p, 
+					(unsigned long) page_buf, 0, true, &retries, false);
+				break;
+			case OP_UNMAP_PAGE:
+				r = madvise(p, PAGE_SIZE, MADV_DONTNEED);
+				break;
+			case OP_ACCESS_PAGE:
+				r = *(int*)p;
+				r = 0;
+				break;
+			default:
+				printf("unhandled app op: %d\n", tdata->optype);
+				ASSERT(0);
+		}
 		if (r)	tdata->errors++;
 		else tdata->xput_ops++;
 		p += PAGE_SIZE;
 		ASSERT((uint64_t)p < (tdata->range_start + tdata->range_len));		/*out of memory region*/
+#ifdef DEBUG
+		break;
+#endif
 	}
-	tdata->range_len = (uint64_t)(p - PAGE_SIZE);		/*new range that is actually filled in*/
+	tdata->range_len = (uint64_t)(p - PAGE_SIZE);		/*update range to where we reached*/
 }
 
-void* madvise_main(void* args) {
-    struct thread_data * tdata = (struct thread_data *)args;
-    ASSERTZ(pin_thread(tdata->core));
-    int self = tdata->tid;
-	int r, retries;
-	void *p = (void*)tdata->range_start; 
+uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata, 
+		int starting_core, uint64_t* errors, uint64_t* latencyns) {
+	int i, r;
+	uint64_t start, duration;
+	double duration_secs;
+	int coreidx = starting_core;
 
-	r = pthread_barrier_wait(&ready);	/*signal ready*/
+	/* spawn threads */
+	pthread_t threads[MAX_THREADS];
+	for(i = 0; i < nthreads; i++) {
+		tdata[i].tid = i;
+		ASSERTZ(rand_seed(&tdata[i].rs, time(NULL) ^ i));
+        ASSERT(coreidx < MAX_CORES);
+        tdata[i].core = CORELIST[coreidx++];
+		tdata[i].optype = optype;
+		tdata[i].xput_ops = tdata[i].errors = 0;
+        pthread_create(&threads[i], NULL, app_main, (void*)&tdata[i]);
+	}
+	stop_button = 0;
+	r = pthread_barrier_wait(&ready);	/*until all threads ready*/
     ASSERT(r != EINVAL);
+	
+	/* start work */
+	start = rdtsc();
+	start_button = 1;
+	do {
+		duration = rdtscp(NULL) - start;
+		duration_secs = duration / (1000000.0 * cycles_per_us);
+	} while(duration_secs <= RUNTIME_SECS);
+	stop_button = 1;
+
+	/* gather results */
+	uint64_t xput = 0;
+	*errors = 0;
+	for (i = 0; i < nthreads; i++) {
+		xput += tdata[i].xput_ops;
+		*errors += tdata[i].errors;
+	}
+	xput /= duration_secs;
+	*latencyns = tdata[0].xput_ops > 0 ? 
+		duration * 1000 / (cycles_per_us * tdata[0].xput_ops) : 0;	 /*latency seen by any one core*/ 
+	return xput;
+}
+
+/* main for fault handling threads */
+void* handler_main(void* args) {
+    struct handler_data * hdata = (struct handler_data *)args;
+    ASSERTZ(pin_thread(hdata->core));
+    int self = hdata->tid;
+	int i, r, retries, fdnow = 0;
+
+	for (i = 0; i < hdata->nfds; i++) {
+		hdata->evt[i].fd = hdata->uffds[i];
+		hdata->evt[i].events = POLLIN;
+		pr_debug("handler %d listening on fd: %d", self, hdata->uffds[i]);
+	}
+	ssize_t read_size;
+	struct uffd_msg msg;
 
 	while(!start_button)	cpu_relax();
 	while(!stop_button) {
-		p = (void*) page_align(p);
-		r = madvise(p, PAGE_SIZE, MADV_DONTNEED);
-		if (r)	tdata->errors++;
-		else tdata->xput_ops++;
-		p += PAGE_SIZE;
-		ASSERT((uint64_t)p < (tdata->range_start + tdata->range_len));		/*out of memory region*/
-	}
+		fdnow = (fdnow + 1) % hdata->nfds;
+      	if (poll(&hdata->evt[fdnow], 1, 0) > 0) {
+			pr_debug("handler %d found a pending event %d:%d:%d", self, 
+				hdata->evt[fdnow].fd, hdata->evt[fdnow].events, hdata->evt[fdnow].revents);
+
+			/* handle unexpected poll events */
+			ASSERT((hdata->evt[fdnow].revents & POLLERR) == 0);
+			ASSERT((hdata->evt[fdnow].revents & POLLHUP) == 0);
+
+			/* read fault */
+        	read_size = read(hdata->evt[fdnow].fd, &msg, sizeof(struct uffd_msg));
+			pr_debug("handler %d read %ld bytes (errno %d) on fd %d", 
+				self, read_size, errno, hdata->evt[fdnow].fd);
+			if (read_size == -1) {
+				/* only EAGAIN is fine; another handler got to this message first */
+				ASSERT(errno == EAGAIN);
+				continue;
+			}
+			ASSERT(read_size == sizeof(struct uffd_msg));
+
+			/* do something with the fault */
+			switch (msg.event) {
+				case UFFD_EVENT_PAGEFAULT:
+					/* plugin a zero page */
+					pr_debug("handler %d resolving fault %llu", self, msg.arg.pagefault.address);
+					r = uffd_zero(hdata->evt[fdnow].fd, msg.arg.pagefault.address, PAGE_SIZE, false, &retries);
+					ASSERT(r == 0);
+					break;
+				case UFFD_EVENT_FORK:
+				case UFFD_EVENT_REMAP:
+				case UFFD_EVENT_REMOVE:
+				case UFFD_EVENT_UNMAP:
+				default:
+					printf("ERROR! unhandled uffd event %d\n", msg.event);
+					ASSERT(0);
+    		}
+      }
+    }
 }
 
 int main(int argc, char **argv)
@@ -139,26 +259,38 @@ int main(int argc, char **argv)
 	unsigned long sysinfo_ehdr;
 	char *p;
 	bool page_mapped;
-	int i, j, r, num_threads;
+	int i, j, r, nthreads;
+	int handlers_per_fd, nhandlers, nuffd;
 	uint64_t start, duration;
 	double duration_secs;
 	size_t size;
-	bool uffd_per_thread = true;
+	bool share_uffd = true;
 
 	/* parse & validate args */
-    if (argc > 3) {
+    if (argc > 4) {
         printf("Invalid args\n");
-        printf("Usage: %s [num_threads] [uffd_per_thread]\n", argv[0]);
+        printf("Usage: %s [nthreads] [share_uffd] [nhandlers]\n", argv[0]);
+        printf("[nthreads]\t number of measuring threads/cores\n");
+        printf("[share_uffd]\t whether to share a single fd across threads or have a dedicated fd per thread\n");
+        printf("[nhandlers]\t number of handler threads to listen on uffds\n");
         return 1;
     }
-    num_threads = atoi(argv[1]);
-	uffd_per_thread = (argc > 2) ? atoi(argv[2]) : false;
-	ASSERT(num_threads > 0 && num_threads <= MAX_THREADS);
-	ASSERT(MAX_UFFD > num_threads);
-	ASSERTZ(num_threads & (num_threads - 1));	/*power of 2*/
+    nthreads = (argc > 1) ? atoi(argv[1]) : 1;
+	share_uffd = (argc > 2) ? atoi(argv[2]) : true;
+	nhandlers = (argc > 3) ? atoi(argv[3]) : 1;
+	ASSERT(nthreads > 0);
+	ASSERT(nhandlers > 0);
+	ASSERT(nthreads + nhandlers <= MAX_THREADS);
+	ASSERTZ(nthreads & (nthreads - 1));	/*power of 2*/
+	nuffd = share_uffd ? 1 : nthreads;
+	ASSERT(nuffd < MAX_UFFD);
+	ASSERT(nuffd < MAX_FDS);
+	pr_debug("Running %s with %d threads, %d fds, %d handlers", 
+		argv[0], nthreads, nuffd, nhandlers);
 
 	/*init*/
     ASSERT(sizeof(struct thread_data) % CACHE_LINE_SIZE == 0);
+    ASSERT(sizeof(struct handler_data) % CACHE_LINE_SIZE == 0);
 	cycles_per_us = time_calibrate_tsc();
 	ASSERT(cycles_per_us);
 
@@ -180,106 +312,81 @@ int main(int argc, char **argv)
 
 	/*uffd init*/
 	uffd_info.fd_count = 0;
-	for(i = 0; i < num_threads; i++) {
+	for(i = 0; i < nuffd; i++) {
 		uffd_info.userfault_fds[i] = uffd_init();
 		ASSERT(uffd_info.userfault_fds[i] >= 0);
 		uffd_info.fd_count++;
-		// printf("userfault-fd %d: %d\n", i, uffd_info.userfault_fds[i]);
-		if (!uffd_per_thread)	
-			break; /*one is enough*/
+		pr_debug("userfault-fd %d: %d\n", i, uffd_info.userfault_fds[i]);
 	}
 
-	/* NOTE: While we registered a uffd region, we don't have a manager 
-	 * handling uffd events from the kernel in this test. Any access to uffd 
-	 * region will trigger such an event so we can't do any direct access.
-	 * Prefetch_page access won't trigger this event so we're fine. */
-
-    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
+	/* main thread on core 0 */
 	int coreidx = 0;
-	pthread_t threads[MAX_THREADS];
-	ASSERTZ(pthread_barrier_init(&ready, NULL, num_threads + 1));
-	pin_thread(coreidx++);	/*main thread on core 0*/
+	pin_thread(coreidx++);	
 
-	/* UFFD COPY */
-	/*create/register uffd regions*/
+#if defined(ACCESS_PAGE)
+	/* start fault handler threads. don't access pages without enabling handlers */
+    struct handler_data hdata[MAX_THREADS] CACHE_ALIGN = {0};
+	for(i = 0; i < nhandlers; i++) {
+		hdata[i].tid = i;
+        ASSERT(coreidx < MAX_CORES);
+        hdata[i].core = CORELIST[coreidx++];
+		hdata[i].nfds = 0;
+	}
+
+	/* assign fds among handlers */
+	int hcount = 0, fdcount = 0, idx;
+	bool hdone = false, fddone = false;
+	while (!hdone || !fddone) {
+		hdata[hcount].uffds[hdata[hcount].nfds++] = uffd_info.userfault_fds[fdcount];
+		ASSERT(hdata[hcount].nfds < MAX_FDS);
+		pr_debug("handler %d got fd %d", hcount, fdcount);
+		hcount++;	fdcount++;
+		if (hcount == nhandlers){ hdone = true;		hcount = 0;  }
+		if (fdcount == nuffd)	{ fddone = true;	fdcount = 0; }
+	}
+
+	/* start handlers */
+	pthread_t handlers[MAX_THREADS];
+	for (i = 0; i < nhandlers; i++)
+        pthread_create(&handlers[i], NULL, handler_main, (void*)&hdata[i]);
+#endif
+	
+	/* create/register per-thread uffd regions */
 	int writeable = 1, fd;
 	struct uffd_region_t* reg;
-	size = MAX_MEMORY / num_threads;
+	size = MAX_MEMORY / nthreads;
+    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
 	ASSERT(size % PAGE_SIZE == 0);
-	for(i = 0; i < num_threads; i++) {
-		fd = uffd_per_thread ? uffd_info.userfault_fds[i]: uffd_info.userfault_fds[0];
+	for(i = 0; i < nthreads; i++) {
+		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
 		reg = create_uffd_region(fd, size, writeable);
 		ASSERT(reg != NULL);
 		ASSERT(reg->addr);
 		r = uffd_register(fd, reg->addr, reg->size, writeable);
 		ASSERTZ(r);
 
-		tdata[i].tid = i;
 		tdata[i].uffd = fd;
-		ASSERTZ(rand_seed(&tdata[i].rs, time(NULL) ^ i));
-        ASSERT(coreidx < MAX_CORES);
-        tdata[i].core = CORELIST[coreidx++];
 		tdata[i].range_start = reg->addr;
-		tdata[i].range_len = size;
-        pthread_create(&threads[i], NULL, uffd_copy_main, (void*)&tdata[i]);
+		tdata[i].range_len = size;		
 	}
 
-	stop_button = 0;
-	r = pthread_barrier_wait(&ready);	/*until all threads ready*/
-    ASSERT(r != EINVAL);
-	
-	start = rdtsc();
-	start_button = 1;
-	do {
-		duration = rdtscp(NULL) - start;
-		duration_secs = duration / (1000000.0 * cycles_per_us);
-	} while(duration_secs <= RUNTIME_SECS);
-	stop_button = 1;
+	/* start measuring threads */
+	uint64_t xput, errors, latns;
+	ASSERTZ(pthread_barrier_init(&ready, NULL, nthreads + 1));
+#if defined(MAP_PAGE)
+	xput = do_app_work(OP_MAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
+#elif defined(UNMAP_PAGE)
+	/* map pages before unmapping them. currently map is faster than unmap 
+	 * so we should have enough pages to unmap for a given run duration */
+	do_app_work(OP_MAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
+	xput = do_app_work(OP_UNMAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
+#elif defined(ACCESS_PAGE)
+	xput = do_app_work(OP_ACCESS_PAGE, nthreads, tdata, coreidx, &errors, &latns);
+#else 
+	printf("Pick an operation: MAP_PAGE, UNMAP_PAGE, ACCESS_PAGE\n");
+	return 1;
+#endif
 
-	uint64_t uffd_xput = 0, uffd_errors = 0;
-	for (i = 0; i < num_threads; i++) {
-		uffd_xput += tdata[i].xput_ops;
-		uffd_errors += tdata[i].errors;
-	}
-	uffd_xput /= duration_secs;
-
-	/* MADVISE */
-	coreidx = 1;
-	// init_madvise();
-	for(i = 0; i < num_threads; i++) {
-		tdata[i].tid = i;
-		tdata[i].uffd = fd;
-		ASSERTZ(rand_seed(&tdata[i].rs, time(NULL) ^ i));
-        ASSERT(coreidx < MAX_CORES);
-        tdata[i].core = CORELIST[coreidx++];
-		/*tdata->range_start and range_len should be set already*/
-		tdata[i].xput_ops = tdata[i].errors = 0;
-        pthread_create(&threads[i], NULL, madvise_main, (void*)&tdata[i]);
-	}
-
-	stop_button = 0;
-	r = pthread_barrier_wait(&ready);	/*until all threads ready*/
-    ASSERT(r != EINVAL);
-
-	start = rdtsc();
-	start_button = 1;
-	do {
-		duration = rdtscp(NULL) - start;
-		duration_secs = duration / (1000000.0 * cycles_per_us);
-	} while(duration_secs <= RUNTIME_SECS);
-	stop_button = 1;
-
-	uint64_t madv_xput = 0, madv_errors = 0;
-	for (i = 0; i < num_threads; i++) {
-		madv_xput += tdata[i].xput_ops;
-		madv_errors += tdata[i].errors;
-	}
-	madv_xput /= duration_secs;
-
-	printf("%d,%lu,%lu,%lu,%lu\n", num_threads, 
-		uffd_xput, uffd_errors, 
-		madv_xput, madv_errors);
-	// printf("%.2lfµs\n", duration_secs * 1000000 / xput);
-
+	printf("%d,%lu,%lu,%lu\n", nthreads, xput, errors, latns);
 	return 0;
 }
