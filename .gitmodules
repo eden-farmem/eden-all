@@ -7,6 +7,9 @@
 [submodule "kona"]
 	path = kona
 	url = git@gitlab.eng.vmware.com:kona/kona.git
+[submodule "umap"]
+	path = umap
+	url = git@gitlab.eng.vmware.com:kona/umap.git
 
 # Activate it if/when needed (initial setup takes a lot of time)
 # [submodule "data"]
