@@ -64,6 +64,7 @@ case $i in
     -sy|--synthetic)
     SHENANGO=1
     SYNTHETIC=1
+    NO_STATS=1
     ;;
 
     -sb|--sbench)
@@ -147,11 +148,12 @@ if [[ $SHENANGO ]]; then
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
     if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
     if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
-    echo  ${PGFAULT_OPT}
+    if ! [[ $NO_STATS ]]; then  STATS_CORE_OPT="STATS_CORE=${SHENANGO_STATS_CORE}"; fi
+    echo $STATS_CORE_OPT
 
-    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} \
-        STATS_CORE=${SHENANGO_STATS_CORE} ${GDBFLAG}            \
+    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}       \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}    \
+        ${STATS_CORE_OPT} ${GDBFLAG}                                \
         PROVIDED_CFLAGS="""$SOPTS"""
     popd 
 

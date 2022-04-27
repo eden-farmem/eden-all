@@ -87,7 +87,7 @@ is built for another kernel version)
             sudo vim /etc/ntp.conf 
                 Comment out default ubuntu servers and pools. Add: 
                     logfile /var/log/ntpd.log
-                    server sc2-hs2-b1640.eng.vmware.com iburst
+                    server sc2-hs2-b1630.eng.vmware.com iburst
             sudo systemctl restart ntp
             sudo systemctl status ntp
             sudo systemctl stop ntp
