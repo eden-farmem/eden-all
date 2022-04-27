@@ -49,7 +49,8 @@ set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 
-for kind in "faults" "appfaults" "mixed"; do
+# for kind in "faults" "appfaults" "mixed"; do
+for kind in "faults" "appfaults"; do
     for op in "read" "write"; do        # "r+w"
         cfg=${kind}-${op}
         KC=CONFIG_WP
@@ -77,7 +78,7 @@ for kind in "faults" "appfaults" "mixed"; do
             bash run.sh -f -kc="$KC" -ko="$KO"  #rebuild kona
             tmpfile=${TEMP_PFX}out
             echo "cores,xput,latency" > $datafile
-            for thr in `seq 1 1 5`; do 
+            for thr in `seq 1 1 6`; do 
                 # bash run.sh -t=${thr} 
                 bash run.sh -t=${thr} -fl="""$CFLAGS""" -o=${tmpfile}
             done

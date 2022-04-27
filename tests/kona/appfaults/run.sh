@@ -25,8 +25,8 @@ kona_cfg="PBMEM_CONFIG=CONFIG_WP"
 BINFILE="prefetch.out"
 KONA_DIR="${SCRIPT_DIR}/../../../kona"
 KONA_BIN="${KONA_DIR}/pbmem"
-KONA_RCNTRL_SSH="sc40"
-KONA_RCNTRL_IP="192.168.0.40"
+KONA_RCNTRL_SSH="sc07"
+KONA_RCNTRL_IP="192.168.0.7"
 KONA_RCNTRL_PORT="9202"
 KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
 KONA_MEMSERVER_IP=$KONA_RCNTRL_IP
@@ -130,10 +130,12 @@ set +e    #to continue to cleanup even on failure
 # prepare for run
 echo "Starting Kona"
 # starting kona controller
+ssh ${KONA_RCNTRL_SSH} "mkdir -p ~/scratch"
 scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
 ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
 sleep 2
 # starting mem server
+ssh ${KONA_MEMSERVER_SSH} "mkdir -p ~/scratch"
 scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
 ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
 sleep 30

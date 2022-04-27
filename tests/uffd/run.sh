@@ -9,15 +9,24 @@ set -e
 
 usage="\n
 -d, --debug \t\t build debug\n
+-o, --opts \t\t CFLAGS to include during build\n
+-t, --thr \t\t number of threads/cores to run with\n
+-nsu, --nosharefd \t do not a share uffd across threads\n
+-th, --handlers \t\t number of handler threads/cores to handle fds\n
+-of, --outfile \t\t append results to this file\n
 -h, --help \t\t this usage information message\n"
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
-OUTFILE="prefetch.out"
+DATADIR=${SCRIPT_DIR}/data
+BINFILE="measure.out"
 TEMP_PFX=tmp_uffd_
 PLOTSRC=${SCRIPT_DIR}/../../scripts/plot.py
-PLOTDIR=plots 
+PLOTDIR=${SCRIPT_DIR}/plots 
 PLOTEXT=png
+NTHREADS=1
+SHARE_UFFD=1
+NHANDLERS=1
 
 # parse cli
 for i in "$@"
@@ -27,9 +36,25 @@ case $i in
     CFLAGS="$CFLAGS -DDEBUG"
     ;;
 
-    -p|--prefetch)
-    CFLAGS="$CFLAGS -DUSE_PREFETCH"
-    ;;  
+    -o=*|--opts=*)
+    CFLAGS="$CFLAGS ${i#*=}"
+    ;;
+
+    -t=*|--thr=*)
+    NTHREADS="${i#*=}"
+    ;;
+
+    -nsu|--nosharefd)
+    SHARE_UFFD=0
+    ;;
+
+    -th=*|--handlers=*)
+    NHANDLERS="${i#*=}"
+    ;;
+
+    -of=*|--outfile=*)
+    OUTFILE="${i#*=}"
+    ;;
 
     -h | --help)
     echo -e $usage
@@ -45,26 +70,16 @@ esac
 done
 
 # build
+rm -f ${BINFILE}
 LDFLAGS="$LDFLAGS -lpthread"
-gcc measure.c region.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${OUTFILE}
+gcc measure.c region.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 # run
-set +e    #to continue to cleanup even on failure
-datafile=${TEMP_PFX}uffd
-echo "cores,xput_per_core" > $datafile
-for thr in 1 2 4 8 16; do 
-    sudo ./${OUTFILE} $thr >> $datafile
-done
-
-cat $datafile
-mkdir -p ${PLOTDIR}
-plotname=uffd_copy_xput.${PLOTEXT}
-python ${PLOTSRC} -d $datafile -l "UFFD Copy"       \
-    -xc cores -xl "Cores"  --ymin 0 --ymax 0.5      \
-    -yc xput_per_core -yl "Mops/core" --ymul 1e-6   \
-    --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname & 
+if [[ $OUTFILE ]]; then
+    sudo ./${BINFILE} $NTHREADS $SHARE_UFFD $NHANDLERS | tee -a $OUTFILE
+else 
+    sudo ./${BINFILE} $NTHREADS $SHARE_UFFD $NHANDLERS 
+fi
 
 # cleanup
-rm ${OUTFILE}
-rm ${TEMP_PFX}*
+rm ${BINFILE}

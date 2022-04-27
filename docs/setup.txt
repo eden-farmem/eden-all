@@ -9,7 +9,7 @@ is built for another kernel version)
     git clone https://github.com/shenango/shenango 
     or, in our case:
         git clone git@gitlab.eng.vmware.com:ayelam/rmem-scheduler.git   #needs git ssh access
-        git config --global user.email "ayelam@vmware.com"
+        git config --global user.email "yelama@vmware.com"
         git config --global user.name "Anil Yelam"
         cd rmem-scheduler
         git submodule init
@@ -143,5 +143,20 @@ Linux Kernel Patching
 Cleaning up Boot Partition
 ==========================
 https://askubuntu.com/questions/345588/what-is-the-safest-way-to-clean-up-boot-partition
+
+
+Setting up a new server
+========================
+As root:
+    sudo useradd -s /bin/bash -m ayelam
+    sudo visudo --> ALL privileges
+    sudo passwd ayelam
+From a known machine:
+    Add new server to ~/.ssh/config
+    scp -r /home/ayelam/.ssh/ <dest>:~/
+As ayelam:
+    Sync time with ntpd
+    Install packages in scripts: experiment.py
+
 
 

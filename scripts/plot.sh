@@ -7,7 +7,7 @@ PLOTEXT=png
 PLOTDIR=plots/
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
 SCRIPT_DIR=`dirname "$0"`
 SAMPLE=0
 

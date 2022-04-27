@@ -6,3 +6,5 @@ arxiv/
 sim/data/**
 !sim/data/**/*png
 tests/*/*/lat-*
+data
+*.out

@@ -91,7 +91,7 @@ for kind in "vanilla" "regular" "apf-sync" "apf-async"; do    #
             bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
             tmpfile=${TEMP_PFX}out
             echo "cores,xput" > $datafile
-            for cores in `seq 1 1 4`; do 
+            for cores in `seq 1 1 10`; do 
                 bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -o=${tmpfile}
                 xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
                 rm -f $tmpfile

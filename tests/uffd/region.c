@@ -36,7 +36,7 @@
 #include "uffd.h"
 #include "logging.h"
 
-struct uffd_region_t *create_uffd_region(size_t size, int writeable) {
+struct uffd_region_t *create_uffd_region(int uffd, size_t size, int writeable) {
   void *ptr = NULL;
   size_t page_flags_size;
   int r;
@@ -74,7 +74,7 @@ struct uffd_region_t *create_uffd_region(size_t size, int writeable) {
 
   pr_debug("mmap ptr %p addr mr %p, size %ld\n", ptr, (void *)mr->addr, mr->size);
 
-  r = uffd_register(uffd_info.userfault_fd, mr->addr, mr->size, writeable);
+  r = uffd_register(uffd, mr->addr, mr->size, writeable);
   if (r < 0) goto out_err2;
 
   page_flags_size = align_up((mr->size >> CHUNK_SHIFT), 8) * PAGE_FLAGS_NUM / 8;
@@ -87,6 +87,7 @@ struct uffd_region_t *create_uffd_region(size_t size, int writeable) {
 
   mr->ref_cnt = ATOMIC_VAR_INIT(1);
   mr->current_offset = ATOMIC_VAR_INIT(0);
+  mr->uffd = uffd;
 
   uffd_regions_lock();
   SLIST_INSERT_HEAD(&uffd_info.region_list, mr, link);
@@ -111,7 +112,7 @@ void __delete_uffd_region(struct uffd_region_t *mr) {
   uffd_regions_unlock();
 
   if (mr->addr != 0) {
-    uffd_unregister(uffd_info.userfault_fd, mr->addr, mr->size);
+    uffd_unregister(mr->uffd, mr->addr, mr->size);
     // TODO(irina): if we got here bc of an error, we might want to delete
     // the remote region too;if we are cleaning up on client exit,
     // we want to keep the remote region in ther server for next time.
@@ -156,7 +157,7 @@ static void close_uffd_region(struct uffd_region_t *mr) {
 #endif
 
   if (mr->addr != 0) {
-    uffd_unregister(uffd_info.userfault_fd, mr->addr, mr->size);
+    uffd_unregister(mr->uffd, mr->addr, mr->size);
     // TODO(irina): if we got here bc of an error, we might want to delete
     // the remote region too;if we are cleaning up on client exit,
     // we want to keep the remote region in ther server for next time.

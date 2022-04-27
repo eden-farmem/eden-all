@@ -682,7 +682,10 @@ def arrange_2d_results(experiment):
                     out.append(extract_window(experiment['konalog'][field], time, runtime, 
                         accumulated=(field in KONA_FIELDS_ACCUMULATED)))
                 else:  out.append(None)
-            out.append(extract_window_max(experiment['konalog']["n_poller_copy_fail"], time, runtime))
+            field = "n_poller_copy_fail"
+            if experiment['konalog'] and field in experiment['konalog']:
+                out.append(extract_window_max(experiment['konalog'][field], time, runtime))
+            else: out.append(None)
             for field in KONA_DISPLAY_FIELDS_EXTENDED:
                 if experiment['konalogext'] and field in experiment['konalogext']:   
                     out.append(extract_window(experiment['konalogext'][field], time, runtime, 
@@ -751,6 +754,7 @@ def do_it_all(dirname, save_lat=False, save_kona=False,
     save_iok=False, save_rstat=False, sample_id=None):
     exp = parse_dir(dirname)
     stats = arrange_2d_results(exp)
+    print(stats)
     bycol = rotate(stats)
     runtime = exp['clients'].itervalues().next()[0]['runtime']
 

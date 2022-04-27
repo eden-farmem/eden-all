@@ -10,7 +10,8 @@ usage="\n
 -cs, --csuffix \t\t same as suffix but a more complex one (with regexp pattern)\n"
 
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
+SCRIPT_DIR=`dirname "$0"`
 
 # Read parameters
 for i in "$@"
@@ -64,10 +65,10 @@ for exp in $LS_CMD; do
     konaedt=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_done_thr' $f`
     konaebs=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_batch_sz' $f`
     sthreads=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .threads' $f`
-    prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $f`
-    nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $f`
-    mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $f`
-    desc=`jq '.desc' $f`
+    prot=`jq -r '.clients[][0] | select(.app=="synthetic") | .transport' $f`
+    nconns=`jq '.clients[][0] | select(.app=="synthetic") | .client_threads' $f`
+    mpps=`jq '.clients[][0] | select(.app=="synthetic") | .mpps' $f`
+    desc=`jq '.desc' $f` 
 
     # Print all
     LINE=`echo $name,$dirname,$konamem_mb,$konaet,$konaedt,$konaebs,$sthreads,$mpps,$prot,$desc`

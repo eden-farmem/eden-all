@@ -69,9 +69,9 @@ OBSERVER_IP = IP_MAP[OBSERVER]
 OBSERVER_MAC = MAC_MAP[OBSERVER]
 
 # Kona host settings
-KONA_RACK_CONTROLLER = "sc2-hs2-b1640"
+KONA_RACK_CONTROLLER = "sc2-hs2-b1607"
 KONA_RACK_CONTROLLER_PORT = 9202
-KONA_MEM_SERVERS = ["sc2-hs2-b1640"]
+KONA_MEM_SERVERS = ["sc2-hs2-b1607"]
 KONA_MEM_SERVER_PORT = 9200
 
 # Defaults
@@ -166,7 +166,8 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp",
     args += " -o hashpower={hashpower}"
 
     args += {
-        'shenango': ",no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0",
+        # 'shenango': ",no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0", # UNDO
+        'shenango': ",no_hashexpand,lru_crawler,lru_maintainer,idle_timeout=0",
     }.get(experiment['system'])
 
     x['args'] = "-t {threads} " + args

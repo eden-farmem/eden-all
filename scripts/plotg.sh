@@ -15,7 +15,7 @@ DATADIR=data
 PLOTDIR=plots/
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
 SAMPLE=0
 SOME_BIG_NUMBER=100000000000
 SCRIPT_DIR=`dirname "$0"`
@@ -25,16 +25,18 @@ usage="\n
 -s1,  --suffix1 \t\t a plain suffix defining the first group of runs\n
 -cs1, --csuffix1  \t\t same as -s1 but a more complex one (with regexp pattern)\n
 -l1,  --label1    \t\t\t plot label for first group of runs\n
--s[2345],  --suffix[2345] \t a plain suffix defining the group [2345] of runs (optional)\n
--cs[2345], --csuffix[2345] \t same as -s[2345] but a more complex one (with regexp pattern)\n
--l[2345],  --label[2345]    \t plot label for second group of runs\n
+-s[23456],  --suffix[23456] \t a plain suffix defining the group [23456] of runs (optional)\n
+-cs[23456], --csuffix[23456] \t same as -s[23456] but a more complex one (with regexp pattern)\n
+-l[23456],  --label[23456]    \t plot label for second group of runs\n
 -lt, --label-title  \t\t title for the legend\n
 -vm,  --vary-mem  \t\t hint to use kona memory on x-axis (default)\n
 -vc,  --vary-cores \t\t hint to use server cores on x-axis\n
 -d,   --display   \t\t\t display individal plots\n
 -f,   --force     \t\t\t force re-summarize data and re-generate plots\n
 -fp,  --force-plots \t\t force re-generate just the plots\n
--t,  --take \t\t\t consider first specified number of rows while plotting \n"
+-h,  --head \t\t\t consider first specified number of rows while plotting \n
+-t,  --tail \t\t\t consider last specified number of rows while plotting \n
+-of,  --outfile \t\t write collected data for each group to file named outfile+label.dat\n"
 
 # Defaults
 XCOL=konamem
@@ -109,6 +111,18 @@ case $i in
     CSUFFIX5="${i#*=}"
     ;;
 
+    -s6=*|--suffix6=*)
+    SUFFIX6="${i#*=}"
+    ;;
+
+    -l6=*|--label6=*)
+    LABEL6="${i#*=}"
+    ;;
+
+    -cs6=*|--csuffix6=*)
+    CSUFFIX6="${i#*=}"
+    ;;
+
     -lt=*|--label-title=*)
     LTITLE="${i#*=}"
     ;;
@@ -125,8 +139,12 @@ case $i in
     FORCE_PLOTS=1
     ;;
 
-    -t=*|--take=*)
-    TAKE="${i#*=}"
+    -t=*|--take=*|-h=*|--head=*)
+    HEAD="${i#*=}"
+    ;;
+
+    -tl=*|--tail=*)
+    TAIL="${i#*=}"
     ;;
 
     -vm|--vary-mem)
@@ -143,6 +161,10 @@ case $i in
     COLIDX=4
     ;;
 
+    -of=*|--outfile=*)
+    OUTDATAFILE="${i#*=}"
+    ;;
+
     *)                      # unknown option
     echo "Unkown Option: $i"
     echo -e $usage
@@ -152,17 +174,20 @@ esac
 done
 
 if [[ ! $SUFFIX1 ]] && [[ ! $CSUFFIX1 ]]; then echo "must provide -s1/-cs1"; echo -e $usage; exit 1; fi
-# if [[ ! $SUFFIX2 ]] && [[ ! $CSUFFIX2 ]]; then echo "must provide -s2/-cs2"; echo -e $usage; exit 1; fi
 LABEL1=${LABEL1:-$SUFFIX1};  LABEL1=${LABEL1:-$CSUFFIX1}
 LABEL2=${LABEL2:-$SUFFIX2};  LABEL2=${LABEL2:-$CSUFFIX2}
 LABEL3=${LABEL3:-$SUFFIX3};  LABEL3=${LABEL3:-$CSUFFIX3}
+LABEL4=${LABEL4:-$SUFFIX4};  LABEL4=${LABEL4:-$CSUFFIX4}
+LABEL5=${LABEL5:-$SUFFIX5};  LABEL5=${LABEL5:-$CSUFFIX5}
+LABEL6=${LABEL6:-$SUFFIX6};  LABEL6=${LABEL6:-$CSUFFIX6}
 
 # Prepare data for each group
 parse_runs_prepare_data() {
     SUFFIX=$1
     CSUFFIX=$2
     OUTFILE=$3
-    FORCE=$4
+    LABEL=$4
+    FORCE=$5
 
     if [[ $SUFFIX ]]; then 
         LS_CMD=`ls -d1 data/run-${SUFFIX}*/`
@@ -184,16 +209,16 @@ parse_runs_prepare_data() {
         label=$klabel
         konaet=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_thr' $cfg`
         konaedt=`jq '.apps."'$HOST'" | .[] | select(.name=="memcached") | .kona.evict_done_thr' $cfg`
-        prot=`jq -r '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .transport' $cfg`
-        nconns=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .client_threads' $cfg`
-        mpps=`jq '.clients."'$CLIENT'" | .[] | select(.app=="synthetic") | .mpps' $cfg`
+        prot=`jq -r '.clients[][0] | select(.app=="synthetic") | .transport' $cfg`
+        nconns=`jq '.clients[][0] | select(.app=="synthetic") | .client_threads' $cfg`
+        mpps=`jq '.clients[][0] | select(.app=="synthetic") | .mpps' $cfg`
         desc=`jq '.desc' $cfg`
 
         # summarize results
         statsdir=$exp/stats
-        statfile=$statsdir/stat.csv
+        statfile=$statsdir/stat.csv``
         if [[ $FORCE ]] || [ ! -d $statsdir ]; then
-            python ${SCRIPT_DIR}/summary.py -n $name --kona --app --iok     #--lat
+            python ${SCRIPT_DIR}/summary.py -n $name --kona --app --iok --suppresswarn     #--lat
         fi
         
         # aggregate across runs
@@ -208,18 +233,24 @@ parse_runs_prepare_data() {
     # echo ${OUTFILE}
     echo -e "$stats" > $OUTFILE
     sort -k${COLIDX} -n -t, $OUTFILE -o $OUTFILE
-    if [[ $TAKE ]]; then
-        out=$(head -n $TAKE $OUTFILE)
+    if [[ $HEAD ]]; then
+        out=$(head -n $HEAD $OUTFILE)
+        echo "$out" > $OUTFILE
+    elif [[ $TAIL ]]; then
+        out=$(tail -n $TAIL $OUTFILE)
         echo "$out" > $OUTFILE
     fi
     sed -i "1s/^/$header/" $OUTFILE
     sed -i "s/$SOME_BIG_NUMBER/NoKona/" $OUTFILE
     cat $OUTFILE
+    if [[ $OUTDATAFILE ]]; then     
+        cat $OUTFILE > ${OUTDATAFILE}_${LABEL}.dat
+    fi
 }
 
 # Group 1
 tmpfile1=${TMPFILE_PFX}1
-parse_runs_prepare_data "$SUFFIX1" "$CSUFFIX1" "$tmpfile1" "$FORCE"
+parse_runs_prepare_data "$SUFFIX1" "$CSUFFIX1" "$tmpfile1" "$LABEL1" "$FORCE"
 datapoints1=$(wc -l < $tmpfile1)
 plots="$plots -d $tmpfile1 -l """""$LABEL1""""
 fsuffix=${SUFFIX1:-$CSUFFIX1}
@@ -233,7 +264,7 @@ add_plot_group() {
     local FORCE=$5
     local tmpfile=${TMPFILE_PFX}${GID}
     if [[ $SUFFIX ]] || [[ $CSUFFIX ]]; then
-        parse_runs_prepare_data "$SUFFIX" "$CSUFFIX" "$tmpfile" "$FORCE"
+        parse_runs_prepare_data "$SUFFIX" "$CSUFFIX" "$tmpfile" "$LABEL" "$FORCE"
         local dps=$(wc -l < $tmpfile)
         if [ $datapoints1 != $dps ]; then 
             echo "ERROR! group ${GID} has different number of runs/data points"; 
@@ -244,10 +275,11 @@ add_plot_group() {
     fi
 }
 
-add_plot_group 2 "$SUFFIX2" "$CSUFFIX2" "$LABEL2" "$FORCE"
+add_plot_group 2 "$SUFFIX2" "$CSUFFIX2" "$LABEL2" "$FORCE" 
 add_plot_group 3 "$SUFFIX3" "$CSUFFIX3" "$LABEL3" "$FORCE"
 add_plot_group 4 "$SUFFIX4" "$CSUFFIX4" "$LABEL4" "$FORCE"
 add_plot_group 5 "$SUFFIX5" "$CSUFFIX5" "$LABEL5" "$FORCE"
+add_plot_group 6 "$SUFFIX6" "$CSUFFIX6" "$LABEL6" "$FORCE"
 
 # Plot memcached
 plotname=${PLOTDIR}/memcached_xput_${fsuffix}.$PLOTEXT
