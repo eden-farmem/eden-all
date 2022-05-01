@@ -48,6 +48,7 @@
 #include <linux/vmalloc.h>
 #include <asm/unaligned.h>
 #else
+#include <stdio.h>
 #include "snappy.h"
 #include "compat.h"
 #endif
@@ -671,8 +672,9 @@ EXPORT_SYMBOL(snappy_uncompressed_length);
 /* 
  * This value could be halfed or quartered to save memory 
  * at the cost of slightly worse compression.
+ * (ANIL: already dropped down from 14)
  */
-#define kmax_hash_table_bits 14
+#define kmax_hash_table_bits 7
 #define kmax_hash_table_size (1U << kmax_hash_table_bits)
 
 /*
@@ -1600,6 +1602,33 @@ int snappy_init_env(struct snappy_env *env)
 	return 0;
 }
 EXPORT_SYMBOL(snappy_init_env);
+
+/**
+ * (NOT WORKING)
+ * snappy_init_env - Allocate snappy compression environment
+ * @env: Environment to preallocate
+ * @ht_buf: Buffer to use for hash table
+ * @ht_size: Size of the buffer in bytes
+ *
+ * Passing multiple entries in an iovec is not allowed
+ * on the environment allocated here.
+ * Returns 0 on success, otherwise negative errno.
+ * Must run in process context.
+ */
+int snappy_init_env_with_buf(struct snappy_env *env, void* ht_buf, int ht_size)
+{
+    clear_env(env);
+	if((sizeof(u16) * kmax_hash_table_size) != ht_size) {
+		printf("unexpected ht_buf size. provided: %u, expected: %lu\n", 
+			ht_size, sizeof(u16) * kmax_hash_table_size);
+		return -ENOMEM;
+	}
+	env->hash_table = ht_buf;
+	if (!env->hash_table)
+		return -ENOMEM;
+	return 0;
+}
+EXPORT_SYMBOL(snappy_init_env_with_buf);
 
 /**
  * snappy_free_env - Free an snappy compression environment

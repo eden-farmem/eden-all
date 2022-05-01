@@ -18,6 +18,12 @@
 
 // #define DEBUG
 
+#ifdef WITH_KONA
+#define remoteable_alloc rmalloc
+#else 
+#define remoteable_alloc malloc
+#endif
+
 #define ASSERT(x) assert((x))
 #define ASSERTZ(x) ASSERT(!(x))
 
@@ -58,6 +64,17 @@ static int pin_thread(int core) {
       perror("pthread_setaffinitity_np");
   }
   return retcode;
+}
+
+/* returns exponent of the number rounded upto the next power of two*/
+static int next_power_of_two(unsigned long num) {
+  unsigned long power =  1;
+  int exp = 0;
+  while (power < num) {
+    power *= 2;
+    exp++;
+  }
+  return exp;
 }
 
 /* a fast xorshift pseudo-random generator

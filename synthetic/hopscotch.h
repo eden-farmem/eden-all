@@ -31,13 +31,15 @@
 #define HOPSCOTCH_INIT_BSIZE_EXPONENT   10
 /* Bitmap size used for linear probing in hopscotch hashing */
 #define HOPSCOTCH_HOPINFO_SIZE          32
+#define KEY_LEN                         12
 
 /*
  * Buckets
  */
 struct hopscotch_bucket {
-    void *key;
-    void *data;
+    uint8_t key[KEY_LEN];
+    uint8_t taken;
+    void* data;
     uint32_t hopinfo;
 } __attribute__ ((aligned (8)));
 
@@ -46,7 +48,6 @@ struct hopscotch_bucket {
  */
 struct hopscotch_hash_table {
     size_t exponent;
-    size_t keylen;
     struct hopscotch_bucket *buckets;
     int _allocated;
 };

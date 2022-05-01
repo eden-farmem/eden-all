@@ -38,6 +38,7 @@ KONA_MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/shenango"
 SNAPPY_DIR="${SCRIPT_DIR}/snappy-c"
 TMP_FILE_PFX="tmp_syn_"
+OUTFILE=${tmp_syn_}out
 CFGFILE="default.config"
 NUM_CORES=1
 
@@ -201,7 +202,7 @@ INC="${INC} -I${SNAPPY_DIR}/"
 LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
 
 # compile
-gcc main.c utils.c hopscotch.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+gcc main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then 
     exit 0
@@ -248,8 +249,7 @@ echo "$shenango_cfg" > $CFGFILE
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
-echo "running test"
-sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_THREADS} | tee $OUTFILE
+sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_THREADS} 2>&1 
 
 # cleanup
 cleanup

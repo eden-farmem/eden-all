@@ -24,6 +24,7 @@
 #include "hopscotch.h"
 #include <stdlib.h>
 #include <string.h>
+#include "utils.h"
 
 /*
  * Jenkins Hash Function
@@ -51,14 +52,11 @@ _jenkins_hash(uint8_t *key, size_t len)
  * Initialize the hash table
  */
 struct hopscotch_hash_table *
-hopscotch_init(struct hopscotch_hash_table *ht, size_t keylen)
+hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
 {
-    int exponent;
-    struct hopscotch_bucket *buckets;
-
     /* Allocate buckets first */
-    exponent = HOPSCOTCH_INIT_BSIZE_EXPONENT;
-    buckets = malloc(sizeof(struct hopscotch_bucket) * (1 << exponent));
+    struct hopscotch_bucket *buckets;
+    buckets = remoteable_alloc(sizeof(struct hopscotch_bucket) * (1 << exponent));
     if ( NULL == buckets ) {
         return NULL;
     }
@@ -75,7 +73,6 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t keylen)
     }
     ht->exponent = exponent;
     ht->buckets = buckets;
-    ht->keylen = keylen;
 
     return ht;
 }
@@ -105,7 +102,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
     size_t sz;
 
     sz = 1ULL << ht->exponent;
-    h = _jenkins_hash(key, ht->keylen);
+    h = _jenkins_hash(key,KEY_LEN);
     idx = h & (sz - 1);
 
     if ( !ht->buckets[idx].hopinfo ) {
@@ -113,13 +110,12 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
     }
     for ( i = 0; i < HOPSCOTCH_HOPINFO_SIZE; i++ ) {
         if ( ht->buckets[idx].hopinfo & (1 << i) ) {
-            if ( 0 == memcmp(key, ht->buckets[idx + i].key, ht->keylen) ) {
+            if ( 0 == memcmp(key, ht->buckets[idx + i].key,KEY_LEN) ) {
                 /* Found */
                 return ht->buckets[idx + i].data;
             }
         }
     }
-
     return NULL;
 }
 
@@ -143,13 +139,14 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
     }
 
     sz = 1ULL << ht->exponent;
-    h = _jenkins_hash(key, ht->keylen);
+    h = _jenkins_hash(key,KEY_LEN);
     idx = h & (sz - 1);
 
     /* Linear probing to find an empty bucket */
     for ( i = idx; i < sz; i++ ) {
-        if ( NULL == ht->buckets[i].key ) {
+        if ( ! ht->buckets[i].taken ) {
             /* Found an available bucket */
+            ht->buckets[i].taken = 1;       /* TODO need CAS op */
             while ( i - idx >= HOPSCOTCH_HOPINFO_SIZE ) {
                 for ( j = 1; j < HOPSCOTCH_HOPINFO_SIZE; j++ ) {
                     if ( ht->buckets[i - j].hopinfo ) {
@@ -157,9 +154,9 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
                         if ( off >= j ) {
                             continue;
                         }
-                        ht->buckets[i].key = ht->buckets[i - j + off].key;
+                        memcpy(ht->buckets[i].key, ht->buckets[i - j + off].key, KEY_LEN);
                         ht->buckets[i].data = ht->buckets[i - j + off].data;
-                        ht->buckets[i - j + off].key = NULL;
+                        memset(ht->buckets[idx + i].key, 0, KEY_LEN);
                         ht->buckets[i - j + off].data = NULL;
                         ht->buckets[i - j].hopinfo &= ~(1ULL << off);
                         ht->buckets[i - j].hopinfo |= (1ULL << j);
@@ -168,20 +165,25 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
                     }
                 }
                 if ( j >= HOPSCOTCH_HOPINFO_SIZE ) {
-                    return -1;
+                    /* need to resize the table (error out for now) */
+                    pr_err("hash bucket full; need to resize table");
+                    ASSERT(0);
                 }
             }
 
             off = i - idx;
-            ht->buckets[i].key = key;
+            memcpy(ht->buckets[i].key, key, KEY_LEN);
             ht->buckets[i].data = data;
             ht->buckets[idx].hopinfo |= (1ULL << off);
+            ASSERT(ht->buckets[i].taken);
 
             return 0;
         }
     }
 
-    return -1;
+    /* need to resize the table (error out for now) */
+    pr_err("hash table full");
+    ASSERT(0);
 }
 
 /*
@@ -197,7 +199,7 @@ hopscotch_remove(struct hopscotch_hash_table *ht, void *key)
     void *data;
 
     sz = 1ULL << ht->exponent;
-    h = _jenkins_hash(key, ht->keylen);
+    h = _jenkins_hash(key,KEY_LEN);
     idx = h & (sz - 1);
 
     if ( !ht->buckets[idx].hopinfo ) {
@@ -205,12 +207,13 @@ hopscotch_remove(struct hopscotch_hash_table *ht, void *key)
     }
     for ( i = 0; i < HOPSCOTCH_HOPINFO_SIZE; i++ ) {
         if ( ht->buckets[idx].hopinfo & (1 << i) ) {
-            if ( 0 == memcmp(key, ht->buckets[idx + i].key, ht->keylen) ) {
+            if ( 0 == memcmp(key, ht->buckets[idx + i].key, KEY_LEN) ) {
                 /* Found */
                 data = ht->buckets[idx + i].data;
                 ht->buckets[idx].hopinfo &= ~(1ULL << i);
-                ht->buckets[idx + i].key = NULL;
+                memset(ht->buckets[idx + i].key, 0, KEY_LEN);
                 ht->buckets[idx + i].data = NULL;
+                ht->buckets[i].taken = 0;
                 return data;
             }
         }
