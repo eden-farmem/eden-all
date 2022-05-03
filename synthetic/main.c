@@ -15,17 +15,21 @@
 #include "aes.h"
 
 #define MEM_REGION_SIZE ((1ull<<30) * 32)	//32 GB
-#define RUNTIME_SECS 10
+#define MIN_RUNTIME_SECS 5	
+#define MAX_RUNTIME_SECS 20
 #define NUM_LAT_SAMPLES 5000
-#define BLOB_SIZE (2*PAGE_SIZE)
+#define BLOB_SIZE ((unsigned long)2*PAGE_SIZE)
 #define SNAPPY_HT_BUF_SIZE 64 			// based on kmax_hash_table_size
+#define AES_KEY_SIZE 128
 
 struct thread_args {
     int tid;
-	int nkeys;
-	int start;
-	int len;
-	uint32_t pad[12];
+	unsigned long nkeys;
+	unsigned long nreqs;
+	unsigned long start;
+	unsigned long len;
+	unsigned long xput;
+	uint32_t pad[4];
 };
 typedef struct thread_args thread_args_t;
 BUILD_ASSERT((sizeof(thread_args_t) % CACHE_LINE_SIZE == 0));
@@ -33,15 +37,19 @@ BUILD_ASSERT((sizeof(thread_args_t) % CACHE_LINE_SIZE == 0));
 struct main_args {
 	int nworkers;
 	int nkeys;
-	int nreqs;
+	unsigned long nreqs;
 	double zparams;
 };
 
 uint64_t cycles_per_us;
 waitgroup_t workers;
+barrier_t ready, go;
+int stop_button = 0;
 struct hopscotch_hash_table *ht;
 void* blobdata;
 uint64_t* zipf_sequence;
+uint32_t* zipf_counts;
+double zparams;
 WORD aes_ksched[60];
 BYTE aes_iv[16] = {
 	0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
@@ -61,8 +69,9 @@ double next_poisson_time(double rate, unsigned long randomness)
 
 /* prepare hash table and blob-array */
 void setup(void* arg) {
-	int ret, i, j, offset;
-	uint64_t rand_num;
+	int ret, i, j;
+	unsigned long offset;
+	uint64_t rand_num, repeat = 0;
 	void* data;
 	thread_args_t* targs = (thread_args_t*)arg;
 	struct rand_state rand;
@@ -84,19 +93,49 @@ void setup(void* arg) {
 		/* add random data at corresponding index in blob array */
 		BUILD_ASSERT(BLOB_SIZE % sizeof(uint64_t) == 0);
 		for (j = 0; j < BLOB_SIZE / sizeof(uint64_t); j++) {
-			rand_num = rand_next(&rand);
+			if (repeat == 0){
+				/* random patterns for varying compression */
+				repeat = rand_next(&rand) % 100;
+				rand_num = rand_next(&rand);
+			}
 			offset = i*BLOB_SIZE + j*sizeof(uint64_t);
 			*(uint64_t*)(blobdata + offset) = rand_num;
+			repeat--;
 		}
 	}
 	pr_debug("worker %d added %d keys", targs->tid, i);
 	waitgroup_add(&workers, -1);	/* signal done */
 }
 
+/* prepare zipf workload */
+void prepare_workload(void* arg) {
+	int i;
+	unsigned long ret;
+	thread_args_t* targs = (thread_args_t*)arg;
+	ZIPFIAN z = create_zipfian(zparams, targs->nkeys, time(NULL)^targs->tid);
+
+	/* generated requests for my section */
+	ASSERT(targs->start + targs->len <= targs->nreqs);
+	for (i = targs->start; i < targs->len; i++)	{
+		ret = zipfian_gen(z);
+		ASSERT(0 <= ret && ret < targs->nkeys);
+		*(zipf_sequence + i) = ret;
+#ifdef DEBUG
+		zipf_counts[ret]++;
+#endif
+	}
+
+	pr_debug("worker %d generated %d requests", targs->tid, i);
+	destroy_zipfian(z);
+	waitgroup_add(&workers, -1);	/* signal done */
+}
+
+
 /* process requests */
 void run(void* arg) {
 	int ret, i, key;
-	void* data;
+	void *data, *nextin;
+	unsigned long start_tsc, duration_tsc;
 	thread_args_t* targs = (thread_args_t*)arg;
     uint8_t key_template[KEY_LEN] = {
 		0x00, 0x00, 0x00, 0x00,
@@ -114,27 +153,61 @@ void run(void* arg) {
 	pr_debug("max zip len: %lu", ziplen);
 	char* zipbuffer = malloc(ziplen);
 	ASSERT(zipbuffer);
+	FILE* fp;
+	char fname[50];
 
-	ASSERT(targs->start + targs->len <= targs->nkeys);
-	for (i = targs->start; i < targs->len; i++) {
+	/* wait for all threads to be ready */
+	ASSERT(targs->start + targs->len <= targs->nreqs);
+	barrier_wait(&ready);
+	barrier_wait(&go);
+	pr_info("worker %d started at %lu len %lu", 
+		targs->tid, targs->start, targs->len);
+	start_tsc = rdtsc();
+
+	for (i = targs->start; i < targs->len && !stop_button; i++) {
 		/* get the array index from hash table */
 		/* we just save the key as value which is ok for benchmarking purposes */
 		key = zipf_sequence[i];
 		*(uint32_t*)key_template = key;
 		data = hopscotch_lookup(ht, key_template);
 		ASSERT((unsigned long)data == key);
+		nextin = blobdata + key * BLOB_SIZE;
 
+#ifdef ENCRYPT
 		/* encrypt data (emits same length as input) */
-		aes_encrypt_cbc(blobdata + key * BLOB_SIZE, BLOB_SIZE, 
-			encbuffer, aes_ksched, 256, aes_iv);
+		ret = aes_encrypt_cbc(nextin, BLOB_SIZE, encbuffer, aes_ksched, AES_KEY_SIZE, aes_iv);
+		ASSERT(ret);
+		nextin = encbuffer;
+#endif
 
-		// /* compress the array element */
-		ret = snappy_compress(&env, encbuffer, BLOB_SIZE, zipbuffer, &ziplen);
-		pr_debug("snappy compression done. inlen: %d outlen: %lu", BLOB_SIZE, ziplen);
+#ifdef COMPRESS 
+		/* compress the array element */
+		ret = snappy_compress(&env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
+		ASSERTZ(ret);
+		// pr_debug("snappy compression done. inlen: %ld outlen: %lu", BLOB_SIZE, ziplen);
+		nextin = zipbuffer;
+#endif
+
+		targs->xput++;
+
+		/* yield at least once every 1 sec */
+		duration_tsc = rdtsc() - start_tsc;
+		if (duration_tsc / (1000000.0 * cycles_per_us) >= 1) {
+			thread_yield();
+			start_tsc = rdtsc();
+			pr_debug("worker %d at %lu ops", targs->tid, targs->xput);
+		}
 	}
 
-	pr_debug("worker %d processed %d requests", targs->tid, i);
+	pr_debug("worker %d processed %ld requests", targs->tid, targs->xput);
 	waitgroup_add(&workers, -1);	/* signal done */
+}
+
+/* issue stop signal on timeout */
+void time_out(void* arg) {
+	unsigned long sleep_us = (unsigned long) arg;
+	timer_sleep(sleep_us);
+	stop_button = 1;
 }
 
 /* main thread called into by shenango runtime */
@@ -142,13 +215,15 @@ void main_thread(void* arg) {
 	int i, j, ret;
 	struct main_args* margs = (struct main_args*) arg;
 	int nkeys = margs->nkeys;
-	int nreqs = margs->nreqs;
+	unsigned long nreqs = margs->nreqs;
 	int nworkers = margs->nworkers;
 	thread_args_t* targs;
     uint8_t key_template[KEY_LEN] = {
 		0x00, 0x00, 0x00, 0x00,
 		0xff, 0xff, 0xff, 0xff,
 		0xff, 0xff, 0xff, 0xff };
+	uint64_t start_tsc, duration_tsc, now_tsc, xput = 0;
+	double duration_secs;
 
 	/* core data stuctures: these go in remote memory */
     ht = hopscotch_init(NULL, next_power_of_two(nkeys) + 1);
@@ -169,56 +244,80 @@ void main_thread(void* arg) {
 		ASSERTZ(ret);
 	}
 	waitgroup_wait(&workers);
+	pr_info("hash table/blob data setup done");
 
 	/* aes init */
-	aes_key_setup(aes_key, aes_ksched, 256);
+	aes_key_setup(aes_key, aes_ksched, AES_KEY_SIZE);
 
-	/* prepare zipf request sequence (FIXME: do this with more threads?) */
+	/* prepare zipf request sequence  */	
+	zparams = margs->zparams;
 	zipf_sequence = (uint64_t*) malloc (nreqs * sizeof(uint64_t));
-	ZIPFIAN z = create_zipfian(margs->zparams, nkeys, time(NULL));
 #ifdef DEBUG
-	uint32_t* counts = (uint32_t*)calloc(nkeys, sizeof(counts));
+	zipf_counts = (uint32_t*)calloc(nkeys, sizeof(uint32_t));
 #endif
-	int reqs_per_worker = ceil(nreqs / nworkers), wid = 0;
-	uint64_t rand_req;
-	for (i = 0; i < reqs_per_worker; i++) {
-		for (j = 0; j < nworkers; j++) {
-			ret = zipfian_gen(z);
-			ASSERT(0 <= ret && ret < nkeys);
-			if (j*reqs_per_worker + i >= nreqs) {
-				ASSERT(j == nworkers - 1);
-				continue;
-			}
-			*(zipf_sequence + j*reqs_per_worker + i) = ret;
-#ifdef DEBUG
-			counts[ret]++;
-#endif
-		}
+	waitgroup_init(&workers);
+	for (j = 0; j < nworkers; j++) {
+		targs[j].tid = j;
+		targs[j].nkeys = nkeys;
+		targs[j].nreqs = nreqs;
+		targs[j].start = j * ceil(nreqs / nworkers);
+		targs[j].len = min(ceil(nreqs / nworkers), nreqs - targs[j].start);
+		waitgroup_add(&workers, 1);
+		ret = thread_spawn(prepare_workload, &targs[j]);
+		ASSERTZ(ret);
 	}
+	waitgroup_wait(&workers);
+	pr_info("generated zipf sequence of length: %lu", nreqs);
 #ifdef DEBUG
 	// printf("zipf seq: ");
 	// for (j = 0; j < nreqs; j++)	printf("%lu ", zipf_sequence[j]);
 	printf("\ncounts: ");
-	for (j = 0; j < nkeys; j++)	printf("%u ", counts[j]);
+	for (j = 0; j < nkeys; j++)	printf("%u ", zipf_counts[j]);
 	printf("\n");
 #endif
 
 	/* run requests */
 	waitgroup_init(&workers);
+	barrier_init(&ready, nworkers+1);
+	barrier_init(&go, nworkers+1);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
-		targs[j].nkeys = nreqs;
+		targs[j].nkeys = nkeys;
+		targs[j].nreqs = nreqs;
 		targs[j].start = j * ceil(nreqs / nworkers);
 		targs[j].len = min(ceil(nreqs / nworkers), nreqs - targs[j].start);
+		targs[j].xput = 0;
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(run, &targs[j]);
 		ASSERTZ(ret);
 	}
+	
+	/* wait for threads to be ready */
+	barrier_wait(&ready); 		
+
+	/* let go and issue time out */
+	start_tsc = rdtsc();
+	stop_button = 0;
+	pr_info("run started");
+	barrier_wait(&go);
+	ret = thread_spawn(time_out, (void*) (MAX_RUNTIME_SECS * 1000000));
+	ASSERTZ(ret);
+
+	/* wait for threads to finish */
 	waitgroup_wait(&workers);
+	duration_tsc = rdtscp(NULL) - start_tsc;
+	duration_secs = duration_tsc / (1000000.0 * cycles_per_us);
+
+	/* write result */
+	for (j = 0; j < nworkers; j++) xput += targs[j].xput;
+	pr_info("ran for %.1lf secs with %.0lf ops /sec", duration_secs, xput/duration_secs);
+	printf("result:%.0lf\n", xput / duration_secs);
+
+	/* we must run for at least a few secs */
+	ASSERT(duration_secs >= MIN_RUNTIME_SECS);
 
     /* Release */
     hopscotch_release(ht);
-	destroy_zipfian(z);
 }
 
 int main(int argc, char *argv[]) {
@@ -243,7 +342,7 @@ int main(int argc, char *argv[]) {
 	struct main_args margs;
 	margs.nworkers = atoi(argv[2]);
 	margs.nkeys = (argc > 3) ? atoi(argv[3]) : 1000000;
-	margs.nreqs = (argc > 4) ? atoi(argv[4]) : 1000;
+	margs.nreqs = (argc > 4) ? atoi(argv[4]) : 10000000;
 	margs.zparams = (argc > 5) ? atof(argv[5]) : 0.1;
 	ret = runtime_init(argv[1], main_thread, &margs);
 	ASSERTZ(ret);

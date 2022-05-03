@@ -672,9 +672,9 @@ EXPORT_SYMBOL(snappy_uncompressed_length);
 /* 
  * This value could be halfed or quartered to save memory 
  * at the cost of slightly worse compression.
- * (ANIL: already dropped down from 14)
  */
-#define kmax_hash_table_bits 7
+// #define kmax_hash_table_bits 14
+#define kmax_hash_table_bits 12
 #define kmax_hash_table_size (1U << kmax_hash_table_bits)
 
 /*

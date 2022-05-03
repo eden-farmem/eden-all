@@ -60,7 +60,10 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
     if ( NULL == buckets ) {
         return NULL;
     }
+#ifndef WITH_KONA 
+    /* we serve zero pages anyway with Kona; will save some time during init */
     memset(buckets, 0, sizeof(struct hopscotch_bucket) * (1 << exponent));
+#endif
 
     if ( NULL == ht ) {
         ht = malloc(sizeof(struct hopscotch_hash_table));
@@ -110,7 +113,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
     }
     for ( i = 0; i < HOPSCOTCH_HOPINFO_SIZE; i++ ) {
         if ( ht->buckets[idx].hopinfo & (1 << i) ) {
-            if ( 0 == memcmp(key, ht->buckets[idx + i].key,KEY_LEN) ) {
+            if ( 0 == memcmp(key, ht->buckets[idx + i].key, KEY_LEN) ) {
                 /* Found */
                 return ht->buckets[idx + i].data;
             }

@@ -7,31 +7,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
+
+#define USE_MYRANDOM	/* custom rng */
+#ifdef USE_MYRANDOM
 #include "utils.h"
-
-#define USE_MYRANDOM
-#ifndef  USE_MYRANDOM
-#define RFUN random
-#define RSEED srandom
-#else
-#define RFUN myrandom
-#define RSEED mysrandom
-// static unsigned int m_z = 1;
-// static unsigned int m_w = 1;
-struct rand_state zipf_rand;
-static void mysrandom (unsigned long seed) {
-	// m_z = seed;
-	// m_w = (seed<<16) + (seed >> 16);
-	ASSERTZ(rand_seed(&zipf_rand, seed));
-}
-
-static long myrandom()
-{
-	// m_z = 36969 * (m_z & 65535) + (m_z >> 16);
-	// m_w = 18000 * (m_w & 65535) + (m_w >> 16);
-	// return ((m_z << 16) + m_w) % 0x7FFFFFFF;
-	return rand_next(&zipf_rand) % RAND_MAX;
-}
 #endif
 
 struct zpair {                   // For the ith element of the array:
@@ -48,7 +28,29 @@ struct zipfian {
     double H_Ns;                 // H_{N,s}.
     long int (*randomfun)(void);
     struct zpair pairs[NPAIRS]; 
+#ifdef USE_MYRANDOM
+	struct rand_state rs;
+#endif
 };
+
+#ifdef USE_MYRANDOM
+static inline void random_seed(struct zipfian* z, unsigned long seed) {
+	ASSERTZ(rand_seed(&z->rs, seed));
+}
+
+static inline long random_gen(struct zipfian* z) {
+	return rand_next(&z->rs) % RAND_MAX;
+}
+#else
+static inline void random_seed(struct zipfian* z, unsigned long seed) {
+	srandom(seed);
+}
+
+static inline long random_gen(struct zipfian* z) {
+	return random();
+}
+#endif
+
 
 static void zprint (ZIPFIAN z) {
     int i = 0;
@@ -66,8 +68,7 @@ ZIPFIAN create_zipfian (double s, long N, unsigned long seed) {
     assert(z);
     z->s = s;
     z->N = N;
-	RSEED(seed);
-    z->randomfun = RFUN;
+	random_seed(z, seed);
 
     // Calculate the total probability distribution
     double H_Ns = 0;
@@ -119,7 +120,7 @@ static long z_search (ZIPFIAN s, double C, long low, long pcount)
     if (pcount==1) {
 	struct zpair const *p = &s->pairs[low];
 	assert(p->cumulative <= C);
-	return p->low + s->randomfun()%p->num;	
+	return p->low + random_gen((struct zipfian*)s) % p->num;	
     } else {
 	long mid = low + pcount/2;
 	struct zpair const *p = &s->pairs[mid];
@@ -136,7 +137,7 @@ long zipfian_gen (ZIPFIAN z) {
     const long rand_limit = ((long)RAND_MAX)+1;
     const double one_over = 1/(double)rand_limit;
     const double scale_factor = one_over * one_over;
-    long v = (long)(z->randomfun()) * rand_limit + z->randomfun();
+    long v = (long)(random_gen((struct zipfian*)z)) * rand_limit + random_gen((struct zipfian*)z);
     double scaled = v * z->H_Ns * scale_factor;
     return z_search(z, scaled, 0, NPAIRS);
 }

@@ -13,6 +13,9 @@ usage="Example: bash run.sh -f\n
 -pf,--pgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
 -t, --threads \t number of shenango worker threads (defaults to --cores)\n
 -c, --cores \t number of CPU cores (defaults to 1)\n
+-zs, --zipfs \t S param of zipf workload\n
+-nk, --nkeys \t number of keys in the hash table\n
+-nr, --nreqs \t S number of zipfs requests to be spread across threads\n
 -o, --out \t output file for any results\n
 -s, --safemode \t build kona with safe mode on\n
 -c, --clean \t run only the cleanup part\n
@@ -38,9 +41,11 @@ KONA_MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/shenango"
 SNAPPY_DIR="${SCRIPT_DIR}/snappy-c"
 TMP_FILE_PFX="tmp_syn_"
-OUTFILE=${tmp_syn_}out
 CFGFILE="default.config"
 NUM_CORES=1
+ZIPFS="0.1"
+NKEYS=1000
+NREQS=1000
 
 # parse cli
 for i in "$@"
@@ -49,6 +54,8 @@ case $i in
     -d|--debug)
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
+    NKEYS=10
+    NREQS=10
     ;;
 
     -fl=*|--cflags=*)
@@ -94,6 +101,18 @@ case $i in
     NUM_THREADS=${i#*=}
     ;;
 
+    -zs=*|--zipfs=*)
+    ZIPFS=${i#*=}
+    ;;
+
+    -nk=*|--nkeys=*)
+    NKEYS=${i#*=}
+    ;;
+
+    -nr=*|--nreqs=*)
+    NREQS=${i#*=}
+    ;;
+
     -o=*|--out=*)
     OUTFILE=${i#*=}
     ;;
@@ -134,8 +153,9 @@ KONA_POLLER_CORE=53
 KONA_EVICTION_CORE=54
 KONA_FAULT_HANDLER_CORE=55
 KONA_ACCOUNTING_CORE=52
+SHENANGO_STATS_CORE=51
 SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},\
-${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE}
+${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 NUM_THREADS=${NUM_THREADS:-$NUM_CORES}
 
@@ -171,8 +191,10 @@ if [[ $FORCE ]]; then
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
     if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
     if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
-    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} 
+    # STATS_CORE_OPT="STATS_CORE=${SHENANGO_STATS_CORE}"    # for runtime stats
+    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}       \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}    \
+        ${STATS_CORE_OPT}
     popd 
 fi
 
@@ -249,7 +271,12 @@ echo "$shenango_cfg" > $CFGFILE
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
-sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_THREADS} 2>&1 
+echo sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_THREADS} ${NKEYS} ${NREQS} ${ZIPFS}
+if [[ $OUTFILE ]]; then 
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_THREADS} ${NKEYS} ${NREQS} ${ZIPFS} 2>&1 | tee $OUTFILE
+else 
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_THREADS} ${NKEYS} ${NREQS} ${ZIPFS} 2>&1 
+fi
 
 # cleanup
 cleanup
