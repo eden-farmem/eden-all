@@ -65,9 +65,8 @@ sample=1
 
 for kind in "vanilla"; do    #
 # for kind in "vanilla" "regular" "apf-sync" "apf-async"; do    #
-    for op in "zip"; do
-    # for op in "none" "zip" "enc"; do
-        for sample in 3; do
+    for op in "none" "zip" "enc"; do
+        for sample in 1; do
             # reset
             cfg=${kind}-${op}-${cores}c-${thr}t-${nkeys}k-${sample}
             CFLAGS=${CFLAGS_BEFORE}
@@ -121,12 +120,12 @@ done
 
 mkdir -p ${PLOTDIR}
 
-# plotname=${PLOTDIR}/xput-${cores}c-${thr}t-${nkeys}k.${PLOTEXT}
-# python ${PLOTSRC} ${plots}                  \
-#     -xc zipfs -xl "Zipf s-param"            \
-#     -yc xput -yl "MOPS" --ylog              \
-#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
-# display $plotname & 
+plotname=${PLOTDIR}/xput-${cores}c-${thr}t-${nkeys}k.${PLOTEXT}
+python ${PLOTSRC} ${plots}                  \
+    -xc zipfs -xl "Zipf s-param"            \
+    -yc xput -yl "Ops/sec" --ylog           \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
+display $plotname & 
 
 # if [[ $LATENCIES ]]; then 
 #     plotname=${PLOTDIR}/latency-${LATCORES}cores.${PLOTEXT}
