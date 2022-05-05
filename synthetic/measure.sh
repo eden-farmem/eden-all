@@ -60,15 +60,14 @@ CFLAGS_BEFORE=$CFLAGS
 cores=1
 thr=1       #not thread-safe yet
 nkeys=1000000
-nreqs=100000000
+MAX_MOPS=50000000
 sample=1
 
-for kind in "vanilla"; do    #
-# for kind in "vanilla" "regular" "apf-sync" "apf-async"; do    #
-    for op in "none" "zip" "enc"; do
-        for sample in 1; do
+for kind in "vanilla"; do               # "regular" "apf-sync" "apf-async"
+    for zparams in 0.1 0.5 1; do
+        for op in "ht" ; do        # "ht-safe" "zip" "enc"
             # reset
-            cfg=${kind}-${op}-${cores}c-${thr}t-${nkeys}k-${sample}
+            cfg=${kind}-${op}-${nkeys}k-zs${zparams}
             CFLAGS=${CFLAGS_BEFORE}
             OPTS=
             LS=
@@ -84,7 +83,8 @@ for kind in "vanilla"; do    #
             esac
 
             case $op in
-            "none")                                                     LS=solid;   CMI=0;;
+            "ht")                                                       LS=dashed;  CMI=0;;
+            "ht-safe")          CFLAGS="$CFLAGS -DTHREAD_SAFE"          LS=solid;   CMI=1;;
             "zip")              CFLAGS="$CFLAGS -DCOMPRESS";            LS=dashed;  CMI=0;;
             "enc")              CFLAGS="$CFLAGS -DENCRYPT";             LS=dashdot; CMI=1;;
             "enc+zip")          CFLAGS="$CFLAGS -DCOMPRESS -DENCRYPT";  LS=dotted;  CMI=1;;
@@ -96,15 +96,17 @@ for kind in "vanilla"; do    #
             if [ ! -f $datafile ] || [[ $FORCE ]]; then 
                 bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
                 tmpfile=${TEMP_PFX}out
-                echo "cores,thr,nkeys,zipfs,xput" > $datafile
-                for s in `seq 1 3 10`; do 
-                    zipfs=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
-                    echo $cores,$thr,$zipfs,$nkeys,$zipfs
-                    bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -c=${cores} -t=${thr} \
-                        -nk=${nkeys} -nr=${nreqs} -zs=${zipfs} -o=${tmpfile}
+                echo "cores,thr,nkeys,zipfs,xput,xputpercore" > $datafile
+                # for s in `seq 1 3 10`; do 
+                    # zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
+                for cores in `seq 1 1 5`; do 
+                    thr=$cores
+                    bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -c=${cores} -t=${thr}   \
+                        -nk=${nkeys} -zs=${zparams} -o=${tmpfile}
                     xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
+                    if [[ $xput ]]; then xputpc=$((xput/cores)); else   xputpc=;    fi
                     rm -f $tmpfile
-                    echo "$cores,$thr,$zipfs,$nkeys,$zipfs,$xput" >> $datafile  #record xput
+                    echo "$cores,$thr,$nkeys,$zparams,$xput,$xputpc" >> $datafile  #record xput
                     latfile=$DATADIR/lat-${cfg}-${cores}
                     if [[ $LATENCIES ]] && [ -f $LATFILE ]; then 
                         mv -f ${LATFILE} ${latfile}            #record latency
@@ -112,8 +114,8 @@ for kind in "vanilla"; do    #
                 done
             fi
             cat $datafile
-            plots="$plots -d $datafile -l $op"
-            latplots="$latplots -d $DATADIR/lat-${cfg}-${LATCORES} -l $op"
+            plots="$plots -d $datafile -l ${op}_$zparams -ls ${LS} -cmi ${CMI}"
+            latplots="$latplots -d $DATADIR/lat-${cfg}-${LATCORES} -l ${op}_$zparams"
         done
     done
 done
@@ -121,9 +123,10 @@ done
 mkdir -p ${PLOTDIR}
 
 plotname=${PLOTDIR}/xput-${cores}c-${thr}t-${nkeys}k.${PLOTEXT}
-python ${PLOTSRC} ${plots}                  \
-    -xc zipfs -xl "Zipf s-param"            \
-    -yc xput -yl "Ops/sec" --ylog           \
+python ${PLOTSRC} ${plots}                      \
+    -xc cores -xl "CPU"                         \
+    -yc xput -yl "MOPS"                         \
+    --ymin 0 --ymax 20 --ymul 1e-6              \
     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 

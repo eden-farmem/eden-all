@@ -26,12 +26,19 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include "runtime/sync.h"
+
+/* NOTE: only dataplane operations are thread-safe i.e., 
+ * insert/lookup/remove. Anything that affects the table 
+ * itself (e.g., init, resize, release) is not. */
+// #define THREAD_SAFE
 
 /* Initial size of buckets.  2 to the power of this value will be allocated. */
 #define HOPSCOTCH_INIT_BSIZE_EXPONENT   10
 /* Bitmap size used for linear probing in hopscotch hashing */
 #define HOPSCOTCH_HOPINFO_SIZE          32
 #define KEY_LEN                         12
+#define MAX_LOCKLESS_RETRIES            2
 
 /*
  * Buckets
@@ -41,6 +48,16 @@ struct hopscotch_bucket {
     uint8_t taken;
     void* data;
     uint32_t hopinfo;
+#ifdef THREAD_SAFE
+    /* coarse-grained lock to synchronize read-write and write-writes
+     * used rarely by readers. yields to other threads if not available */
+    mutex_t rw_lock;    
+    /* very fine-grained lock to make reading/writing kv-data atomic 
+     * as they're bigger than what atomics can handle */
+    spinlock_t kv_lock;    
+    uint64_t timestamp;
+    atomic_t marked;
+#endif
 } __attribute__ ((aligned (8)));
 
 /*

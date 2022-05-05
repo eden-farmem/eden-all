@@ -14,13 +14,24 @@
 #include "zipf.h"
 #include "aes.h"
 
-#define MEM_REGION_SIZE ((1ull<<30) * 32)	//32 GB
-#define MIN_RUNTIME_SECS 5	
-#define MAX_RUNTIME_SECS 20
-#define NUM_LAT_SAMPLES 5000
-#define BLOB_SIZE ((unsigned long)2*PAGE_SIZE)
-#define SNAPPY_HT_BUF_SIZE 64 			// based on kmax_hash_table_size
-#define AES_KEY_SIZE 128
+#define MEM_REGION_SIZE 	((1ull<<30) * 32)	// 32 GB
+#define NUM_LAT_SAMPLES 	5000
+#define BLOB_SIZE 			((unsigned long)2*PAGE_SIZE)
+#define AES_KEY_SIZE 		128
+
+/* these decide how long the experiment runs and how many 
+ * requests to generate. Adjust maximum expected performance 
+ * per core (MAX_MOPS_PER_CORE) to limit the time spent in 
+ * generating input workload  */
+#define MILLION				1000000
+#define MAX_MOPS_PER_CORE	(10*MILLION)			
+// #define MAX_MOPS_PER_CORE	10000			
+#define MIN_RUNTIME_SECS 	5	
+#define MAX_RUNTIME_SECS 	20
+#ifdef DEBUG
+#undef MAX_MOPS_PER_CORE
+#define MAX_MOPS_PER_CORE	10	
+#endif
 
 struct thread_args {
     int tid;
@@ -35,6 +46,7 @@ typedef struct thread_args thread_args_t;
 BUILD_ASSERT((sizeof(thread_args_t) % CACHE_LINE_SIZE == 0));
 
 struct main_args {
+	int ncores;
 	int nworkers;
 	int nkeys;
 	unsigned long nreqs;
@@ -70,7 +82,7 @@ double next_poisson_time(double rate, unsigned long randomness)
 /* prepare hash table and blob-array */
 void setup(void* arg) {
 	int ret, i, j;
-	unsigned long offset;
+	unsigned long key, offset;
 	uint64_t rand_num, repeat = 0;
 	void* data;
 	thread_args_t* targs = (thread_args_t*)arg;
@@ -85,10 +97,12 @@ void setup(void* arg) {
 
 	/* push keys & data */
 	ASSERT(targs->start + targs->len <= targs->nkeys);
-	for (i = targs->start; i < targs->len; i++)	{
-		*(uint32_t*)key_template = i;
+	for (i = 0; i < targs->len; i++)	{
+		key = targs->start + i;
+		*(uint32_t*)key_template = key;
 		/* push a key */
-		ret = hopscotch_insert(ht, key_template, (void*)(unsigned long)i);
+		pr_debug("worker %d adding key %lu", targs->tid, key);
+		ret = hopscotch_insert(ht, key_template, (void*) key);
 		ASSERTZ(ret);
 		/* add random data at corresponding index in blob array */
 		BUILD_ASSERT(BLOB_SIZE % sizeof(uint64_t) == 0);
@@ -103,7 +117,7 @@ void setup(void* arg) {
 			repeat--;
 		}
 	}
-	pr_debug("worker %d added %d keys", targs->tid, i);
+	pr_info("worker %d added %d keys", targs->tid, i);
 	waitgroup_add(&workers, -1);	/* signal done */
 }
 
@@ -116,20 +130,19 @@ void prepare_workload(void* arg) {
 
 	/* generated requests for my section */
 	ASSERT(targs->start + targs->len <= targs->nreqs);
-	for (i = targs->start; i < targs->len; i++)	{
+	for (i = 0; i < targs->len; i++)	{
 		ret = zipfian_gen(z);
 		ASSERT(0 <= ret && ret < targs->nkeys);
-		*(zipf_sequence + i) = ret;
+		*(zipf_sequence + targs->start + i) = ret;
 #ifdef DEBUG
 		zipf_counts[ret]++;
 #endif
 	}
 
-	pr_debug("worker %d generated %d requests", targs->tid, i);
+	pr_info("worker %d generated %d requests", targs->tid, i);
 	destroy_zipfian(z);
 	waitgroup_add(&workers, -1);	/* signal done */
 }
-
 
 /* process requests */
 void run(void* arg) {
@@ -158,19 +171,25 @@ void run(void* arg) {
 
 	/* wait for all threads to be ready */
 	ASSERT(targs->start + targs->len <= targs->nreqs);
+	pr_info("worker %d starting at request %lu len %lu", 
+		targs->tid, targs->start, targs->len);
+
 	barrier_wait(&ready);
 	barrier_wait(&go);
-	pr_info("worker %d started at %lu len %lu", 
-		targs->tid, targs->start, targs->len);
 	start_tsc = rdtsc();
 
-	for (i = targs->start; i < targs->len && !stop_button; i++) {
+	for (i = 0; i < targs->len && !stop_button; i++) {
 		/* get the array index from hash table */
 		/* we just save the key as value which is ok for benchmarking purposes */
-		key = zipf_sequence[i];
+		key = zipf_sequence[targs->start + i];
 		*(uint32_t*)key_template = key;
 		data = hopscotch_lookup(ht, key_template);
-		ASSERT((unsigned long)data == key);
+		// ASSERT((unsigned long)data == key);
+		if ((unsigned long)data != key) {
+			pr_err("ht corruption. expected: %u actual: %lu",
+				key, (unsigned long)data);
+			ASSERT(0);
+		}
 		nextin = blobdata + key * BLOB_SIZE;
 
 #ifdef ENCRYPT
@@ -237,14 +256,22 @@ void main_thread(void* arg) {
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
-		targs[j].start = j * ceil(nkeys / nworkers);
-		targs[j].len = min(ceil(nkeys / nworkers), nkeys - targs[j].start);
+		targs[j].start = j * ceil(nkeys * 1.0 / nworkers);
+		targs[j].len = min(ceil(nkeys * 1.0 / nworkers), nkeys - targs[j].start);
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(setup, &targs[j]);
 		ASSERTZ(ret);
 	}
 	waitgroup_wait(&workers);
 	pr_info("hash table/blob data setup done");
+
+	/* print table */
+	// void* data;
+	// for (j = 0; j < nkeys; j++) {
+	// 	*(uint32_t*)key_template = j;
+	// 	data = hopscotch_lookup(ht, key_template);
+	// 	pr_info("key %d: %lu", j, (unsigned long) data);
+	// }
 
 	/* aes init */
 	aes_key_setup(aes_key, aes_ksched, AES_KEY_SIZE);
@@ -260,8 +287,8 @@ void main_thread(void* arg) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
-		targs[j].start = j * ceil(nreqs / nworkers);
-		targs[j].len = min(ceil(nreqs / nworkers), nreqs - targs[j].start);
+		targs[j].start = j * ceil(nreqs * 1.0 / nworkers);
+		targs[j].len = min(ceil(nreqs * 1.0 / nworkers), nreqs - targs[j].start);
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(prepare_workload, &targs[j]);
 		ASSERTZ(ret);
@@ -284,8 +311,8 @@ void main_thread(void* arg) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
-		targs[j].start = j * ceil(nreqs / nworkers);
-		targs[j].len = min(ceil(nreqs / nworkers), nreqs - targs[j].start);
+		targs[j].start = j * ceil(nreqs * 1.0 / nworkers);
+		targs[j].len = min(ceil(nreqs * 1.0 / nworkers), nreqs - targs[j].start);
 		targs[j].xput = 0;
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(run, &targs[j]);
@@ -323,8 +350,8 @@ void main_thread(void* arg) {
 int main(int argc, char *argv[]) {
 	int ret;
 
-	if (argc < 3) {
-		pr_err("USAGE: %s <config-file> <nworkers> [<nkeys>] [<nreqs>] [<zipfparamS>]\n", argv[0]);
+	if (argc < 4) {
+		pr_err("USAGE: %s <config-file> <ncores> <nworkers> [<nkeys>] [<zipfparamS>]\n", argv[0]);
 		return -EINVAL;
 	}
 	cycles_per_us = time_calibrate_tsc();
@@ -340,10 +367,11 @@ int main(int argc, char *argv[]) {
 #endif
 
 	struct main_args margs;
-	margs.nworkers = atoi(argv[2]);
-	margs.nkeys = (argc > 3) ? atoi(argv[3]) : 1000000;
-	margs.nreqs = (argc > 4) ? atoi(argv[4]) : 10000000;
+	margs.ncores = atoi(argv[2]);
+	margs.nworkers = atoi(argv[3]);
+	margs.nkeys = (argc > 4) ? atoi(argv[4]) : 1000000;
 	margs.zparams = (argc > 5) ? atof(argv[5]) : 0.1;
+	margs.nreqs = (margs.ncores * (unsigned long) MAX_MOPS_PER_CORE * MIN_RUNTIME_SECS);
 	ret = runtime_init(argv[1], main_thread, &margs);
 	ASSERTZ(ret);
 	return 0;

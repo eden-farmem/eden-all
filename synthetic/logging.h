@@ -87,6 +87,7 @@
     printf(RESET);                                    \
   } while (0)
 
+#ifndef BUG
 #define BUG(c)                                             \
   do {                                                     \
     __builtin_unreachable();                               \
@@ -94,10 +95,13 @@
     dump_stack();                                          \
     abort();                                               \
   } while (0)
+#endif
 
+#ifndef BUG_ON
 #define BUG_ON(c)  \
   do {             \
     if (c) BUG(0); \
   } while (0)
+#endif
 
 #endif  // __LOGGING_H__
