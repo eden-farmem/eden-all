@@ -19,6 +19,7 @@
 // #define DEBUG
 
 #ifdef WITH_KONA
+#include "klib.h"
 #define remoteable_alloc rmalloc
 #else 
 #define remoteable_alloc malloc

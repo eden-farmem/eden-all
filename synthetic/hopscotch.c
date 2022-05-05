@@ -61,6 +61,8 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
     int i;
     struct hopscotch_bucket *buckets;
     size_t nbuckets = (1 << exponent);
+    pr_info("memory for hash table: %lu MB", 
+        sizeof(struct hopscotch_bucket) * nbuckets / (1<<20));
     buckets = remoteable_alloc(sizeof(struct hopscotch_bucket) * nbuckets);
     if ( NULL == buckets ) {
         return NULL;
@@ -260,6 +262,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
 
     /* try without locking a few times */
     lock = locked = found = false;
+    lock = true;    /* coarse-locking for readers too */
     retries = 0;
     value = NULL;
     do {

@@ -76,7 +76,7 @@ for kind in "vanilla"; do               # "regular" "apf-sync" "apf-async"
 
             case $kind in
             "vanilla")          ;;
-            "regular")          CFLAGS="$CFLAGS -DFAULT_KIND=0"; OPTS="$OPTS --with-kona";;
+            "regular")          OPTS="$OPTS --with-kona";;
             "apf-sync")         CFLAGS="$CFLAGS -DFAULT_KIND=1"; OPTS="$OPTS --with-kona --pgfaults=SYNC";;
             "apf-async")        CFLAGS="$CFLAGS -DFAULT_KIND=1"; OPTS="$OPTS --with-kona --pgfaults=ASYNC";;
             *)                  echo "Unknown fault kind"; exit;;

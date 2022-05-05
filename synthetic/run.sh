@@ -53,7 +53,6 @@ case $i in
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
     NKEYS=10
-    NREQS=10
     ;;
 
     -fl=*|--cflags=*)

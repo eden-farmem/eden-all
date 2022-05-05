@@ -248,6 +248,7 @@ void main_thread(void* arg) {
     ht = hopscotch_init(NULL, next_power_of_two(nkeys) + 1);
     ASSERT(ht);
 	blobdata = remoteable_alloc(nkeys*BLOB_SIZE);
+    pr_info("memory for blob array: %lu MB", nkeys*BLOB_SIZE / (1<<20));
 	ASSERT(blobdata);
 
 	/* setup data */
@@ -362,8 +363,8 @@ int main(int argc, char *argv[]) {
 	char env_var[200];
 	sprintf(env_var, "MEMORY_LIMIT=%llu", MEM_REGION_SIZE);
 	putenv(env_var);	/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_THRESHOLD=1");			/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_DONE_THRESHOLD=1");	/*32gb, BIG to avoid eviction*/
+	putenv("EVICTION_THRESHOLD=0.99");			/*32gb, BIG to avoid eviction*/
+	putenv("EVICTION_DONE_THRESHOLD=0.99");	/*32gb, BIG to avoid eviction*/
 #endif
 
 	struct main_args margs;
