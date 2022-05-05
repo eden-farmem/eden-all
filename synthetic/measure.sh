@@ -65,7 +65,7 @@ sample=1
 
 for kind in "vanilla"; do               # "regular" "apf-sync" "apf-async"
     for zparams in 0.1 0.5 1; do
-        for op in "ht" ; do        # "ht-safe" "zip" "enc"
+        for op in "ht-safe" ; do        # "ht-safe" "zip" "enc"
             # reset
             cfg=${kind}-${op}-${nkeys}k-zs${zparams}
             CFLAGS=${CFLAGS_BEFORE}
@@ -99,7 +99,7 @@ for kind in "vanilla"; do               # "regular" "apf-sync" "apf-async"
                 echo "cores,thr,nkeys,zipfs,xput,xputpercore" > $datafile
                 # for s in `seq 1 3 10`; do 
                     # zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
-                for cores in `seq 1 1 5`; do 
+                for cores in `seq 1 1 20`; do 
                     thr=$cores
                     bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -c=${cores} -t=${thr}   \
                         -nk=${nkeys} -zs=${zparams} -o=${tmpfile}
@@ -122,11 +122,11 @@ done
 
 mkdir -p ${PLOTDIR}
 
-plotname=${PLOTDIR}/xput-${cores}c-${thr}t-${nkeys}k.${PLOTEXT}
+plotname=${PLOTDIR}/xput-${nkeys}k.${PLOTEXT}
 python ${PLOTSRC} ${plots}                      \
     -xc cores -xl "CPU"                         \
-    -yc xput -yl "MOPS"                         \
-    --ymin 0 --ymax 20 --ymul 1e-6              \
+    -yc xputpercore -yl "MOPS/core"             \
+    --ymin 0 --ymax 5 --ymul 1e-6               \
     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 
