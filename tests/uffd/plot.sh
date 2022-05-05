@@ -96,9 +96,12 @@ add_data_to_plot() {
 # plots from $plots
 generate_plots() {
     group=$1
+    ymax=$2
+    if [[ $ymax ]]; then ylflag="--ymin 0 --ymax ${ymax}"; fi
+
     plotname=${PLOTDIR}/${group}_xput.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python ${PLOTSRC} ${plots}              \
+        python ${PLOTSRC} ${plots} ${ylflag}    \
             -yc xput -yl "MOPS" --ymul 1e-6     \
             -xc cores -xl "Cores"               \
             --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
@@ -142,17 +145,18 @@ fi
 if [ "$PLOTID" == "3" ]; then
     plots=
     sharefd=1
-    for hthr in 1 2 4 8; do 
+    YMAX=1.5
+    for hthr in 1 2 4 8 11; do 
         add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
-    generate_plots "fault_path_one_fd"
+    generate_plots "fault_path_one_fd"     ${YMAX}
 
     plots=
     sharefd=0
-    for hthr in 1 2 4 8; do 
+    for hthr in 1 2 4 8 11; do 
         add_data_to_plot "fault_path_fd_per_core" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
-    generate_plots "fault_path_fd_per_core"
+    generate_plots "fault_path_fd_per_core" ${YMAX}
 fi
 
 # cleanup

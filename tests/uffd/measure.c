@@ -45,12 +45,13 @@ typedef long (*prefetch_page_t)(const void *p);
 static prefetch_page_t prefetch_page;
 #endif
 
-#define GIGA 			(1ULL << 30)
-#define MAX_CORES 		28	/*cores per numa node*/
-#define MAX_THREADS 	(MAX_CORES-1)
-#define MAX_FDS			MAX_THREADS
-#define MAX_MEMORY 		(128*GIGA)
-#define RUNTIME_SECS 	5
+#define GIGA 				(1ULL << 30)
+#define PHY_CORES_PER_NODE 	14
+#define MAX_CORES 			(2*PHY_CORES_PER_NODE)	/*logical cores per numa node*/
+#define MAX_THREADS 		(MAX_CORES-1)
+#define MAX_FDS				MAX_THREADS
+#define MAX_MEMORY 			(128*GIGA)
+#define RUNTIME_SECS 		5
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready;
@@ -59,6 +60,11 @@ const int NODE0_CORES[MAX_CORES] = {
     7,  8,  9,  10, 11, 12, 13, 
     28, 29, 30, 31, 32, 33, 34, 
     35, 36, 37, 38, 39, 40, 41 };
+const int NODE1_CORES[MAX_CORES] = {
+    14, 15, 16, 17, 18, 19, 20, 
+    21, 22, 23, 24, 25, 26, 27, 
+    42, 43, 44, 45, 46, 47, 48, 
+    49, 50, 51, 52, 53, 54, 55 };
 #define CORELIST NODE0_CORES
 int start_button = 0, stop_button = 0;
 
@@ -281,6 +287,8 @@ int main(int argc, char **argv)
 	ASSERT(nthreads > 0);
 	ASSERT(nhandlers > 0);
 	ASSERT(nthreads + nhandlers <= MAX_THREADS);
+	// ASSERT(nthreads <= MAX_THREADS);
+	// ASSERT(nhandlers <= MAX_THREADS);
 	ASSERTZ(nthreads & (nthreads - 1));	/*power of 2*/
 	nuffd = share_uffd ? 1 : nthreads;
 	ASSERT(nuffd < MAX_UFFD);
