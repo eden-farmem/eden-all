@@ -31,7 +31,7 @@
 /* NOTE: only dataplane operations are thread-safe i.e., 
  * insert/lookup/remove. Anything that affects the table 
  * itself (e.g., init, resize, release) is not. */
-// #define THREAD_SAFE
+#define THREAD_SAFE
 
 /* Initial size of buckets.  2 to the power of this value will be allocated. */
 #define HOPSCOTCH_INIT_BSIZE_EXPONENT   10
@@ -77,7 +77,7 @@ extern "C" {
     struct hopscotch_hash_table *
     hopscotch_init(struct hopscotch_hash_table *, size_t);
     void hopscotch_release(struct hopscotch_hash_table *);
-    void * hopscotch_lookup(struct hopscotch_hash_table *, void *);
+    void * hopscotch_lookup(struct hopscotch_hash_table *, void *, int*);
     int hopscotch_insert(struct hopscotch_hash_table *, void *, void *);
     void * hopscotch_remove(struct hopscotch_hash_table *, void *);
     int hopscotch_resize(struct hopscotch_hash_table *, int);

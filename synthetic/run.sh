@@ -15,6 +15,8 @@ usage="Example: bash run.sh -f\n
 -c, --cores \t number of CPU cores (defaults to 1)\n
 -zs, --zipfs \t S param of zipf workload\n
 -nk, --nkeys \t number of keys in the hash table\n
+-nb, --nblobs \t number of items in the blob array\n
+-w, --warmup \t run warmup for a few seconds before taking measurement\n
 -o, --out \t output file for any results\n
 -s, --safemode \t build kona with safe mode on\n
 -c, --clean \t run only the cleanup part\n
@@ -44,6 +46,7 @@ CFGFILE="default.config"
 NUM_CORES=1
 ZIPFS="0.1"
 NKEYS=1000
+NBLOBS=1000
 
 # parse cli
 for i in "$@"
@@ -104,6 +107,15 @@ case $i in
 
     -nk=*|--nkeys=*)
     NKEYS=${i#*=}
+    ;;
+
+    -nb=*|--nblobs=*)
+    NBLOBS=${i#*=}
+    ;;
+
+    -w|--warmup)
+    WARMUP=1
+    CFLAGS="$CFLAGS -DWARMUP"
     ;;
 
     -o=*|--out=*)
@@ -264,11 +276,11 @@ echo "$shenango_cfg" > $CFGFILE
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
-echo sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_CORES} ${NUM_THREADS} ${NKEYS} ${ZIPFS}
+echo sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_CORES} ${NUM_THREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}
 if [[ $OUTFILE ]]; then 
-    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_CORES} ${NUM_THREADS} ${NKEYS} ${ZIPFS} 2>&1 | tee $OUTFILE
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_CORES} ${NUM_THREADS} ${NKEYS} ${NBLOBS} ${ZIPFS} 2>&1 | tee $OUTFILE
 else 
-    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_CORES} ${NUM_THREADS} ${NKEYS} ${ZIPFS} 2>&1 
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} ${NUM_CORES} ${NUM_THREADS} ${NKEYS} ${NBLOBS} ${ZIPFS} 2>&1 
 fi
 
 # cleanup

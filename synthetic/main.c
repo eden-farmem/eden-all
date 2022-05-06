@@ -21,26 +21,30 @@
 
 /* these decide how long the experiment runs and how many 
  * requests to generate. Adjust maximum expected performance 
- * per core (MAX_MOPS_PER_CORE) to limit the time spent in 
- * generating input workload  */
+ * per core (MAX_OPS_PER_CORE) appropriately to generate 
+ * enough requests to last for both the warmup (WARMUP_SECS) 
+ * and the run (MIN_RUNTIME_SECS) but not spend too much time
+ * in generating the workload */
 #define MILLION				1000000
-#define MAX_MOPS_PER_CORE	(10*MILLION)			
-// #define MAX_MOPS_PER_CORE	10000			
+#define MAX_OPS_PER_CORE	(10*MILLION)			
+// #define MAX_OPS_PER_CORE	10000			
+#define WARMUP_SECS 		10	
 #define MIN_RUNTIME_SECS 	5	
-#define MAX_RUNTIME_SECS 	20
+#define MAX_RUNTIME_SECS 	30
 #ifdef DEBUG
-#undef MAX_MOPS_PER_CORE
-#define MAX_MOPS_PER_CORE	10	
+#undef MAX_OPS_PER_CORE
+#define MAX_OPS_PER_CORE	10	
 #endif
 
 struct thread_args {
     int tid;
 	unsigned long nkeys;
+	unsigned long nblobs;
 	unsigned long nreqs;
 	unsigned long start;
 	unsigned long len;
 	unsigned long xput;
-	uint32_t pad[4];
+	uint32_t pad[2];
 };
 typedef struct thread_args thread_args_t;
 BUILD_ASSERT((sizeof(thread_args_t) % CACHE_LINE_SIZE == 0));
@@ -49,13 +53,14 @@ struct main_args {
 	int ncores;
 	int nworkers;
 	int nkeys;
+	int nblobs;
 	unsigned long nreqs;
 	double zparams;
 };
 
 uint64_t cycles_per_us;
 waitgroup_t workers;
-barrier_t ready, go;
+barrier_t ready, warmup, warmedup, start;
 int stop_button = 0;
 struct hopscotch_hash_table *ht;
 void* blobdata;
@@ -74,17 +79,10 @@ BYTE aes_key[32] = {
 	0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
 };
 
-double next_poisson_time(double rate, unsigned long randomness)
-{
-    return -logf(1.0f - ((double)(randomness % RAND_MAX)) / (double)(RAND_MAX)) / rate;
-}
-
-/* prepare hash table and blob-array */
-void setup(void* arg) {
-	int ret, i, j;
-	unsigned long key, offset;
-	uint64_t rand_num, repeat = 0;
-	void* data;
+/* prepare hash table */
+void setup_table(void* arg) {
+	int ret, i;
+	unsigned long key, val;
 	thread_args_t* targs = (thread_args_t*)arg;
 	struct rand_state rand;
 	ASSERTZ(rand_seed(&rand, time(NULL) ^ targs->tid));
@@ -95,15 +93,32 @@ void setup(void* arg) {
 		0xff, 0xff, 0xff, 0xff,
 		0xff, 0xff, 0xff, 0xff };
 
-	/* push keys & data */
+	/* push keys pointing to random blobs */
 	ASSERT(targs->start + targs->len <= targs->nkeys);
 	for (i = 0; i < targs->len; i++)	{
 		key = targs->start + i;
 		*(uint32_t*)key_template = key;
-		/* push a key */
-		pr_debug("worker %d adding key %lu", targs->tid, key);
-		ret = hopscotch_insert(ht, key_template, (void*) key);
+		val = rand_next(&rand) % targs->nblobs;
+		// val = key % targs->nblobs;		/* for easy verification */
+		pr_debug("worker %d adding key %lu value %lu", targs->tid, key, val);
+		ret = hopscotch_insert(ht, key_template, (void*) val);
 		ASSERTZ(ret);
+	}
+	pr_info("worker %d added %d keys", targs->tid, i);
+	waitgroup_add(&workers, -1);	/* signal done */
+}
+
+/* prepare blob array */
+void setup_blobs(void* arg) {
+	int i, j;
+	unsigned long key, offset;
+	uint64_t rand_num, repeat = 0;
+	thread_args_t* targs = (thread_args_t*)arg;
+	struct rand_state rand;
+	ASSERTZ(rand_seed(&rand, time(NULL) ^ targs->tid));
+
+	ASSERT(targs->start + targs->len <= targs->nblobs);
+	for (i = 0; i < targs->len; i++)	{
 		/* add random data at corresponding index in blob array */
 		BUILD_ASSERT(BLOB_SIZE % sizeof(uint64_t) == 0);
 		for (j = 0; j < BLOB_SIZE / sizeof(uint64_t); j++) {
@@ -117,8 +132,20 @@ void setup(void* arg) {
 			repeat--;
 		}
 	}
-	pr_info("worker %d added %d keys", targs->tid, i);
+	pr_info("worker %d added %d blobs", targs->tid, i);
 	waitgroup_add(&workers, -1);	/* signal done */
+}
+
+/* Shenango doesn't have preemptions so threads may need to yield 
+ * occasionally to let other threads run, especially in indefinite
+ * loops whose termination is controlled by other threads.
+ * state: saves last yield time, init with 0 */
+static inline void thread_yield_after(int time_us, unsigned long* state) {
+	unsigned long duration_tsc = rdtsc() - *state;
+	if (duration_tsc / cycles_per_us >= time_us) {
+		thread_yield();
+		*state = rdtsc();
+	}
 }
 
 /* prepare zipf workload */
@@ -144,16 +171,55 @@ void prepare_workload(void* arg) {
 	waitgroup_add(&workers, -1);	/* signal done */
 }
 
+/* the real work for each request */
+static inline void process_request(int key, int nblobs,
+		struct snappy_env* env,
+		char* encbuffer, char* zipbuffer) {
+	int ret, found;
+	size_t ziplen;
+	void *data, *nextin;
+	unsigned long value;
+    uint8_t key_template[KEY_LEN] = {
+		0x00, 0x00, 0x00, 0x00,
+		0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff };
+
+	/* lookup hash table */
+	*(uint32_t*)key_template = key;
+	value = (unsigned long)hopscotch_lookup(ht, key_template, &found);
+	ASSERT(found);
+	// ASSERT(value == key % nblobs);
+	ASSERT(0 <= value && value < nblobs);
+	nextin = blobdata + value * BLOB_SIZE;
+
+#ifdef ENCRYPT
+	/* encrypt data (emits same length as input) */
+	ret = aes_encrypt_cbc(nextin, BLOB_SIZE, encbuffer, aes_ksched, AES_KEY_SIZE, aes_iv);
+	ASSERT(ret);
+	nextin = encbuffer;
+#endif
+
+#ifdef COMPRESS 
+	/* compress the array data */
+	ret = snappy_compress(env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
+	ASSERTZ(ret);
+	pr_debug("snappy compression done. inlen: %ld outlen: %lu", BLOB_SIZE, ziplen);
+	nextin = zipbuffer;
+#endif
+}
+
 /* process requests */
 void run(void* arg) {
 	int ret, i, key;
 	void *data, *nextin;
-	unsigned long start_tsc, duration_tsc;
+	unsigned long ystate = 0;
 	thread_args_t* targs = (thread_args_t*)arg;
     uint8_t key_template[KEY_LEN] = {
 		0x00, 0x00, 0x00, 0x00,
 		0xff, 0xff, 0xff, 0xff,
 		0xff, 0xff, 0xff, 0xff };
+	struct rand_state rand;
+	ASSERTZ(rand_seed(&rand, time(NULL) ^ targs->tid));
 
 	/* crypto init */
 	char* encbuffer = malloc(BLOB_SIZE);
@@ -163,7 +229,6 @@ void run(void* arg) {
 	struct snappy_env env;
 	ASSERTZ(snappy_init_env(&env));
 	size_t ziplen = snappy_max_compressed_length(BLOB_SIZE);
-	pr_debug("max zip len: %lu", ziplen);
 	char* zipbuffer = malloc(ziplen);
 	ASSERT(zipbuffer);
 	FILE* fp;
@@ -175,55 +240,37 @@ void run(void* arg) {
 		targs->tid, targs->start, targs->len);
 
 	barrier_wait(&ready);
-	barrier_wait(&go);
-	start_tsc = rdtsc();
 
+#ifdef WARMUP
+	/* warm up */
+	barrier_wait(&warmup);
+	while(!stop_button) {
+		/* pick a random key */
+		key = rand_next(&rand) % targs->nkeys;
+		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
+		thread_yield_after(MILLION /* µs */, &ystate);
+	}
+	pr_info("worker %d warmedup", targs->tid);
+	barrier_wait(&warmedup);
+#endif
+
+	/* actual run */
+	barrier_wait(&start);
 	for (i = 0; i < targs->len && !stop_button; i++) {
 		/* get the array index from hash table */
 		/* we just save the key as value which is ok for benchmarking purposes */
 		key = zipf_sequence[targs->start + i];
-		*(uint32_t*)key_template = key;
-		data = hopscotch_lookup(ht, key_template);
-		// ASSERT((unsigned long)data == key);
-		if ((unsigned long)data != key) {
-			pr_err("ht corruption. expected: %u actual: %lu",
-				key, (unsigned long)data);
-			ASSERT(0);
-		}
-		nextin = blobdata + key * BLOB_SIZE;
-
-#ifdef ENCRYPT
-		/* encrypt data (emits same length as input) */
-		ret = aes_encrypt_cbc(nextin, BLOB_SIZE, encbuffer, aes_ksched, AES_KEY_SIZE, aes_iv);
-		ASSERT(ret);
-		nextin = encbuffer;
-#endif
-
-#ifdef COMPRESS 
-		/* compress the array element */
-		ret = snappy_compress(&env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
-		ASSERTZ(ret);
-		// pr_debug("snappy compression done. inlen: %ld outlen: %lu", BLOB_SIZE, ziplen);
-		nextin = zipbuffer;
-#endif
-
+		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
 		targs->xput++;
-
-		/* yield at least once every 1 sec */
-		duration_tsc = rdtsc() - start_tsc;
-		if (duration_tsc / (1000000.0 * cycles_per_us) >= 1) {
-			thread_yield();
-			start_tsc = rdtsc();
-			pr_debug("worker %d at %lu ops", targs->tid, targs->xput);
-		}
+		thread_yield_after(MILLION /* µs */, &ystate);
 	}
 
-	pr_debug("worker %d processed %ld requests", targs->tid, targs->xput);
+	pr_debug("worker %d done at %ld ops", targs->tid, targs->xput);
 	waitgroup_add(&workers, -1);	/* signal done */
 }
 
 /* issue stop signal on timeout */
-void time_out(void* arg) {
+void timeout_thread(void* arg) {
 	unsigned long sleep_us = (unsigned long) arg;
 	timer_sleep(sleep_us);
 	stop_button = 1;
@@ -233,8 +280,10 @@ void time_out(void* arg) {
 void main_thread(void* arg) {
 	int i, j, ret;
 	struct main_args* margs = (struct main_args*) arg;
-	int nkeys = margs->nkeys;
+	unsigned long nkeys = margs->nkeys;
 	unsigned long nreqs = margs->nreqs;
+	unsigned long nblobs = margs->nblobs;
+	unsigned long timeout_us;
 	int nworkers = margs->nworkers;
 	thread_args_t* targs;
     uint8_t key_template[KEY_LEN] = {
@@ -251,28 +300,48 @@ void main_thread(void* arg) {
     pr_info("memory for blob array: %lu MB", nkeys*BLOB_SIZE / (1<<20));
 	ASSERT(blobdata);
 
-	/* setup data */
+	/* setup hash table */
 	targs = aligned_alloc(CACHE_LINE_SIZE, nworkers * sizeof(thread_args_t));
 	waitgroup_init(&workers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
+		targs[j].nblobs = nblobs;
 		targs[j].start = j * ceil(nkeys * 1.0 / nworkers);
 		targs[j].len = min(ceil(nkeys * 1.0 / nworkers), nkeys - targs[j].start);
 		waitgroup_add(&workers, 1);
-		ret = thread_spawn(setup, &targs[j]);
+		ret = thread_spawn(setup_table, &targs[j]);
 		ASSERTZ(ret);
 	}
 	waitgroup_wait(&workers);
 	pr_info("hash table/blob data setup done");
 
+	/* setup blob array */
+	waitgroup_init(&workers);
+	for (j = 0; j < nworkers; j++) {
+		targs[j].tid = j;
+		targs[j].nkeys = nkeys;
+		targs[j].nblobs = nblobs;
+		targs[j].start = j * ceil(nblobs * 1.0 / nworkers);
+		targs[j].len = min(ceil(nblobs * 1.0 / nworkers), nblobs - targs[j].start);
+		waitgroup_add(&workers, 1);
+		ret = thread_spawn(setup_blobs, &targs[j]);
+		ASSERTZ(ret);
+	}
+	waitgroup_wait(&workers);
+	pr_info("hash table/blob data setup done");
+
+#ifdef DEBUG
 	/* print table */
-	// void* data;
-	// for (j = 0; j < nkeys; j++) {
-	// 	*(uint32_t*)key_template = j;
-	// 	data = hopscotch_lookup(ht, key_template);
-	// 	pr_info("key %d: %lu", j, (unsigned long) data);
-	// }
+	void* data;
+	printf("Table: ");
+	for (j = 0; j < nkeys; j++) {
+		*(uint32_t*)key_template = j;
+		data = hopscotch_lookup(ht, key_template);
+		printf("(%d: %lu) ", j, (unsigned long) data);
+	}
+	printf("\n");
+#endif
 
 	/* aes init */
 	aes_key_setup(aes_key, aes_ksched, AES_KEY_SIZE);
@@ -288,6 +357,7 @@ void main_thread(void* arg) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
+		targs[j].nblobs = nblobs;
 		targs[j].start = j * ceil(nreqs * 1.0 / nworkers);
 		targs[j].len = min(ceil(nreqs * 1.0 / nworkers), nreqs - targs[j].start);
 		waitgroup_add(&workers, 1);
@@ -307,11 +377,14 @@ void main_thread(void* arg) {
 	/* run requests */
 	waitgroup_init(&workers);
 	barrier_init(&ready, nworkers+1);
-	barrier_init(&go, nworkers+1);
+	barrier_init(&warmup, nworkers+1);
+	barrier_init(&warmedup, nworkers+1);
+	barrier_init(&start, nworkers+1);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
+		targs[j].nblobs = nblobs;
 		targs[j].start = j * ceil(nreqs * 1.0 / nworkers);
 		targs[j].len = min(ceil(nreqs * 1.0 / nworkers), nreqs - targs[j].start);
 		targs[j].xput = 0;
@@ -321,27 +394,38 @@ void main_thread(void* arg) {
 	}
 	
 	/* wait for threads to be ready */
-	barrier_wait(&ready); 		
+	barrier_wait(&ready); 	
 
-	/* let go and issue time out */
+#ifdef WARMUP
+	/* run warmup with a timeout and wait */	
+	stop_button = 0;
+	pr_info("starting warmup");
+	timeout_us = WARMUP_SECS * MILLION;
+	ret = thread_spawn(timeout_thread, (void*) timeout_us);
+	ASSERTZ(ret);
+	barrier_wait(&warmup);		/* kick off */
+	barrier_wait(&warmedup);	/* and wait */
+#endif
+
+	/* start the run (with timeout) */
+	pr_info("starting the run");
 	start_tsc = rdtsc();
 	stop_button = 0;
-	pr_info("run started");
-	barrier_wait(&go);
-	ret = thread_spawn(time_out, (void*) (MAX_RUNTIME_SECS * 1000000));
+	timeout_us = MAX_RUNTIME_SECS * MILLION;
+	ret = thread_spawn(timeout_thread, (void*) timeout_us);
 	ASSERTZ(ret);
-
-	/* wait for threads to finish */
-	waitgroup_wait(&workers);
+	barrier_wait(&start);		/* kick off */
+	waitgroup_wait(&workers);	/* and wait */
 	duration_tsc = rdtscp(NULL) - start_tsc;
-	duration_secs = duration_tsc / (1000000.0 * cycles_per_us);
 
 	/* write result */
+	duration_secs = duration_tsc * 1.0 / (MILLION * cycles_per_us);
 	for (j = 0; j < nworkers; j++) xput += targs[j].xput;
 	pr_info("ran for %.1lf secs with %.0lf ops /sec", duration_secs, xput/duration_secs);
 	printf("result:%.0lf\n", xput / duration_secs);
 
-	/* we must run for at least a few secs */
+	/* we must run for at least a few secs
+	 * adjust MAX_OPS_PER_CORE otherwise */
 	ASSERT(duration_secs >= MIN_RUNTIME_SECS);
 
     /* Release */
@@ -352,7 +436,7 @@ int main(int argc, char *argv[]) {
 	int ret;
 
 	if (argc < 4) {
-		pr_err("USAGE: %s <config-file> <ncores> <nworkers> [<nkeys>] [<zipfparamS>]\n", argv[0]);
+		pr_err("USAGE: %s <config-file> <ncores> <nworkers> [<nkeys>] [<nblobs>] [<zipfparamS>]\n", argv[0]);
 		return -EINVAL;
 	}
 	cycles_per_us = time_calibrate_tsc();
@@ -370,9 +454,10 @@ int main(int argc, char *argv[]) {
 	struct main_args margs;
 	margs.ncores = atoi(argv[2]);
 	margs.nworkers = atoi(argv[3]);
-	margs.nkeys = (argc > 4) ? atoi(argv[4]) : 1000000;
-	margs.zparams = (argc > 5) ? atof(argv[5]) : 0.1;
-	margs.nreqs = (margs.ncores * (unsigned long) MAX_MOPS_PER_CORE * MIN_RUNTIME_SECS);
+	margs.nkeys = (argc > 4) ? atoi(argv[4]) : MILLION;
+	margs.nblobs = (argc > 5) ? atof(argv[5]) : MILLION;
+	margs.zparams = (argc > 6) ? atof(argv[6]) : 0.1;
+	margs.nreqs = (margs.ncores * (unsigned long) MAX_OPS_PER_CORE * MIN_RUNTIME_SECS);
 	ret = runtime_init(argv[1], main_thread, &margs);
 	ASSERTZ(ret);
 	return 0;

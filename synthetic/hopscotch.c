@@ -108,7 +108,7 @@ hopscotch_release(struct hopscotch_hash_table *ht)
  * Lookup
  */
 void *
-hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
+hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int* found)
 {
     uint32_t h;
     size_t idx;
@@ -120,16 +120,19 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
     idx = h & (sz - 1);
 
     if ( !ht->buckets[idx].hopinfo ) {
+        *found = 0;
         return NULL;
     }
     for ( i = 0; i < HOPSCOTCH_HOPINFO_SIZE; i++ ) {
         if ( ht->buckets[idx].hopinfo & (1 << i) ) {
             if ( 0 == memcmp(key, ht->buckets[idx + i].key, KEY_LEN) ) {
                 /* Found */
+                *found = 1;
                 return ht->buckets[idx + i].data;
             }
         }
     }
+    *found = 0;
     return NULL;
 }
 
@@ -245,11 +248,11 @@ hopscotch_remove(struct hopscotch_hash_table *ht, void *key)
  * Lookup Thread-safe
  */
 void *
-hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
+hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int *found)
 {
     uint32_t h, hopinfo, retries;
     size_t idx, i, sz;
-    bool lock, locked, found;
+    bool lock, locked;
     uint64_t timestamp;
     struct hopscotch_bucket *bucket, *hop;
     void* value;
@@ -261,8 +264,8 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
     bucket = &(ht->buckets[idx]);
 
     /* try without locking a few times */
-    lock = locked = found = false;
-    lock = true;    /* coarse-locking for readers too */
+    lock = locked = false;
+    *found = 0;
     retries = 0;
     value = NULL;
     do {
@@ -282,10 +285,10 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key)
                     if(0 == memcmp(key, hop->key, KEY_LEN)) {
                         /* found */
                         value = hop->data;
-                        found = true;
+                        *found = 1;
                     }
                     spin_unlock(&hop->kv_lock);
-                    if (found)
+                    if (*found)
                         goto out;
                 }
             }
