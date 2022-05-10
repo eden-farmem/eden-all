@@ -49,8 +49,9 @@ set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 
-for kind in "faults" "appfaults" "mixed"; do
-    for op in "read" "write" "r+w"; do
+# for kind in "faults" "appfaults" "mixed"; do
+for kind in "faults" "appfaults"; do
+    for op in "read" "write"; do        # "r+w"
         cfg=${kind}-${op}
         KC=CONFIG_WP
         KO="-DNO_ZEROPAGE_OPT"  #to estimate normal faults after first access
@@ -74,11 +75,10 @@ for kind in "faults" "appfaults" "mixed"; do
 
         datafile=$DATADIR/${cfg}
         if [ ! -f $datafile ] || [[ $FORCE ]]; then 
-            bash run.sh --clean     #start clean
             bash run.sh -f -kc="$KC" -ko="$KO"  #rebuild kona
             tmpfile=${TEMP_PFX}out
             echo "cores,xput,latency" > $datafile
-            for thr in `seq 1 1 5`; do 
+            for thr in `seq 1 1 6`; do 
                 # bash run.sh -t=${thr} 
                 bash run.sh -t=${thr} -fl="""$CFLAGS""" -o=${tmpfile}
             done
@@ -86,7 +86,7 @@ for kind in "faults" "appfaults" "mixed"; do
             rm -f $tmpfile
         fi
         cat $datafile
-        plots="$plots -d $datafile -l $cfg -ls $LS -cmi $CMI"
+        plots="$plots -d $datafile -l $cfg -ls $LS"
 
         # gather latency numbers
         latfile=${TEMP_PFX}latency-${op}
@@ -95,9 +95,6 @@ for kind in "faults" "appfaults" "mixed"; do
             latplots="$latplots -d $latfile -l $op"
         fi
         row2col3=`sed -n '2p' ${datafile} | awk -F, '{ print $3 }'`
-        # row2col2=`sed -n '5p' ${datafile} | awk -F, '{ print $2 }'`
-        # latency=`echo $row2col2 | awk ' { printf "%.1lf", 4000000.0 / $0 } '`
-        # echo "$kind,$latency"
         echo "$kind,$row2col3" >> $latfile
     done
 done
@@ -107,24 +104,25 @@ mkdir -p ${PLOTDIR}
 plotname=fault_xput.${PLOTEXT}
 python3 ${PLOTSRC} ${plots}             \
     -xc cores -xl "Cores"               \
-    -yc xput -yl "Million faults / sec" --ymul 1e-6   \
-    --size 6 4 -fs 11 -of ${PLOTEXT} -o $plotname
+    -yc xput -yl "Million faults / sec" \
+    --ymul 1e-6 --ymin 0 --ymax 0.2     \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 
 plotname=fault_latency.${PLOTEXT}
 python3 ${PLOTSRC} -z bar ${latplots}   \
     -xc config -xl "Fault Type"         \
     -yc latency -yl "Cost (µs)"         \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname --10ymin 0 --ymax 35
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 
-# plotname=fault_latency_zoomed.${PLOTEXT}
-# python3 ${PLOTSRC} -z bar ${latplots}   \
-#     -xc config -xl "Fault Type"         \
-#     -yc latency -yl "Cost (µs)"         \
-#     --ymin 13 --ymax 19 --hlines 14 15 16 17 18 \
-#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-# display $plotname & 
+plotname=fault_latency_zoomed.${PLOTEXT}
+python3 ${PLOTSRC} -z bar ${latplots}   \
+    -xc config -xl "Fault Type"         \
+    -yc latency -yl "Cost (µs)"         \
+    --ymin 13 --ymax 19 --hlines 14 15 16 17 18 \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+display $plotname & 
 
 # cleanup
 rm -f ${TEMP_PFX}*

@@ -9,16 +9,18 @@ usage="\n
 -d, --debug \t\t build debug\n
 -o, --onetime \t\t first time (includes some one-time init stuff)\n
 -n, --sync \t\t sync code base from git (for syncing updates on other machines)\n
--s, --shenango \t\t build shenango core\n
+-s, --shenango \t build shenango core\n
 -sd,--sdpdk \t\t include dpdk in the build\n
--m, --memcached \t\t build memcached app\n
--sy,--synthetic \t\t build shenango synthetic app\n
+-spf,--spgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
+-m, --memcached \t build memcached app\n
+-sy,--synthetic \t build shenango synthetic app\n
 -sb,--sbench \t\t build shenango bench app\n
 -k,--kona \t\t build kona\n
--kc,--kona-config \t\t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
--kf,--kona-cflags \t\t C flags passed to gcc when compiling kona\n
--mk,--with-kona \t\t build memcached + shenango linked with kona\n
+-kc,--kona-config \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
+-kf,--kona-cflags \t C flags passed to gcc when compiling kona\n
+-wk,--with-kona \t build shenango or apps linked with kona\n
 -a, --all \t\t build everything\n
+-g, --gdb \t\t build with symbols\n
 -h, --help \t\t this usage information message\n"
 
 # Parse command line arguments
@@ -44,6 +46,15 @@ case $i in
     -sd|--dpdk)
     DPDK=1
     ;;
+    
+    -spf=*|--spgfaults=*)
+    PAGE_FAULTS="${i#*=}"
+    KOPTS="$KOPTS -DSERVE_APP_FAULTS"
+    ;;
+
+    -so=*|--shenango-cflags=*)
+    SOPTS="$SOPTS ${i#*=}"
+    ;;
 
     -m|--memcached)
     SHENANGO=1
@@ -53,6 +64,7 @@ case $i in
     -sy|--synthetic)
     SHENANGO=1
     SYNTHETIC=1
+    NO_STATS=1
     ;;
 
     -sb|--sbench)
@@ -60,20 +72,19 @@ case $i in
     SBENCH=1
     ;;
 
-
     -k|--kona)
     KONA=1
     ;;
     
     -kc=*|--kona-config=*)
-    kona_cfg="PBMEM_CONFIG=${i#*=}"
+    KCFG="PBMEM_CONFIG=${i#*=}"
     ;;
 
     -ko=*|--kona-cflags=*)
-    kona_cflags="${i#*=}"
+    KOPTS="$KOPTS ${i#*=}"
     ;;
 
-    -mk|--with-kona)
+    -wk|-mk|--with-kona)
     WITH_KONA=1
     ;;
 
@@ -86,6 +97,12 @@ case $i in
     # -o=*|--opts=*)    # options 
     # OPTS="${i#*=}"
     # ;;
+
+    -g|--gdb)
+    GDB=1
+    GDBFLAG="GDB=1"
+    GDBFLAG2="--enable-gdb"
+    ;;
 
     -h | --help)
     echo -e $usage
@@ -109,7 +126,9 @@ KONA_POLLER_CORE=53
 KONA_EVICTION_CORE=54
 KONA_FAULT_HANDLER_CORE=55
 KONA_ACCOUNTING_CORE=52
-SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE}
+SHENANGO_STATS_CORE=51
+SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},\
+${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 
 if [[ $ONETIME ]]; then
     git submodule update --init --recursive
@@ -127,8 +146,15 @@ if [[ $SHENANGO ]]; then
     pushd shenango 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    if [[ $WITH_KONA ]]; then   KONA_OPT="WITH_KONA=1"; fi
-    make -j ${DEBUG} NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} $KONA_OPT 
+    if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
+    if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
+    if ! [[ $NO_STATS ]]; then  STATS_CORE_OPT="STATS_CORE=${SHENANGO_STATS_CORE}"; fi
+    echo $STATS_CORE_OPT
+
+    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}       \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}    \
+        ${STATS_CORE_OPT} ${GDBFLAG}                                \
+        PROVIDED_CFLAGS="""$SOPTS"""
     popd 
 
     pushd shenango/scripts
@@ -145,7 +171,7 @@ if [[ $KONA ]]; then
     core_opts+="FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE "
     core_opts+="EVICTION_CORE=$KONA_EVICTION_CORE "
     core_opts+="ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE} "
-    make all -j $core_opts $kona_cfg PROVIDED_CFLAGS=$kona_cflags
+    make all -j $core_opts $KCFG PROVIDED_CFLAGS="""$KOPTS""" ${DEBUG} ${GDBFLAG}
     popd
 fi
 
@@ -153,6 +179,7 @@ if [[ $SYNTHETIC ]]; then
     if [[ $ONETIME ]]; then 
         # Install rust
         curl https://sh.rustup.rs -sSf | sh
+        source $HOME/.cargo/env
         rustup default nightly-2020-06-06
     fi
     
@@ -168,7 +195,7 @@ if [[ $MEMCACHED ]]; then
     pushd memcached/
     ./autogen.sh 
     if [[ $WITH_KONA ]]; then   KONA_OPT="--with-kona=../kona"; fi
-    ./configure --with-shenango=$PWD/../shenango $KONA_OPT
+    ./configure --with-shenango=$PWD/../shenango ${KONA_OPT} ${GDBFLAG2}
     make clean
     make -j
     popd
@@ -181,7 +208,6 @@ if [[ $SBENCH ]]; then
     pushd shenango/apps/bench
     make clean && make all -j
     popd
-    # echo "Run `./shenango/iokerneld` and then `tbench tbench.config` "
 fi
 
 echo "ALL DONE!"

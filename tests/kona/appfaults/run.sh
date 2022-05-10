@@ -9,13 +9,14 @@
 usage="Example: bash run.sh -f\n
 -f, --force \t force rebuild kona\n
 -kc,--kconfig \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
--kf,--kcflags \t C flags passed to gcc when compiling kona\n
+-ko,--kcflags \t C flags passed to gcc when compiling kona\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
 -t, --threads \t number of app threads\n
 -o, --out \t output file for any results\n
 -s, --safemode \t build kona with safe mode on\n
 -c, --clean \t run only the cleanup part\n
 -d, --debug \t build debug\n
+-d, --gdb \t run with a gdb server (on port :1234) to attach to\n
 -h, --help \t this usage information message\n"
 
 #Defaults
@@ -24,8 +25,8 @@ kona_cfg="PBMEM_CONFIG=CONFIG_WP"
 BINFILE="prefetch.out"
 KONA_DIR="${SCRIPT_DIR}/../../../kona"
 KONA_BIN="${KONA_DIR}/pbmem"
-KONA_RCNTRL_SSH="sc40"
-KONA_RCNTRL_IP="192.168.0.40"
+KONA_RCNTRL_SSH="sc07"
+KONA_RCNTRL_IP="192.168.0.7"
 KONA_RCNTRL_PORT="9202"
 KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
 KONA_MEMSERVER_IP=$KONA_RCNTRL_IP
@@ -76,6 +77,12 @@ case $i in
     kona_cflags="$kona_cflags -DSAFE_MODE"
     ;;
 
+    -g|--gdb)
+    GDB=1
+    DEBUG="DEBUG=1"
+    CFLAGS="$CFLAGS -DDEBUG -g -ggdb"
+    ;;
+
     -h | --help)
     echo -e $usage
     exit
@@ -91,11 +98,11 @@ done
 
 cleanup() {
     rm -f ${BINFILE}
-    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl"
-    ssh ${KONA_MEMSERVER_SSH} "pkill memserver"
+    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
+    ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
+cleanup     #start clean
 if [[ $CLEANUP ]]; then
-    cleanup
     exit 0
 fi
 
@@ -123,20 +130,23 @@ set +e    #to continue to cleanup even on failure
 # prepare for run
 echo "Starting Kona"
 # starting kona controller
+ssh ${KONA_RCNTRL_SSH} "mkdir -p ~/scratch"
 scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
 ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
 sleep 2
 # starting mem server
+ssh ${KONA_MEMSERVER_SSH} "mkdir -p ~/scratch"
 scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
 ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
 sleep 30
 
 # run
+if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
 if [[ $OUTFILE ]]; then 
-    sudo ${env} ./${BINFILE} ${NUM_THREADS} >> $OUTFILE
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${NUM_THREADS} >> $OUTFILE
 else 
-    sudo ${env} ./${BINFILE} ${NUM_THREADS}
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${NUM_THREADS}
 fi
 
 # cleanup

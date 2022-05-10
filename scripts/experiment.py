@@ -31,27 +31,32 @@ IP_MAP = {
     'sc2-hs2-b1607': IP(7),
     'sc2-hs2-b1630': IP(30),
     'sc2-hs2-b1640': IP(40),
+    'sc2-hs2-b1632': IP(32),
 }
 MAC_MAP = {
     'sc2-hs2-b1607': '50:6b:4b:23:a8:25',
     'sc2-hs2-b1630': '50:6b:4b:23:a8:2d',
     'sc2-hs2-b1640': '50:6b:4b:23:a8:a4',
+    'sc2-hs2-b1632': '50:6b:4b:23:a8:1d',
 }
 NIC_PCIE_MAP = {
     'sc2-hs2-b1607': '0000:d8:00.1',
     'sc2-hs2-b1630': '0000:d8:00.1',
     'sc2-hs2-b1640': '0000:d8:00.0',
+    'sc2-hs2-b1632': '0000:d8:00.1',
 }
 IFNAME_MAP = {
     'sc2-hs2-b1607': 'enp216s0f1',
     'sc2-hs2-b1630': 'enp216s0f1',
     'sc2-hs2-b1640': 'enp216s0f0',
+    'sc2-hs2-b1632': 'enp216s0f1',
 }
 
 # Memcached host settings
 SERVER = "sc2-hs2-b1630"
 # CLIENT_SET = ["sc2-hs2-b1607", "sc2-hs2-b1640"]
-CLIENT_SET = ["sc2-hs2-b1607"]
+# CLIENT_SET = ["sc2-hs2-b1607"]
+CLIENT_SET = ["sc2-hs2-b1632"]
 CLIENT_MACHINE_NCORES = 12
 SERVER_CORES = 4
 NEXT_CLIENT_ASSIGN = 0
@@ -64,9 +69,9 @@ OBSERVER_IP = IP_MAP[OBSERVER]
 OBSERVER_MAC = MAC_MAP[OBSERVER]
 
 # Kona host settings
-KONA_RACK_CONTROLLER = "sc2-hs2-b1640"
+KONA_RACK_CONTROLLER = "sc2-hs2-b1607"
 KONA_RACK_CONTROLLER_PORT = 9202
-KONA_MEM_SERVERS = ["sc2-hs2-b1640"]
+KONA_MEM_SERVERS = ["sc2-hs2-b1607"]
 KONA_MEM_SERVER_PORT = 9200
 
 # Defaults
@@ -88,6 +93,7 @@ class Role(Enum):
         return self.value
 role = None
 stopat = 0
+gdb = False
 
 binaries = {
     'iokerneld': {
@@ -160,7 +166,8 @@ def new_memcached_server(threads, experiment, name="memcached", transport="tcp",
     args += " -o hashpower={hashpower}"
 
     args += {
-        'shenango': ",no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0",
+        # 'shenango': ",no_hashexpand,no_lru_crawler,no_lru_maintainer,idle_timeout=0", # UNDO
+        'shenango': ",no_hashexpand,lru_crawler,lru_maintainer,idle_timeout=0",
     }.get(experiment['system'])
 
     x['args'] = "-t {threads} " + args
@@ -240,8 +247,8 @@ def new_measurement_instances(count, server_handle, mpps, experiment, mean=842, 
             'app': 'synthetic',
             'serverip': server_handle['ip'],
             'serverport': server_handle['port'],
-            'output': kwargs.get('output', "buckets"),
-            # 'output': kwargs.get('output', "normal"),       # don't print latencies
+            # 'output': kwargs.get('output', "buckets"),
+            'output': kwargs.get('output', "normal"),       # don't print latencies
             'mpps': float(mpps) / count,
             'protocol': server_handle['protocol'],
             'transport': server_handle['transport'],
@@ -432,8 +439,9 @@ def launch_shenango_program(cfg, experiment):
         params = "RDMA_RACK_CNTRL_IP={} RDMA_RACK_CNTRL_PORT={} ".format(IP_MAP[KONA_RACK_CONTROLLER], KONA_RACK_CONTROLLER_PORT)
         params += "MEMORY_LIMIT={mlimit} EVICTION_THRESHOLD={evict_thr} EVICTION_DONE_THRESHOLD={evict_done_thr} ".format(**cfg["kona"])
         params += "EVICTION_BATCH_SIZE={evict_batch_sz} ".format(**cfg["kona"])
-        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
-            params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args) 
+        gdbcmd = "gdb --args" if gdb else ""
+        fullcmd = "sudo {params} numactl -N {numa} -m {numa} {gdb} {bin} {name}.config -u ayelam {args} 2>&1 | ts %s  > {name}.out".format(
+            params=params, numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], gdb=gdbcmd, args=args) 
     elif cfg['name'] == 'memcached':    # HACK: Need ts for memcached but not synthetic app!
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} 2>&1 | ts %s  > {name}.out".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)  
@@ -441,17 +449,26 @@ def launch_shenango_program(cfg, experiment):
         fullcmd = "numactl -N {numa} -m {numa} {bin} {name}.config {args} > {name}.out 2> {name}.err".format(
             numa=NIC_NUMA_NODE, bin=cfg['binary'], name=cfg['name'], args=args)
     print("Running " + fullcmd)
-    # fullcmd = "sleep 3000"
-    if stopat == 2:     time.sleep(3000)
+    if stopat == 2:
+        print("Stopped for debugging at {}".format(stopat)) 
+        time.sleep(300)
 
     ### HACK
     # if THISHOST.startswith("pd") or THISHOST == "sc2-hs2-b1640":
     #     fullcmd = "export RUST_BACKTRACE=1; " + fullcmd
 
+    # If GDB, prompt for manual start and wait
+    if gdb and "kona" in cfg:
+        proc = None
+        print("Waiting 2 min to start memcached with gdb!")  
+        print("Run 'handle SIG33 nostop' to avoid stopping at timer? events!")  
+        time.sleep(120)
+        return proc
+        
     proc = subprocess.Popen(fullcmd, shell=True, cwd=experiment['name'])
     time.sleep(3)
     proc.poll()
-    print(str(proc.pid) + " returns code: " + str(proc.returncode))
+    print(str(proc.pid) + " returns code: " + str(proc.returncode))  
     assert not proc.returncode
     return proc
 
@@ -594,7 +611,9 @@ def setup_and_run_apps(experiment):
                 cmd = "exec ssh -t -t {host} 'python {dir}/{script} -r app -n {dir} > {out} 2>&1'".format(
                     host=host, dir=experiment['name'], script=os.path.basename(__file__), out=outfile)
                 print(cmd)
-                if stopat == 1:     time.sleep(3000)
+                if stopat == 1:
+                    print("Stopped for debugging at {}".format(stopat)) 
+                    time.sleep(3000)
                 proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 time.sleep(10)
                 # TODO: Returncode doesn't seem to be working without ssh -t -t. CHECK!
@@ -678,22 +697,26 @@ def execute_experiment(experiment):
         setup_clients(experiment)
         time.sleep(10)              # WHY?
         if OBSERVER: procs.append(setup_observer(experiment)) 
-        if stopat == 3:     time.sleep(3000)
+        if stopat == 3:
+            print("Stopped for debugging at {}".format(stopat))   
+            time.sleep(3000)
         runremote("ulimit -S -c unlimited; python {dir}/{script} -r client -n {dir} > {dir}/py.{{}}.log 2>&1".format(
             dir=experiment['name'], script=os.path.basename(__file__)), experiment['clients'].keys(), die_on_failure=True)
-        print("DUMP MEMCACHED NOW!")
-        if stopat == 4:     time.sleep(3000)
+        if stopat == 4:
+            print("Stopped for debugging at {}".format(stopat))  
+            time.sleep(3000)
         # time.sleep(300) #UNDO: Wait some time to look at background numbers
     except:
         error = True
         raise
     finally:
-        if not error:
-            dump_cores_if_asked(experiment)
+        # if not error:
+        #     dump_cores_if_asked(experiment)
         collect_logs(experiment, not error)
         for p in procs:
-            p.terminate()
-            p.wait()
+            if p is not None:
+                p.terminate()
+                p.wait()
             del p
         cleanup()
     return experiment
@@ -731,12 +754,14 @@ def main():
     parser.add_argument('-ket', '--konaet', action='store', help='kona evict threshold', type=float, default=DEFAULT_KONA_EVICT_THR)
     parser.add_argument('-kedt', '--konaedt', action='store', help='kona evict done threshold', type=float, default=DEFAULT_KONA_EVICT_DONE_THR)
     parser.add_argument('-kebs', '--konaebs', action='store', help='kona evict batch size', type=int, default=DEFAULT_EVICTION_BATCH_SIZE)
-    parser.add_argument('--stopat', action='store', help="stop program at a certain point (for debugging purposes)", type=int, default=0)
+    parser.add_argument('--gdb', action='store_true', help="wait to attach the main process to gdb (for debugging)", default=False)
+    parser.add_argument('--stopat', action='store', help="stop program at a certain point (for debugging)", type=int, default=0)
 
     args = parser.parse_args()
 
-    global role, stopat
+    global role, stopat, gdb
     stopat = args.stopat
+    gdb = args.gdb
     role = args.role
     if role == Role.host:
         assert is_server()

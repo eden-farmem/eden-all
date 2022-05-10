@@ -48,9 +48,11 @@ done
 #Defaults
 HIT_RATIO=0.9
 HIT_TIME_NS=1400
-PF_TIME_US=18500
+PF_TIME_NS=15000
+UP_PF_TIME_NS=17000
+NOUP_PF_TIME_NS=13500
 KONA_PF_RATE=110000
-UPTIME_NS=4000
+UPTIME_NS=2500
 TMP_FILE_PFX='tmp_sim_'
 PLOTLIST=${TMP_FILE_PFX}plots
 
@@ -78,11 +80,11 @@ if [ "$PLOTID" == "1" ]; then
                         for hr in $(seq 0.5 0.1 1); do
                             if [ "$mode" == "mod" ]; then 
                                 python model.py -c $cores -h1 $hr -th $HIT_TIME_NS \
-                                    -tf $PF_TIME_US -kr $krate  >> $out
+                                    -tf $PF_TIME_NS -kr $krate  >> $out
                             else
                                 echo "simulating $cores $krate" "$hr"
                                 ./simulate $cores "$krate" "$HIT_TIME_NS" \
-                                    "$PF_TIME_US" "$hr" 0 "" >> $out
+                                    "$PF_TIME_NS" "$hr" 0 "" >> $out
                             fi
                         done
                     done
@@ -118,10 +120,10 @@ if [ "$PLOTID" == "2" ]; then
                         for hr in $(seq 0.5 0.1 1); do
                             if [ "$mode" == "mod" ]; then 
                                 python model.py -c $cores -h1 $hr -th $HIT_TIME_NS \
-                                    -tf $PF_TIME_US -kr $krate -u -tu $UPTIME_NS >> $out
+                                    -tf $PF_TIME_NS -kr $krate -u -tu $UPTIME_NS >> $out
                             else
                                 ./simulate $cores "$krate" "$HIT_TIME_NS" \
-                                    "$PF_TIME_US" "$hr" 1 "$UPTIME_NS" | tee -a $out
+                                    "$PF_TIME_NS" "$hr" 1 "$UPTIME_NS" | tee -a $out
                             fi
                         done
                     done
@@ -185,37 +187,45 @@ fi
 ## 4. simulation with and without upcalls, varying kona rate
 if [ "$PLOTID" == "4" ]; then
     montagename=${outdir}/xput_up_noup.${PLOTEXT}
-    for krate in 30000 100000 500000; do 
+    # for krate in 30000 100000 500000; do 
+    for krate in 125000; do 
         plotname=${outdir}/xput_up_noup_kr${krate}.${PLOTEXT}
         if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
             if [[ $FORCE ]]; then   #generate data
                 for mode in "up" "noup"; do 
                     gcc simulate.c -lpthread -o simulate $DEBUG_FLAG
-                    for cores in 2 4 6 8; do
+                    # for cores in 2 4 6 8; do
+                    for cores in 1 2 3 4 5; do
                         out=$outdir/xput_${mode}_${cores}_${krate}
                         echo "cores,pfcost,hitratio,hitcost,xput1,xput,faults" > $out
+                        realkrate=$krate
                         for hr in $(seq 0.5 0.1 1); do
                             if [ "$mode" == "noup" ]; then 
-                                ./simulate $cores "$krate" "$HIT_TIME_NS" \
-                                    "$PF_TIME_US" "$hr" 0 "" | tee -a $out
+                                # if [[ $krate -eq 125000 ]]; then realkrate=110000;  fi  #to get closer to reality
+                                ./simulate $cores "$realkrate" "$HIT_TIME_NS" \
+                                    "$NOUP_PF_TIME_NS" "$hr" 0 "" | tee -a $out
                             else
-                                ./simulate $cores "$krate" "$HIT_TIME_NS" \
-                                    "$PF_TIME_US" "$hr" 1 "$UPTIME_NS" | tee -a $out
+                                # if [[ $krate -eq 125000 ]]; then realkrate=144000;  fi
+                                ./simulate $cores "$realkrate" "$HIT_TIME_NS" \
+                                    "$UP_PF_TIME_NS" "$hr" 1 "$UPTIME_NS" | tee -a $out
                             fi
                         done
+                        echo realkrate: $realkrate
                     done
                 done
             fi
             python3 ${SCRIPT_DIR}/../scripts/plot.py    \
                 -xc hitratio -xl "Local Hit Ratio" -yc xput -yl "MOPS" --ymul 1e-6  \
+                -d ${outdir}/xput_up_1_${krate}    -l "1"   -ls solid   -cmi 0      \
+                -d ${outdir}/xput_noup_1_${krate}    -l ""    -ls dashed  -cmi 1    \
                 -d ${outdir}/xput_up_2_${krate}    -l "2"   -ls solid   -cmi 0      \
                 -d ${outdir}/xput_noup_2_${krate}    -l ""    -ls dashed  -cmi 1    \
+                -d ${outdir}/xput_up_3_${krate}    -l "3"   -ls solid   -cmi 0      \
+                -d ${outdir}/xput_noup_3_${krate}    -l ""    -ls dashed  -cmi 1    \
                 -d ${outdir}/xput_up_4_${krate}    -l "4"   -ls solid   -cmi 0      \
                 -d ${outdir}/xput_noup_4_${krate}    -l ""    -ls dashed  -cmi 1    \
-                -d ${outdir}/xput_up_6_${krate}    -l "6"   -ls solid   -cmi 0      \
-                -d ${outdir}/xput_noup_6_${krate}    -l ""    -ls dashed  -cmi 1    \
-                -d ${outdir}/xput_up_8_${krate}    -l "8"   -ls solid   -cmi 0      \
-                -d ${outdir}/xput_noup_8_${krate}    -l ""    -ls dashed  -cmi 1    \
+                -d ${outdir}/xput_up_5_${krate}    -l "5"   -ls solid   -cmi 0      \
+                -d ${outdir}/xput_noup_5_${krate}    -l ""    -ls dashed  -cmi 1    \
                 -lt "App CPU" -t "Kona $((krate/1000))k"                          \
                 --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname 
         fi
@@ -254,12 +264,12 @@ if [ "$PLOTID" == "5" ]; then
                         echo "$header" > $upfile
                         for cores in 2 4 6 8; do
                             ./simulate $cores "$krate" "$HIT_TIME_NS" \
-                                "$PF_TIME_US" "$HIT_R1" 1 "$UPTIME_NS" "$HIT_R2" | tee -a $upfile   #upcalls
+                                "$PF_TIME_NS" "$HIT_R1" 1 "$UPTIME_NS" "$HIT_R2" | tee -a $upfile   #upcalls
                         done
                         echo "$header" > $noupfile
                         for cores in 2 4 6 8; do
                             ./simulate $cores "$krate" "$HIT_TIME_NS" \
-                                "$PF_TIME_US" "$HIT_R1" 0 "" "$HIT_R2" | tee -a $noupfile           #no upcalls
+                                "$PF_TIME_NS" "$HIT_R1" 0 "" "$HIT_R2" | tee -a $noupfile           #no upcalls
                         done
                     fi
                     python3 ${SCRIPT_DIR}/../scripts/plot.py -xc cores -xl "App CPU" \
@@ -310,10 +320,10 @@ if [ "$PLOTID" == "6" ]; then
                         for hittime in $(seq 500 400 10000); do
                             if [ "$mode" == "noup" ]; then 
                                 ./simulate $cores "$krate" "$hittime" \
-                                    "$PF_TIME_US" "$hr" 0 "" | tee -a $out
+                                    "$PF_TIME_NS" "$hr" 0 "" | tee -a $out
                             else
                                 ./simulate $cores "$krate" "$hittime" \
-                                    "$PF_TIME_US" "$hr" 1 "$UPTIME_NS" | tee -a $out
+                                    "$PF_TIME_NS" "$hr" 1 "$UPTIME_NS" | tee -a $out
                             fi
                         done
                     done
@@ -336,6 +346,47 @@ if [ "$PLOTID" == "6" ]; then
     done
     montage -tile 0x1 -geometry +5+5 -border 5 @$PLOTLIST ${montagename}
     display $montagename &
+fi
+
+## 6. simulation with and without upcalls, varying pf cost
+if [ "$PLOTID" == "7" ]; then
+    krate=500000
+    for hr in 0.5 0.9 0.99; do 
+        hitp=`echo $hr | awk '{ print $0*100 }'`
+        plotname=${outdir}/xput_up_noup_kr${krate}_hr${hitp}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            if [[ $FORCE ]]; then   #generate data
+                for mode in "up" "noup"; do 
+                    gcc simulate.c -lpthread -o simulate $DEBUG_FLAG
+                    for cores in 2 4 6 8; do
+                        out=$outdir/xput_${mode}_${cores}_${krate}_hr${hitp}
+                        echo "cores,pfcost,hitratio,hitcost,xput1,xput,faults" > $out
+                        for pfcost in $(seq 5000 5000 50000); do
+                            if [ "$mode" == "noup" ]; then 
+                                ./simulate $cores "$krate" "$HIT_TIME_NS" \
+                                    "$pfcost" "$hr" 0 "" | tee -a $out
+                            else
+                                ./simulate $cores "$krate" "$HIT_TIME_NS" \
+                                    "$pfcost" "$hr" 1 "$UPTIME_NS" | tee -a $out
+                            fi
+                        done
+                    done
+                done
+            fi
+            python3 ${SCRIPT_DIR}/../scripts/plot.py    \
+                -xc pfcost -xl "PF Time (µs)" -yc xput -yl "MOPS" --ymul 1e-6 --xmul 1e-3   \
+                -d ${outdir}/xput_up_2_${krate}_hr${hitp}   -l "2"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_2_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -d ${outdir}/xput_up_4_${krate}_hr${hitp}   -l "4"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_4_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -d ${outdir}/xput_up_6_${krate}_hr${hitp}   -l "6"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_6_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                -d ${outdir}/xput_up_8_${krate}_hr${hitp}   -l "8"   -ls solid   -cmi 0     \
+                -d ${outdir}/xput_noup_8_${krate}_hr${hitp} -l ""    -ls dashed  -cmi 1     \
+                --size 4.5 3 -fs 11 -of $PLOTEXT -o $plotname 
+        fi
+        display $plotname &
+    done
 fi
 
 # cleanup

@@ -10,11 +10,12 @@ import glob
 from collections import defaultdict
 import bisect
 
+CLIENT="sc2-hs2-b1632"
 PAGE_OFFSET = 12
-ADDR_PATTERN = "(read|write|eviction|writep) fault at ([a-z0-9]+)"
+ADDR_PATTERN = "^(read|write|eviction|writep) fault at ([a-z0-9]+)$"
 CHECKPT_PATTERN = "Checkpoint (\S+):([0-9]+)"
 ITEM_PATTERN = "SET new item at 0x([a-z0-9]+)"
-CLIENT_LOG = "0-sc2-hs2-b1607.memcached.out"
+CLIENT_LOG = "0-{}.memcached.out".format(CLIENT)
 SLAB_CLASS_PATTERN = "slab class\s+([0-9]+): chunk size\s+([0-9]+) perslab\s+([0-9]+)"
 NEW_SLAB_PATTERN = "new slab at 0x([a-z0-9]+) for class ([0-9]+)"
 ITEM_SLAB_SIZE = 192 #MAGIC

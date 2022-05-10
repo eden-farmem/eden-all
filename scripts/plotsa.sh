@@ -9,7 +9,7 @@ DATADIR=data
 GLOBALPLOTDIR=plots
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
 
 usage="\n
 -n, --name \t\t\t experiment to consider\n

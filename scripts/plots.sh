@@ -8,7 +8,7 @@ PLOTEXT=png
 DATADIR=data
 HOST_CORES_PER_NODE=28
 HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1607"
+CLIENT="sc2-hs2-b1632"
 ANNOTATE=1  #Default
 
 usage="\n
@@ -132,9 +132,10 @@ if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}  \
             -yc "n_faults_r" -l "Read Faults" -ls solid         \
             -yc "n_faults_w" -l "Write Faults" -ls solid        \
+            -yc "n_afaults_r" -l "Read App Faults" -ls solid    \
+            -yc "n_afaults_w" -l "Write App Faults" -ls solid   \
             -yc "n_faults_wp" -l "WP Faults" -ls solid          \
             -yc "n_evictions" -l "Evictions" -ls solid          \
-            -yc "mem_pressure" -l "Mem pressure" -ls dashed     \
             -xc "time" -xl  "Time (secs)" -yl "Count (x 1000)"  \
             --twin 5  -tyl "Size (MB)" --tymul 1e-6             \
             -lt "Kona Faults"  --ymul 1e-3                      \
@@ -171,31 +172,32 @@ if [[ $VERBOSE ]]; then
     datafile=$statsdir/rstat_memcached
     plotname=${PLOTDIR}/${name}_runtime.$PLOTEXT
     if [[ $FORCE ]] || [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then 
-        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
-            -yc "rxpkt" -l "From I/O Core" -ls solid                \
-            -yc "txpkt" -l "To I/O Core" -ls solid                  \
-            -yc "drops" -l "Pkt drops" -ls solid                    \
-            -yc "cpupct" -l "CPU Utilization" -ls dashed            \
-            -xc "time" -xl  "Time (secs)" -yl "Million pkts/sec"    \
-            --twin 4  -tyl "CPU Cores" --tymul 1e-2 --ymul 1e-6     \
-            --tymin 0 --ymin 0 -lt "Shenango Runtime"               \
-            --size 6 3 -fs 11  -of $PLOTEXT  -o $plotname
-        # display $plotname & 
-        files="$files $plotname"
-
-        # plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
         # python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
-        #     -yc "stolenpct" -l "Stolen Work %" -ls solid            \
-        #     -yc "migratedpct" -l "Core Migration %" -ls solid       \
-        #     -yc "localschedpct" -l "Core Local Work %" -ls solid    \
-        #     -yc "rescheds" -l "Reschedules" -ls dashed              \
-        #     -yc "parks" -l "KThread Parks" -ls dashed               \
-        #     -xc "time" -xl  "Time (secs)" -yl "Percent"             \
-        #     --twin 4  -tyl "Million Times" --tymul 1e-6             \
-        #     --tymin 0 --ymin 0 --ymax 110 -t "Shenango Scheduler"   \
-        #     --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
+        #     -yc "rxpkt" -l "From I/O Core" -ls solid                \
+        #     -yc "txpkt" -l "To I/O Core" -ls solid                  \
+        #     -yc "drops" -l "Pkt drops" -ls solid                    \
+        #     -yc "cpupct" -l "CPU Utilization" -ls dashed            \
+        #     -xc "time" -xl  "Time (secs)" -yl "Million pkts/sec"    \
+        #     --twin 4  -tyl "CPU Cores" --tymul 1e-2 --ymul 1e-6     \
+        #     --tymin 0 --ymin 0 -lt "Shenango Runtime"               \
+        #     --size 6 3 -fs 11  -of $PLOTEXT  -o $plotname
         # display $plotname & 
         # files="$files $plotname"
+
+        plotname=${PLOTDIR}/${name}_scheduler.$PLOTEXT
+        python3 ${SCRIPT_DIR}/plot.py -d ${datafile} ${VLINES}      \
+            -yc "stolenpct" -l "Stolen Work %" -ls solid            \
+            -yc "migratedpct" -l "Core Migration %" -ls solid       \
+            -yc "localschedpct" -l "Core Local Work %" -ls solid    \
+            -yc "rescheds" -l "Reschedules" -ls dashed              \
+            -yc "parks" -l "KThread Parks" -ls dashed               \
+            -yc "pf_retries" -l "PF retries" -ls dashed             \
+            -xc "time" -xl  "Time (secs)" -yl "Percent"             \
+            --twin 4  -tyl "Million Times" --tymul 1e-6             \
+            --tymin 0 --ymin 0 --ymax 110 -t "Shenango Health"      \
+            --size 6 3 -fs 12  -of $PLOTEXT  -o $plotname
+        display $plotname & 
+        files="$files $plotname"
     fi
 fi
 

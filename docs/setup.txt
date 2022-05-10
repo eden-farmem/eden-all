@@ -9,7 +9,7 @@ is built for another kernel version)
     git clone https://github.com/shenango/shenango 
     or, in our case:
         git clone git@gitlab.eng.vmware.com:ayelam/rmem-scheduler.git   #needs git ssh access
-        git config --global user.email "ayelam@vmware.com"
+        git config --global user.email "yelama@vmware.com"
         git config --global user.name "Anil Yelam"
         cd rmem-scheduler
         git submodule init
@@ -87,7 +87,7 @@ is built for another kernel version)
             sudo vim /etc/ntp.conf 
                 Comment out default ubuntu servers and pools. Add: 
                     logfile /var/log/ntpd.log
-                    server sc2-hs2-b1640.eng.vmware.com iburst
+                    server sc2-hs2-b1630.eng.vmware.com iburst
             sudo systemctl restart ntp
             sudo systemctl status ntp
             sudo systemctl stop ntp
@@ -133,7 +133,30 @@ Linux Kernel Patching
   sudo make modules_install
   sudo make install
 
+  After patching, re-install ofed:
+    ./mlnxofedinstall --all --add-kernel-support
+  Without this, the NICs would still work but will cause issues when using RDMA + DPDK, 
+  especially the errors while writing PAGES back to remote memory in Kona:
+    "[./rdma.c][do_rdma_op2:109]: [try_write FLUSH_ENTIRE_PAGE] ibv_post_send op=0 errno=12 outstanding=0
+    ./rdma.c:110: do_rdma_op2: Assertion `(0)' failed."
+
 Cleaning up Boot Partition
 ==========================
 https://askubuntu.com/questions/345588/what-is-the-safest-way-to-clean-up-boot-partition
+
+
+Setting up a new server
+========================
+As root:
+    sudo useradd -s /bin/bash -m ayelam
+    sudo visudo --> ALL privileges
+    sudo passwd ayelam
+From a known machine:
+    Add new server to ~/.ssh/config
+    scp -r /home/ayelam/.ssh/ <dest>:~/
+As ayelam:
+    Sync time with ntpd
+    Install packages in scripts: experiment.py
+
+
 
