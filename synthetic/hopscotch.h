@@ -40,6 +40,11 @@
 #define KEY_LEN                         12
 #define MAX_LOCKLESS_RETRIES            2
 
+// #define LOCK_INSIDE_BUCKET
+#ifndef BUCKETS_PER_LOCK
+#define BUCKETS_PER_LOCK                10000
+#endif
+
 /*
  * Buckets
  */
@@ -53,7 +58,7 @@ struct hopscotch_bucket {
      * used rarely by readers. yields to other threads if not available */
     mutex_t rw_lock;    
     /* very fine-grained lock to make reading/writing kv-data atomic 
-     * as they're bigger than what atomics can handle */
+     * as they're bigger than what built-in atomics can handle */
     spinlock_t kv_lock;    
     uint64_t timestamp;
     atomic_t marked;
@@ -67,6 +72,7 @@ struct hopscotch_hash_table {
     size_t exponent;
     struct hopscotch_bucket *buckets;
     int _allocated;
+    spinlock_t* kv_locks;
 };
 
 #ifdef __cplusplus
