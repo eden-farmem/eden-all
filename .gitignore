@@ -8,3 +8,4 @@ sim/data/**
 tests/*/*/lat-*
 data
 *.out
+out

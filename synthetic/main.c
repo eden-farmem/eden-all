@@ -28,7 +28,7 @@
 #define MILLION				1000000
 #define MAX_OPS_PER_CORE	(10*MILLION)			
 // #define MAX_OPS_PER_CORE	10000			
-#define WARMUP_SECS 		10	
+#define WARMUP_SECS 		30	
 #define MIN_RUNTIME_SECS 	5	
 #define MAX_RUNTIME_SECS 	30
 #ifdef DEBUG
@@ -79,6 +79,14 @@ BYTE aes_key[32] = {
 	0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
 };
 
+/* save unix timestamp of a checkpoint */
+void save_checkpoint(char* name) {
+	FILE* fp = fopen(name, "w");
+	fprintf(fp, "%lu", time(NULL));
+	fflush(fp);
+	fclose(fp);
+}
+
 /* prepare hash table */
 void setup_table(void* arg) {
 	int ret, i;
@@ -127,7 +135,7 @@ void setup_blobs(void* arg) {
 				repeat = rand_next(&rand) % 100;
 				rand_num = rand_next(&rand);
 			}
-			offset = i*BLOB_SIZE + j*sizeof(uint64_t);
+			offset = (targs->start + i) * BLOB_SIZE + j*sizeof(uint64_t);
 			*(uint64_t*)(blobdata + offset) = rand_num;
 			repeat--;
 		}
@@ -175,7 +183,7 @@ void prepare_workload(void* arg) {
 static inline void process_request(int key, int nblobs,
 		struct snappy_env* env,
 		char* encbuffer, char* zipbuffer) {
-	int ret, found;
+	int i, ret, found;
 	size_t ziplen;
 	void *data, *nextin;
 	unsigned long value;
@@ -192,6 +200,10 @@ static inline void process_request(int key, int nblobs,
 	ASSERT(0 <= value && value < nblobs);
 	nextin = blobdata + value * BLOB_SIZE;
 
+	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
+	possible_read_fault_on(nextin);
+	possible_read_fault_on(nextin + PAGE_SIZE);
+
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */
 	ret = aes_encrypt_cbc(nextin, BLOB_SIZE, encbuffer, aes_ksched, AES_KEY_SIZE, aes_iv);
@@ -203,6 +215,16 @@ static inline void process_request(int key, int nblobs,
 	/* compress the array data */
 	ret = snappy_compress(env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
 	ASSERTZ(ret);
+	pr_debug("snappy compression done. inlen: %ld outlen: %lu", BLOB_SIZE, ziplen);
+	nextin = zipbuffer;
+#endif
+
+#ifdef COMPRESS_MULTIPLE 
+	/* compress the array data */
+	for (i = 0; i < 5; i++) {
+		ret = snappy_compress(env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
+		ASSERTZ(ret);
+	}
 	pr_debug("snappy compression done. inlen: %ld outlen: %lu", BLOB_SIZE, ziplen);
 	nextin = zipbuffer;
 #endif
@@ -278,7 +300,7 @@ void timeout_thread(void* arg) {
 
 /* main thread called into by shenango runtime */
 void main_thread(void* arg) {
-	int i, j, ret;
+	int i, j, ret, found;
 	struct main_args* margs = (struct main_args*) arg;
 	unsigned long nkeys = margs->nkeys;
 	unsigned long nreqs = margs->nreqs;
@@ -296,8 +318,8 @@ void main_thread(void* arg) {
 	/* core data stuctures: these go in remote memory */
     ht = hopscotch_init(NULL, next_power_of_two(nkeys) + 1);
     ASSERT(ht);
-	blobdata = remoteable_alloc(nkeys*BLOB_SIZE);
-    pr_info("memory for blob array: %lu MB", nkeys*BLOB_SIZE / (1<<20));
+	blobdata = remoteable_alloc(nblobs*BLOB_SIZE);
+    pr_info("memory for blob array: %lu MB", nblobs*BLOB_SIZE / (1<<20));
 	ASSERT(blobdata);
 
 	/* setup hash table */
@@ -314,7 +336,7 @@ void main_thread(void* arg) {
 		ASSERTZ(ret);
 	}
 	waitgroup_wait(&workers);
-	pr_info("hash table/blob data setup done");
+	pr_info("hash table setup done");
 
 	/* setup blob array */
 	waitgroup_init(&workers);
@@ -329,7 +351,7 @@ void main_thread(void* arg) {
 		ASSERTZ(ret);
 	}
 	waitgroup_wait(&workers);
-	pr_info("hash table/blob data setup done");
+	pr_info("blob data setup done");
 
 #ifdef DEBUG
 	/* print table */
@@ -337,7 +359,7 @@ void main_thread(void* arg) {
 	printf("Table: ");
 	for (j = 0; j < nkeys; j++) {
 		*(uint32_t*)key_template = j;
-		data = hopscotch_lookup(ht, key_template);
+		data = hopscotch_lookup(ht, key_template, &found);
 		printf("(%d: %lu) ", j, (unsigned long) data);
 	}
 	printf("\n");
@@ -403,12 +425,15 @@ void main_thread(void* arg) {
 	timeout_us = WARMUP_SECS * MILLION;
 	ret = thread_spawn(timeout_thread, (void*) timeout_us);
 	ASSERTZ(ret);
+	save_checkpoint("warmup_start");
 	barrier_wait(&warmup);		/* kick off */
 	barrier_wait(&warmedup);	/* and wait */
+	save_checkpoint("warmup_end");
 #endif
 
 	/* start the run (with timeout) */
 	pr_info("starting the run");
+	save_checkpoint("run_start");
 	start_tsc = rdtsc();
 	stop_button = 0;
 	timeout_us = MAX_RUNTIME_SECS * MILLION;
@@ -417,6 +442,7 @@ void main_thread(void* arg) {
 	barrier_wait(&start);		/* kick off */
 	waitgroup_wait(&workers);	/* and wait */
 	duration_tsc = rdtscp(NULL) - start_tsc;
+	save_checkpoint("run_end");
 
 	/* write result */
 	duration_secs = duration_tsc * 1.0 / (MILLION * cycles_per_us);
@@ -441,15 +467,6 @@ int main(int argc, char *argv[]) {
 	}
 	cycles_per_us = time_calibrate_tsc();
 	printf("time calibration - cycles per µs: %lu\n", cycles_per_us);
-
-#ifdef WITH_KONA
-	/*shenango includes kona init with runtime; just set params */
-	char env_var[200];
-	sprintf(env_var, "MEMORY_LIMIT=%llu", MEM_REGION_SIZE);
-	putenv(env_var);	/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_THRESHOLD=0.99");			/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_DONE_THRESHOLD=0.99");	/*32gb, BIG to avoid eviction*/
-#endif
 
 	struct main_args margs;
 	margs.ncores = atoi(argv[2]);

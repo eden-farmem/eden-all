@@ -22,8 +22,10 @@
 #ifdef WITH_KONA
 #include "klib.h"
 #define remoteable_alloc rmalloc
+#define remoteable_free rfree
 #else 
 #define remoteable_alloc malloc
+#define remoteable_free free
 #endif
 
 #define ASSERT(x) assert((x))

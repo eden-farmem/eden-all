@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "asm/atomic.h"
 #include "base/atomic.h"
+#include "runtime/pgfault.h"
 
 /*
  * Jenkins Hash Function
@@ -49,6 +50,44 @@ _jenkins_hash(uint8_t *key, size_t len)
     hash += (hash << 15);
 
     return hash;
+}
+
+/*
+ * Fine-grained locking of bucket kv data
+ */
+static __inline__ void 
+bucket_data_lock(struct hopscotch_hash_table *ht, 
+        int bucket_id, 
+        int prev_bucket_id) {
+#ifdef LOCK_INSIDE_BUCKET
+    struct hopscotch_bucket* b = &(ht->buckets[bucket_id]);
+    spin_lock(&b->kv_lock);
+#else
+    int lock_id = bucket_id / BUCKETS_PER_LOCK;
+    if (prev_bucket_id > 0 && 
+        lock_id == prev_bucket_id / BUCKETS_PER_LOCK)
+        /* already have the lock */
+        return;
+    spin_lock(&ht->kv_locks[lock_id]);
+#endif
+}
+
+static __inline__ void 
+bucket_data_unlock(struct hopscotch_hash_table *ht,
+        int bucket_id, 
+        int prev_bucket_id) {
+#ifdef LOCK_INSIDE_BUCKET
+    struct hopscotch_bucket* b = &(ht->buckets[bucket_id]);
+    spin_unlock(&b->kv_lock);
+#else
+    /* shared locks */
+    int lock_id = bucket_id / BUCKETS_PER_LOCK;
+    if (prev_bucket_id > 0 && 
+        lock_id == prev_bucket_id / BUCKETS_PER_LOCK)
+        /* already have the lock */
+        return;
+    spin_unlock(&ht->kv_locks[lock_id]);
+#endif
 }
 
 /*
@@ -74,6 +113,16 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
         spin_lock_init(&buckets[i].kv_lock);
         buckets[i].marked = (atomic_t) ATOMIC_INIT(0);
     }
+
+    size_t nlocks = (nbuckets / BUCKETS_PER_LOCK) + 1;
+    spinlock_t* spinlocks = remoteable_alloc(sizeof(spinlock_t) * nlocks);
+    for (i = 0; i < nlocks; i++)
+        spin_lock_init(&spinlocks[i]);
+#ifndef LOCK_INSIDE_BUCKET
+    pr_info("number of hash table locks: %lu", nlocks);
+    pr_info("memory for hash table locks: %lu KB", 
+        sizeof(spinlock_t) * nlocks / (1<<10));
+#endif
 #endif
 
     if ( NULL == ht ) {
@@ -87,6 +136,7 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
     }
     ht->exponent = exponent;
     ht->buckets = buckets;
+    ht->kv_locks = spinlocks; 
 
     return ht;
 }
@@ -97,7 +147,7 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
 void
 hopscotch_release(struct hopscotch_hash_table *ht)
 {
-    free(ht->buckets);
+    remoteable_free(ht->buckets);
     if ( ht->_allocated ) {
         free(ht);
     }
@@ -274,6 +324,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int *found)
             locked = true;
         }
 
+        possible_read_fault_on(&(bucket->timestamp));
         timestamp = load_acquire(&(bucket->timestamp)); /* fence */
         hopinfo = bucket->hopinfo;
         if (hopinfo) {
@@ -281,13 +332,13 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int *found)
                 if (hopinfo & (1 << i)) {
                     /* read key-value atomically. TODO: how expensive is this? */
                     hop = &(ht->buckets[idx + i]);
-                    spin_lock(&hop->kv_lock);
+                    bucket_data_lock(ht, idx + i, -1);
                     if(0 == memcmp(key, hop->key, KEY_LEN)) {
                         /* found */
                         value = hop->data;
                         *found = 1;
                     }
-                    spin_unlock(&hop->kv_lock);
+                    bucket_data_unlock(ht, idx + i, -1);
                     if (*found)
                         goto out;
                 }
@@ -328,7 +379,7 @@ int
 hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
 {
     uint32_t h, hopinfo;
-    size_t idx, i, sz, off, j;
+    size_t idx, i, sz, off, j, fromidx, toidx;
     struct hopscotch_bucket *bucket, *hop;
     struct hopscotch_bucket *anchor, *from, *to;
     bool marked, found;
@@ -350,13 +401,13 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
             if (hopinfo & (1 << i)) {
                 /* read and update key-value atomically. TODO: how expensive is this? */
                 hop = &(ht->buckets[idx + i]);
-                spin_lock(&hop->kv_lock);
+                bucket_data_lock(ht, idx + i, -1);
                 if (0 == memcmp(key, hop->key, KEY_LEN)) {  
                     /* found */
                     hop->data = data; 
                     found = true;
                 }
-                spin_unlock(&hop->kv_lock);
+                bucket_data_unlock(ht, idx + i, -1);
                 if (found) {
                     retval = 0;
                     pr_debug("replacing key %lu", (uint64_t)data);
@@ -377,7 +428,8 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
             while ( i - idx >= HOPSCOTCH_HOPINFO_SIZE ) {
                 /* but it is out of the hopscotch window; we need to move it up */
                 pr_debug("inserting key %lu: bucket out of hop window", (uint64_t)data);
-                to = &(ht->buckets[i]);
+                toidx = i;
+                to = &(ht->buckets[toidx]);
                 for ( j = 1; j < HOPSCOTCH_HOPINFO_SIZE; j++ ) {
                     /* for all buckets (anchors) for which the empty item 
                      * falls within hop window... */
@@ -403,19 +455,21 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
                     }
 
                     /* found a swappable item, move data */
-                    from = &(ht->buckets[i - j + off]);
+                    fromidx = i - j + off;
+                    from = &(ht->buckets[fromidx]);
 
                     /* always take nested locks in top-down order */
                     /* TODO: can we do without locking _to_? */
-                    spin_lock(&from->kv_lock);
-                    spin_lock(&to->kv_lock);
+
+                    bucket_data_lock(ht, fromidx, -1);
+                    bucket_data_lock(ht, toidx, fromidx);
                     memcpy(to->key, from->key, KEY_LEN);
                     to->data = from->data;
                     // clearing _from_ values is not really necessary
                     // memset(from.key, 0, KEY_LEN);
                     // from.data = NULL;
-                    spin_unlock(&to->kv_lock);
-                    spin_unlock(&from->kv_lock);
+                    bucket_data_unlock(ht, toidx, -1);
+                    bucket_data_unlock(ht, fromidx, toidx);
 
                     /* sanity check that _from_ was already marked */
                     ASSERT(atomic_read(&from->marked) == 1);
@@ -442,10 +496,10 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
             pr_debug("inserting key %lu: at bucket %ld", (uint64_t)data, i);
             off = i - idx;
             to = &(ht->buckets[i]);
-            spin_lock(&to->kv_lock);
+            bucket_data_lock(ht, i, -1);
             memcpy(to->key, key, KEY_LEN);
             to->data = data;
-            spin_unlock(&to->kv_lock);
+            bucket_data_unlock(ht, i, -1);
             bucket->hopinfo |= (1ULL << off);
 
             /* success */
@@ -493,13 +547,13 @@ hopscotch_remove(struct hopscotch_hash_table *ht, void *key)
             if (hopinfo & (1 << i)) {
                 /* read and update key-value atomically. TODO: how expensive is this? */
                 hop = &(ht->buckets[idx + i]);
-                spin_lock(&hop->kv_lock);
+                bucket_data_lock(ht, idx + i, -1);
                 if (0 == memcmp(key, hop->key, KEY_LEN)) {  
                     /* found */
                     value = hop->data;
                     found = true;
                 }
-                spin_unlock(&hop->kv_lock);
+                bucket_data_unlock(ht, idx + i, -1);
                 if (found) {
                     hop->hopinfo &= ~(1ULL << i);       /* unlink the bucket */
                     ASSERT(atomic_read(&hop->marked));
