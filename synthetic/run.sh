@@ -55,6 +55,7 @@ ZIPFS="0.1"
 NKEYS=1000
 NBLOBS=1000
 LMEM=1000000000    # 1GB
+NO_HYPERTHREADING="-noht"
 
 # save settings
 CFGSTORE=
@@ -301,7 +302,7 @@ fi
 start_iokernel() {
     echo "starting iokerneld"
     sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-    binary=${SHENANGO_DIR}/iokerneld
+    binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
     sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
     echo "waiting on iokerneld"
     sleep 5    #for iokernel to be ready

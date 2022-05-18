@@ -136,7 +136,8 @@ for exp in $LS_CMD; do
     rend=$(cat $exp/run_end 2>/dev/null)
     rtime=$((rend-rstart))
     xput=$(grep "result:" $exp/app.out | sed -n "s/^.*result://p")
-    xputpercore=$((xput/cores))
+    xputpercore=
+    if [[ $xput ]]; then xputpercore=$((xput/cores));   fi
 
     konastatsout=${exp}/kona_counters_parsed
     konastatsin=${exp}/kona_counters.out 
@@ -150,26 +151,23 @@ for exp in $LS_CMD; do
     afaultsr=$(csv_column_mean "$konastatsout" "n_afaults_r")
     faults=$((faultsr+faultsw+faultswp))
 
-    nlocks=$(grep "number of hash table locks" ${exp}/app.out | grep -Eo " [0-9]+" | xargs)
-
     # write
     HEADER="Exp";                   LINE="$name";
-    HEADER="$HEADER,Backend";       LINE="$LINE,${backend:--}";
-    HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults:--}";
-    HEADER="$HEADER,CPU";           LINE="$LINE,${cores:--}";
-    HEADER="$HEADER,Threads";       LINE="$LINE,${threads:--}";
-    HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem:--}";
-    HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs:--}";
-    # HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime:--}";
-    HEADER="$HEADER,Runtime";       LINE="$LINE,${rtime:--}";
+    HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
+    HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
+    HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
+    HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
+    HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
+    HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs}";
+    # HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime}";
+    HEADER="$HEADER,Runtime";       LINE="$LINE,${rtime}";
     HEADER="$HEADER,Xput";          LINE="$LINE,${xput:-}";
-    HEADER="$HEADER,XputPerCore";   LINE="$LINE,${xputpercore:--}";
-    HEADER="$HEADER,Faults";        LINE="$LINE,${faults:--}";
-    HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr:--}";
-    HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr:--}";
-    HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw:--}";
-    HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp:--}";
-    HEADER="$HEADER,Locks";         LINE="$LINE,${nlocks:--}";
+    HEADER="$HEADER,XputPerCore";   LINE="$LINE,${xputpercore}";
+    HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
+    HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
+    HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";
+    HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
+    HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
     HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    
     OUT=`echo -e "${OUT}\n${LINE}"`
 
@@ -183,7 +181,7 @@ if [[ $OUTFILE ]]; then
     echo "${HEADER}${OUT}" > $OUTFILE
     echo "wrote results to $OUTFILE"
 else
-    echo "${HEADER}${OUT}" | column -s, -t
+    echo "${HEADER}${OUT}" | column -s, -t -n
 fi
 
 if [[ $DELETE ]]; then 

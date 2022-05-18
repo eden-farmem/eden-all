@@ -62,18 +62,15 @@ add_plot_group() {
     zparams=$4
     tperc=$5
     cores=$6
-    if [[ $7 ]]; then labelopt="-l $7"; fi
-    if [[ $8 ]]; then cmiopt="-cmi $8"; fi
-    if [[ $9 ]]; then lsopt="-ls $9";   fi
+    if [[ $7 ]]; then descopt="-d=$7"; fi
 
     datafile=$plotdir/data_${cores}cores_be${backend}_pgf${pgfaults}_zs${zparams}_tperc${tperc}
     thr=$((cores*tperc))
     if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
         bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgfaults \
-            -c=$cores -of=$datafile -t=${thr} -zs=${zparams}
+            -c=$cores -of=$datafile -t=${thr} -zs=${zparams} ${descopt}
     fi
-    plots="$plots -d $datafile $labelopt $cmiopt $lsopt"
-    cat $datafile
+    plots="$plots -d $datafile"
 }
 
 # performance with kona/page faults
@@ -83,23 +80,33 @@ if [ "$PLOTID" == "1" ]; then
     plots=
     files=
 
-    cfg=be${backend}_pgf${pgfaults}_zs${zs}_tperc${tperc}
+    ## data
+    # pattern="05-\(09-23\|10-0[01234]\|10-05-[012]\)";  bkend=kona; pgf=none;   zipfs=0.1;  tperc=1;
+    # pattern="05-\(09-23\|10-0[01234]\|10-05-[012]\)";  bkend=kona; pgf=SYNC;   zipfs=0.1;  tperc=1;
+    # pattern="05-\(09-23\|10-0[01234]\|10-05-[012]\)";  bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=1;
+    # pattern="05-10-\(09\|10\)";    bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=10;
+    # pattern="05-10-\(09\|1\)";     bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=60;
+    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=60;
+    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=110;
+    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=160;
+    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=210;
+    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=none;   zipfs=0.5;  tperc=100;
+    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=ASYNC;  zipfs=0.5;  tperc=100;
+    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=none;   zipfs=1;    tperc=100;
+    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=ASYNC;  zipfs=1;    tperc=100;
+
+    cfg=be${bkend}_pgf${pgf}_zs${zipfs}_tperc${tperc}
     for cores in 1 2 3 4 5; do
         label=$cores
-        # add_plot_group  pattern                                   bkend pgf   zs tperc cores  label
-        # add_plot_group "05-\(09-23\|10-0[01234]\|10-05-[012]\)"   kona none   0.1 1   $cores  $label
-        # add_plot_group "05-\(09-23\|10-0[01234]\|10-05-[012]\)"   kona SYNC   0.1 1   $cores  $label
-        # add_plot_group "05-\(09-23\|10-0[01234]\|10-05-[012]\)"   kona ASYNC  0.1 1   $cores  $label
-        # add_plot_group "05-10-\(09\|10\)"                         kona ASYNC  0.1 10  $cores  $label
-        # add_plot_group "05-10-\(09\|1\)"                          kona ASYNC  0.1 60  $cores  $label
-        # add_plot_group "05-11"                                    kona ASYNC  0.1 60  $cores  $label
-        # add_plot_group "05-11"                                    kona ASYNC  0.1 110 $cores  $label
-        # add_plot_group "05-11"                                    kona ASYNC  0.1 160 $cores  $label
-        # add_plot_group "05-11"                                    kona ASYNC  0.1 210 $cores  $label
-        # add_plot_group "05-\(11-23\|12\)"                         kona none   0.5 100 $cores  $label
-        # add_plot_group "05-\(11-23\|12\)"                         kona ASYNC  0.5 100 $cores  $label
-        # add_plot_group "05-\(11-23\|12\)"                         kona none   1   100 $cores  $label
-        add_plot_group "05-\(11-23\|12\)"                           kona ASYNC  1   100 $cores $label
+        datafile=$plotdir/data_${cores}cores_${cfg}
+        thr=$((cores*tperc))
+        if [[ $desc ]]; then descopt="-d=$desc"; fi
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf     \
+                -c=$cores -of=$datafile -t=${thr} -zs=${zipfs} ${descopt}
+        fi
+        plots="$plots -d $datafile -l $label"
+        cat $datafile
     done
 
     #plot xput
@@ -191,47 +198,98 @@ if [ "$PLOTID" == "2" ]; then
     display ${plotname} &
 fi
 
-# performance with kona/page faults with baseline
+# performance with kona/page faults with baseline on the same chart
 if [ "$PLOTID" == "3" ]; then
     plotdir=$PLOTDIR/$PLOTID
     mkdir -p $plotdir
-    files=
     plots=
+    speedplots=
+    cmiopts=
+    linestyles=
+    files=
+    LMEMCOL=6
+    XPUTCOL=9
 
-    for cores in 1 2; do 
-        cfg=${cores}cores
-        label=$cores
-        # add_plot_group  pattern                                   bkend pgf   zs tperc cores  label   cmi style
-        # add_plot_group "05-\(09-23\|10-0[01234]\|10-05-[012]\)"   kona none   0.1 1   $cores  "kona"    0 dashed
-        # add_plot_group "05-\(09-23\|10-0[01234]\|10-05-[012]\)"   kona ASYNC  0.1 1   $cores  "async"   1 solid
-        add_plot_group "05-\(11-23\|12\)"                           kona none   1   100 $cores  $label  0   dashed
-        add_plot_group "05-\(11-23\|12\)"                           kona ASYNC  1   100 $cores  $label  1   solid
+    ## data
+    # pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip"
+    pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip+"
+    # pattern="05-1[78]";    bkend=kona; zipfs=1;    tperc=100;  desc="noht"
+
+    cfg=be${bkend}_zs${zipfs}_tperc${tperc}_${desc}
+    if [[ $desc ]]; then descopt="-d=$desc"; fi
+    for cores in 1 2 3 4 5; do 
+        thr=$((cores*tperc))
+        speedup=$plotdir/data_speedup_${cores}cores_${cfg}
+
+        pgf=none    #baseline
+        datafile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf \
+                -c=$cores -of=$datafile -t=${thr} -zs=${zipfs} ${descopt}
+        fi
+        plots="$plots -d $datafile -ls dashed -cmi 0"
+        cat $datafile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_baseline_xput
+        cat $datafile
+
+        pgf=ASYNC    #upcalls
+        datafile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf \
+                -c=$cores -of=$datafile -t=${thr} -zs=${zipfs} ${descopt}
+        fi
+        plots="$plots -d $datafile -ls solid -cmi 1"
+        cat $datafile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_upcall_xput
+        cat $datafile 
+
+        cat $datafile | awk -F, '{ print $'$LMEMCOL' }' > ${TMP_FILE_PFX}_lmem
+        paste ${TMP_FILE_PFX}_baseline_xput ${TMP_FILE_PFX}_upcall_xput     \
+            | awk  'BEGIN  { print "speedup" }; 
+                    NR>1   { if ($1 && $2)  print $2/$1 
+                            else            print ""    }' > ${TMP_FILE_PFX}_speedup
+        paste -d, ${TMP_FILE_PFX}_lmem ${TMP_FILE_PFX}_speedup > ${speedup}
+        speedplots="$speedplots -d ${speedup} -l $cores"
+        cat $speedup
     done
 
     # plot xput
-    YLIMS="--ymin 0 --ymax 1000"
-    plotname=${plotdir}/xput.${PLOTEXT}
+    YLIMS="--ymin 0 --ymax 2500"
+    plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}   \
             -yc Xput -yl "Xput KOPS" --ymul 1e-3 ${YLIMS}   \
-            -xc Local_MB -xl "Local Memo MB)"               \
-            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+            -xc Local_MB -xl "Local Mem MB"                 \
+            -l "1" -l "" -l "2" -l ""                       \
+            -l "3" -l "" -l "4" -l "" -l "5" -l ""          \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
     fi
     files="$files $plotname"
 
     #plot faults
     YLIMS="--ymin 0 --ymax 200"
-    plotname=${plotdir}/rfaults_${cfg}.${PLOTEXT}
+    plotname=${plotdir}/faults_$cfg.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}               \
-            -yc "ReadPF" -yl "Read App Faults" --ymul 1e-3 ${YLIMS}    \
+            -yc "ReadPF" -yl "Page Faults" --ymul 1e-3 ${YLIMS}         \
             -xc Local_MB -xl "Local Mem (MB)"                           \
-            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
+            -l "" -l "" -l "" -l ""                                     \
+            -l "" -l "" -l "" -l "" -l "" -l ""                         \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    #plot speedup
+    YLIMS="--ymin 1 --ymax 3"
+    plotname=${plotdir}/speedup_$cfg.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${SCRIPT_DIR}/../scripts/plot.py ${speedplots}  \
+            -yc "speedup" -yl "Speedup"                         \
+            -xc Local_MB -xl "Local Mem (MB)"                   \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
     fi
     files="$files $plotname"
 
     # Combine
-    plotname=${plotdir}/all.$PLOTEXT
+    plotname=${plotdir}/all_$cfg.$PLOTEXT
     montage -tile 3x0 -geometry +5+5 -border 5 $files ${plotname}
     display ${plotname} &
 fi

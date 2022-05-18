@@ -18,6 +18,8 @@ PLOTSRC=${SCRIPT_DIR}/../scripts/plot.py
 PLOTDIR=plots 
 DATADIR=data
 PLOTEXT=png
+WARMUP=1
+WFLAG="--warmup"
 
 # parse cli
 for i in "$@"
@@ -89,8 +91,10 @@ run_vary_lmem() {
 
     case $op in
     "ht")                                                       LS=solid;   CMI=0;;
-    "zip")              CFLAGS="$CFLAGS -DCOMPRESS";            LS=solid;   CMI=1;;
-    "zip+")             CFLAGS="$CFLAGS -DCOMPRESS_MULTIPLE";   LS=solid;   CMI=1;;
+    "zip")              CFLAGS="$CFLAGS -DCOMPRESS=1";          LS=solid;   CMI=1;;
+    "zip5")             CFLAGS="$CFLAGS -DCOMPRESS=5";          LS=solid;   CMI=1;;
+    "zip50")            CFLAGS="$CFLAGS -DCOMPRESS=50";         LS=solid;   CMI=1;;
+    "zip500")           CFLAGS="$CFLAGS -DCOMPRESS=500";        LS=solid;   CMI=1;;
     "enc")              CFLAGS="$CFLAGS -DENCRYPT";             LS=dashdot; CMI=1;;
     "enc+zip")          CFLAGS="$CFLAGS -DCOMPRESS -DENCRYPT";  LS=dotted;  CMI=1;;
     *)                  echo "Unknown op"; exit;;
@@ -103,7 +107,6 @@ run_vary_lmem() {
     # for s in `seq 1 1 10`; do 
     #     zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
     for m in `seq 10 5 60`; do 
-    # for m in 30; do 
         name=run-$(date '+%m-%d-%H-%M-%S')
         lmem=$(echo $m | awk '{ print $1 * 1000000000/10 }')
         lmem_mb=$(echo $lmem | awk '{ print $1 /1000000 }')
@@ -117,10 +120,10 @@ run_vary_lmem() {
 }
 
 # runs
-for op in "zip" "zip+"; do
+for op in "zip5"; do
     for zs in 1; do 
-        # for c in `seq 1 1 5`; do 
-        for c in 1 2; do 
+        for c in `seq 1 1 5`; do 
+            desc="${op}-noht"
             t=$((c*100))
             run_vary_lmem "kona"       $op $c $t $zs 
             run_vary_lmem "apf-async"  $op $c $t $zs 

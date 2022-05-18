@@ -191,6 +191,7 @@ static inline void process_request(int key, int nblobs,
 		0x00, 0x00, 0x00, 0x00,
 		0xff, 0xff, 0xff, 0xff,
 		0xff, 0xff, 0xff, 0xff };
+	int ncompress = 0;
 
 	/* lookup hash table */
 	*(uint32_t*)key_template = key;
@@ -213,15 +214,8 @@ static inline void process_request(int key, int nblobs,
 
 #ifdef COMPRESS 
 	/* compress the array data */
-	ret = snappy_compress(env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
-	ASSERTZ(ret);
-	pr_debug("snappy compression done. inlen: %ld outlen: %lu", BLOB_SIZE, ziplen);
-	nextin = zipbuffer;
-#endif
-
-#ifdef COMPRESS_MULTIPLE 
-	/* compress the array data */
-	for (i = 0; i < 5; i++) {
+	ncompress = COMPRESS;
+	for (i = 0; i < ncompress; i++) {
 		ret = snappy_compress(env, nextin, BLOB_SIZE, zipbuffer, &ziplen);
 		ASSERTZ(ret);
 	}
@@ -270,7 +264,7 @@ void run(void* arg) {
 		/* pick a random key */
 		key = rand_next(&rand) % targs->nkeys;
 		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
-		thread_yield_after(MILLION /* µs */, &ystate);
+		thread_yield_after(1000 /* µs */, &ystate);
 	}
 	pr_info("worker %d warmedup", targs->tid);
 	barrier_wait(&warmedup);
@@ -284,7 +278,7 @@ void run(void* arg) {
 		key = zipf_sequence[targs->start + i];
 		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
 		targs->xput++;
-		thread_yield_after(MILLION /* µs */, &ystate);
+		thread_yield_after(1000 /* µs */, &ystate);
 	}
 
 	pr_debug("worker %d done at %ld ops", targs->tid, targs->xput);
@@ -305,8 +299,9 @@ void main_thread(void* arg) {
 	unsigned long nkeys = margs->nkeys;
 	unsigned long nreqs = margs->nreqs;
 	unsigned long nblobs = margs->nblobs;
-	unsigned long timeout_us;
 	int nworkers = margs->nworkers;
+	unsigned long timeout_us;
+	double shard_sz;
 	thread_args_t* targs;
     uint8_t key_template[KEY_LEN] = {
 		0x00, 0x00, 0x00, 0x00,
@@ -325,12 +320,13 @@ void main_thread(void* arg) {
 	/* setup hash table */
 	targs = aligned_alloc(CACHE_LINE_SIZE, nworkers * sizeof(thread_args_t));
 	waitgroup_init(&workers);
+	shard_sz = ceil(nkeys * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nblobs = nblobs;
-		targs[j].start = j * ceil(nkeys * 1.0 / nworkers);
-		targs[j].len = min(ceil(nkeys * 1.0 / nworkers), nkeys - targs[j].start);
+		targs[j].start = min(j * shard_sz, nkeys);
+		targs[j].len = min(shard_sz, nkeys - targs[j].start);
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(setup_table, &targs[j]);
 		ASSERTZ(ret);
@@ -340,12 +336,13 @@ void main_thread(void* arg) {
 
 	/* setup blob array */
 	waitgroup_init(&workers);
+	shard_sz = ceil(nblobs * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nblobs = nblobs;
-		targs[j].start = j * ceil(nblobs * 1.0 / nworkers);
-		targs[j].len = min(ceil(nblobs * 1.0 / nworkers), nblobs - targs[j].start);
+		targs[j].start = min(j * shard_sz, nblobs);
+		targs[j].len = min(shard_sz, nblobs - targs[j].start);
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(setup_blobs, &targs[j]);
 		ASSERTZ(ret);
@@ -375,13 +372,14 @@ void main_thread(void* arg) {
 	zipf_counts = (uint32_t*)calloc(nkeys, sizeof(uint32_t));
 #endif
 	waitgroup_init(&workers);
+	shard_sz = ceil(nreqs * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
 		targs[j].nblobs = nblobs;
-		targs[j].start = j * ceil(nreqs * 1.0 / nworkers);
-		targs[j].len = min(ceil(nreqs * 1.0 / nworkers), nreqs - targs[j].start);
+		targs[j].start = min(j * shard_sz, nreqs);
+		targs[j].len = min(shard_sz, nreqs - targs[j].start);
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(prepare_workload, &targs[j]);
 		ASSERTZ(ret);
@@ -402,13 +400,14 @@ void main_thread(void* arg) {
 	barrier_init(&warmup, nworkers+1);
 	barrier_init(&warmedup, nworkers+1);
 	barrier_init(&start, nworkers+1);
+	shard_sz = ceil(nreqs * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
 		targs[j].nblobs = nblobs;
-		targs[j].start = j * ceil(nreqs * 1.0 / nworkers);
-		targs[j].len = min(ceil(nreqs * 1.0 / nworkers), nreqs - targs[j].start);
+		targs[j].start = min(j * shard_sz, nreqs);
+		targs[j].len = min(shard_sz, nreqs - targs[j].start);
 		targs[j].xput = 0;
 		waitgroup_add(&workers, 1);
 		ret = thread_spawn(run, &targs[j]);
