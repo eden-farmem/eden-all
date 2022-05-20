@@ -1,17 +1,26 @@
 #!/bin/bash
 
 #
-# Test Shenango's page faults 
+# Run synthetic app
 # 
 
-usage="Example: bash run.sh -f\n
+set -e
+usage="Example: bash run.sh\n
+-n, --name \t optional exp name (becomes folder name)\n
+-d, --readme \t optional exp description\n
 -f, --force \t force recompile everything\n
 -wk,--with-kona \t include kona backend
 -kc,--kconfig \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
 -ko,--kopts \t C flags passed to gcc when compiling kona\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
 -pf,--pgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
--t, --threads \t number of app threads\n
+-t, --threads \t number of shenango worker threads (defaults to --cores)\n
+-c, --cores \t number of CPU cores (defaults to 1)\n
+-zs, --zipfs \t S param of zipf workload\n
+-nk, --nkeys \t number of keys in the hash table\n
+-nb, --nblobs \t number of items in the blob array\n
+-lm, --localmem \t local memory with kona (in bytes)\n
+-w, --warmup \t run warmup for a few seconds before taking measurement\n
 -o, --out \t output file for any results\n
 -s, --safemode \t build kona with safe mode on\n
 -c, --clean \t run only the cleanup part\n
@@ -21,9 +30,11 @@ usage="Example: bash run.sh -f\n
 -h, --help \t this usage information message\n"
 
 # settings
-SCRIPT_DIR=`dirname "$0"`
-ROOT_DIR="${SCRIPT_DIR}/../.."
-BINFILE="main.out"
+SCRIPT_PATH=`realpath $0`
+SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
+DATADIR="${SCRIPT_DIR}/data/"
+ROOT_DIR="${SCRIPT_DIR}/../../"
+BINFILE="${SCRIPT_DIR}/main.out"
 KONA_CFG="PBMEM_CONFIG=CONFIG_WP"
 KONA_OPTS="-DNO_ZEROPAGE_OPT"
 KONA_DIR="${ROOT_DIR}/backends/kona"
@@ -35,17 +46,41 @@ KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
 KONA_MEMSERVER_IP=$KONA_RCNTRL_IP
 KONA_MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/scheduler"
-TMP_FILE_PFX="tmp_pgf_"
-CFGFILE="default.config"
-NUM_THREADS=1
+SNAPPY_DIR="${SCRIPT_DIR}/snappy-c"
+EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
+TMP_FILE_PFX="tmp_syn_"
+CFGFILE="shenango.config"
+NCORES=1
+ZIPFS="0.1"
+NKEYS=1000
+NBLOBS=1000
+LMEM=1000000000    # 1GB
+NO_HYPERTHREADING="-noht"
+
+# save settings
+CFGSTORE=
+save_cfg() {
+    name=$1
+    value=$2
+    CFGSTORE="${CFGSTORE}$name:$value\n"
+}
 
 # parse cli
 for i in "$@"
 do
 case $i in
+    -n=*|--name=*)
+    EXPNAME="${i#*=}"
+    ;;
+
+    -d=*|--readme=*)
+    README="${i#*=}"
+    ;;
+
     -d|--debug)
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
+    NKEYS=10
     ;;
 
     -fl=*|--cflags=*)
@@ -54,6 +89,7 @@ case $i in
 
     -wk|--with-kona)
     WITH_KONA=1
+    BACKEND="kona"
     CFLAGS="$CFLAGS -DWITH_KONA"
     ;;
 
@@ -67,8 +103,9 @@ case $i in
         
     -pf=*|--pgfaults=*)
     PAGE_FAULTS="${i#*=}"
+    BACKEND="kona"
     WITH_KONA=1
-    CFLAGS="$CFLAGS -DWITH_KONA"
+    CFLAGS="$CFLAGS -DWITH_KONA -DANNOTATE_FAULTS"
     ;;
 
     -sc=*|--shencfg=*)
@@ -83,8 +120,33 @@ case $i in
     CLEANUP=1
     ;;
 
+    -c=*|--cores=*)
+    NCORES=${i#*=}
+    ;;
+
     -t=*|--threads=*)
-    NUM_THREADS=${i#*=}
+    NTHREADS=${i#*=}
+    ;;
+
+    -zs=*|--zipfs=*)
+    ZIPFS=${i#*=}
+    ;;
+
+    -nk=*|--nkeys=*)
+    NKEYS=${i#*=}
+    ;;
+
+    -nb=*|--nblobs=*)
+    NBLOBS=${i#*=}
+    ;;
+
+    -lm=*|--localmem=*)
+    LMEM=${i#*=}
+    ;;
+
+    -w|--warmup)
+    WARMUP=yes
+    CFLAGS="$CFLAGS -DWARMUP"
     ;;
 
     -o=*|--out=*)
@@ -127,15 +189,16 @@ KONA_POLLER_CORE=53
 KONA_EVICTION_CORE=54
 KONA_FAULT_HANDLER_CORE=55
 KONA_ACCOUNTING_CORE=52
+SHENANGO_STATS_CORE=51
 SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},\
-${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE}
+${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
+NTHREADS=${NTHREADS:-$NCORES}
 
 cleanup() {
     rm -f ${BINFILE}
     rm -f ${TMP_FILE_PFX}*
-    rm -f ${CFGFILE}
-    sudo pkill iokerneld
+    sudo pkill iokerneld || true
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
@@ -144,7 +207,8 @@ if [[ $CLEANUP ]]; then
     exit 0
 fi
 
-set -e
+echo ${SCRIPT_DIR}
+
 # build kona
 if [[ $FORCE ]] && [[ $WITH_KONA ]]; then 
     pushd ${KONA_BIN}
@@ -153,37 +217,73 @@ if [[ $FORCE ]] && [[ $WITH_KONA ]]; then
     make je_jemalloc
     KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS"
     make all -j $KONA_CFG PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
+    sudo sysctl -w vm.unprivileged_userfaultfd=1    
     popd
 fi
 
-# build shenango
+# rebuild shenango
 if [[ $FORCE ]]; then 
     pushd ${SHENANGO_DIR} 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
     if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
     if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
-    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} 
+    STATS_CORE_OPT="STATS_CORE=${SHENANGO_STATS_CORE}"    # for runtime stats
+    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}       \
+        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}    \
+        ${STATS_CORE_OPT}
     popd 
 fi
 
-# compile 
+# rebuild snappy
+if [[ $FORCE ]]; then 
+    pushd ${SNAPPY_DIR} 
+    make clean
+    make
+    popd 
+fi
+
+## BUILD 
+# kona libs
 if [[ $WITH_KONA ]]; then 
     INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
     LIBS="${LIBS} -L${KONA_BIN}"
     LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
 fi
-LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
+
+# shenango libs
 INC="${INC} -I${SHENANGO_DIR}/inc"
+LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
 LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
-gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+
+# snappy libs
+INC="${INC} -I${SNAPPY_DIR}/"
+LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
+
+# compile
+gcc main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
+    ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then 
     exit 0
 fi
 
-set +e    #to continue to cleanup even on failuer
+# initialize run
+expdir=$EXPNAME
+mkdir -p $expdir
+pushd $expdir
+echo "running ${EXPNAME}"
+save_cfg "cores"    $NCORES
+save_cfg "threads"  $NTHREADS
+save_cfg "keys"     $NKEYS
+save_cfg "blobs"    $NBLOBS
+save_cfg "zipfs"    $ZIPFS
+save_cfg "warmup"   $WARMUP
+save_cfg "backend"  $BACKEND
+save_cfg "localmem" $LMEM
+save_cfg "pgfaults" $PAGE_FAULTS
+save_cfg "desc"     $README
+echo -e "$CFGSTORE" > settings
 
 # prepare for run
 if [[ $WITH_KONA ]]; then 
@@ -194,16 +294,16 @@ if [[ $WITH_KONA ]]; then
     sleep 2
     # starting mem server
     scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
-    ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
+    ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT \
+        -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
     sleep 30
 fi
 
 start_iokernel() {
-    set +e
     echo "starting iokerneld"
     sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-    binary=${SHENANGO_DIR}/iokerneld
-    sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${TMP_FILE_PFX}iokernel.log &
+    binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
+    sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
     echo "waiting on iokerneld"
     sleep 5    #for iokernel to be ready
 }
@@ -214,8 +314,8 @@ shenango_cfg="""
 host_addr 192.168.0.100
 host_netmask 255.255.255.0
 host_gateway 192.168.0.1
-runtime_kthreads ${NUM_THREADS}
-runtime_guaranteed_kthreads ${NUM_THREADS}
+runtime_kthreads ${NCORES}
+runtime_guaranteed_kthreads ${NCORES}
 runtime_spinning_kthreads 0
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true"""
@@ -223,9 +323,20 @@ echo "$shenango_cfg" > $CFGFILE
 
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
-env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
-echo "running test"
-sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
+if [[ $WITH_KONA ]]; then 
+    env="$env RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
+    env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
+    env="$env EVICTION_THRESHOLD=0.99"
+    env="$env EVICTION_DONE_THRESHOLD=0.99"
+    env="$env MEMORY_LIMIT=$LMEM"
+fi
+args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
+echo sudo ${env} ${gdbcmd} ${BINFILE} ${args}
+sudo ${env} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
+popd
+
+# all good, save the run
+mv ${expdir} $DATADIR/
 
 # cleanup
 cleanup
