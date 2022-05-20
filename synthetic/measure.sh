@@ -120,7 +120,7 @@ run_vary_lmem() {
 }
 
 # runs
-for op in "zip5"; do
+for op in "zip5" "zip50" "zip500"; do
     for zs in 1; do 
         for c in `seq 1 1 5`; do 
             desc="${op}-noht"

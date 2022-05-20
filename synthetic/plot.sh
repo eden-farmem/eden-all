@@ -209,11 +209,15 @@ if [ "$PLOTID" == "3" ]; then
     files=
     LMEMCOL=6
     XPUTCOL=9
+    ymax=1000
 
     ## data
     # pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip"
-    pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip+"
-    # pattern="05-1[78]";    bkend=kona; zipfs=1;    tperc=100;  desc="noht"
+    # pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip+"
+    # pattern="05-1[78]";    bkend=kona; zipfs=1;    tperc=100;  desc="noht"        ymax=2500
+    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht"   ymax=700
+    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip50-noht"  ymax=75
+    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip500-noht" ymax=10
 
     cfg=be${bkend}_zs${zipfs}_tperc${tperc}_${desc}
     if [[ $desc ]]; then descopt="-d=$desc"; fi
@@ -252,7 +256,7 @@ if [ "$PLOTID" == "3" ]; then
     done
 
     # plot xput
-    YLIMS="--ymin 0 --ymax 2500"
+    YLIMS="--ymin 0 --ymax $ymax"
     plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}   \
