@@ -138,34 +138,17 @@ for exp in $LS_CMD; do
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
     
     # overall performance
-    rtime=$(grep -Eo "took: [0-9]+ ms \(microseconds\)" ${exp}/app.out | awk '{ print $2 }')
+    rtime=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "took: [0-9]+ ms \(microseconds\)" ${exp}/app.out | awk '{ print $2 }')
     cpuwork=
     if [[ $rtime ]]; then cpuwork=$((rtime*cores/1000000)); fi
-    times=$(grep -Eo "thread [0-9] - phase ([0-9]+|merge) took [0-9]+ ms" ${exp}/app.out | awk '{ print $2,$5,$7 }')
 
     # time breakdown
-    phase=1
-    ptimes=$(echo "$times"  | awk '{ if($2=='$phase')  print $3 }')
-    p1mean=$(mean "$ptimes" | xargs printf "%.0f")
-    p1std=$(stdev "$ptimes" | xargs printf "%.0f")
-    phase=2
-    ptimes=$(echo "$times"  | awk '{ if($2=='$phase')  print $3 }')
-    p2mean=$(mean "$ptimes" | xargs printf "%.0f")
-    p2std=$(stdev "$ptimes" | xargs printf "%.0f")
-    phase=3
-    ptimes=$(echo "$times"  | awk '{ if($2=='$phase')  print $3 }')
-    p3mean=$(mean "$ptimes" | xargs printf "%.0f")
-    p3std=$(stdev "$ptimes" | xargs printf "%.0f")
-    phase=4
-    ptimes=$(echo "$times"  | awk '{ if($2=='$phase')  print $3 }')
-    p4mean=$(mean "$ptimes" | xargs printf "%.0f")
-    p4std=$(stdev "$ptimes" | xargs printf "%.0f")
-    phase=merge
-    ptimes=$(echo "$times"  | awk '{ if($2=="'$phase'")  print $3 }')
-    pmmean=$(mean "$ptimes" | xargs printf "%.0f")
-    pmstd=$(stdev "$ptimes" | xargs printf "%.0f")
+    p1time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 1 took [0-9]+ ms" | awk '{ print $4 }')
+    p2time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 2 took [0-9]+ ms" | awk '{ print $4 }')
+    p3time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 3 took [0-9]+ ms" | awk '{ print $4 }')
+    p4time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 4 took [0-9]+ ms" | awk '{ print $4 }')
     unaccounted=
-    if [[ $rtime ]]; then unaccounted=$((rtime-p1mean-p2mean-p3mean-p4mean));   fi
+    if [[ $rtime ]]; then unaccounted=$((rtime-p1time-p2time-p3time-p4time));   fi
 
     # kona numbers
     konastatsout=${exp}/kona_counters_parsed
@@ -183,19 +166,18 @@ for exp in $LS_CMD; do
     # write
     HEADER="Exp";                   LINE="$name";
     HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
-    # HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
+    HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
     # HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
     HEADER="$HEADER,Keys";          LINE="$LINE,$((nkeys/1000000))M";
-    HEADER="$HEADER,Total(µs)";     LINE="$LINE,${rtime}";
+    HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime/1000000))";
     HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
-    HEADER="$HEADER,Phase1";        LINE="$LINE,$(percentof "$p1mean" "$rtime")"; #($(percentof $"p1std" "$rtime"))";
-    HEADER="$HEADER,Phase2";        LINE="$LINE,$(percentof "$p2mean" "$rtime")"; #($(percentof $"p2std" "$rtime"))";
-    HEADER="$HEADER,Phase3";        LINE="$LINE,$(percentof "$p3mean" "$rtime")"; #($(percentof $"p3std" "$rtime"))";
-    HEADER="$HEADER,Phase4";        LINE="$LINE,$(percentof "$p4mean" "$rtime")"; #($(percentof $"p4std" "$rtime"))";
-    HEADER="$HEADER,Merge";         LINE="$LINE,$(percentof "$pmmean" "$rtime")"; #($(percentof $"pmstd" "$rtime"))";
-    HEADER="$HEADER,Unacc";         LINE="$LINE,$(percentof "$unaccounted" "$rtime")"; 
+    HEADER="$HEADER,Phase1(%)";     LINE="$LINE,$(percentof "$p1time" "$rtime")";
+    HEADER="$HEADER,Phase2(%)";     LINE="$LINE,$(percentof "$p2time" "$rtime")";
+    HEADER="$HEADER,Phase3(%)";     LINE="$LINE,$(percentof "$p3time" "$rtime")";
+    HEADER="$HEADER,Phase4(%)";     LINE="$LINE,$(percentof "$p4time" "$rtime")";
+    HEADER="$HEADER,Unacc(%)";      LINE="$LINE,$(percentof "$unaccounted" "$rtime")"; 
 
     # HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
     # HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
@@ -203,7 +185,7 @@ for exp in $LS_CMD; do
     # HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";
     # HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
     # HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
-    HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    
+    HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";
     OUT=`echo -e "${OUT}\n${LINE}"`
 
     if [[ $DELETE ]]; then 

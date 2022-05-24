@@ -36,6 +36,14 @@ stdev(){
     fi
 }
 
+percentof(){
+    NUMERATOR=$1
+    DENOMINATOR=$2
+    if [[ $NUMERATOR ]] && [[ $DENOMINATOR ]]; then
+        echo $NUMERATOR $DENOMINATOR | awk '{ printf "%.1f", $1*100/$2 }'
+    fi
+}
+
 csv_column() {
     FILE=$1
     COLNAME=$2
@@ -92,5 +100,8 @@ test_utils() {
 
     res=$(min "$input")
     if [ "$res" != "1" ]; then echo "min error"; fi
+
+    res=$(percentof 1 2)
+    if [ "$res" != "50.0" ]; then echo "percentof error"; fi
 }
-# test_utils
+test_utils

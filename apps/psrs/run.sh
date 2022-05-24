@@ -85,8 +85,6 @@ case $i in
 
     -k|--kona)
     KONA=1
-    BACKEND="kona"
-    CFLAGS="$CFLAGS -DWITH_KONA"
     ;;
 
     -kc=*|--kconfig=*)
@@ -100,10 +98,9 @@ case $i in
     -pf=*|--pgfaults=*)
     # only supported on shenango
     SHENANGO=1
+    KONA=1
     PAGE_FAULTS="${i#*=}"
-    BACKEND="kona"
-    WITH_KONA=1
-    CFLAGS="$CFLAGS -DWITH_KONA -DANNOTATE_FAULTS"
+    CFLAGS="$CFLAGS -DANNOTATE_FAULTS"
     ;;
 
     -sc=*|--shencfg=*)
@@ -205,7 +202,7 @@ if [[ $FORCE ]] && [[ $KONA ]]; then
     make je_clean
     make clean
     make je_jemalloc
-    KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS"
+    if [[ $SHENANGO ]]; then    KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS";  fi
     make all -j $KONA_CFG PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
     sudo sysctl -w vm.unprivileged_userfaultfd=1    
     popd
@@ -227,6 +224,8 @@ fi
 
 # link kona
 if [[ $KONA ]]; then
+    BACKEND="kona"
+	CFLAGS="${CFLAGS} -DWITH_KONA"
     INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
     LIBS="${LIBS} -L${KONA_BIN}"
     LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
@@ -320,7 +319,7 @@ if ! [[ $SHENANGO ]]; then
     wrapper="$wrapper taskset -a -c ${CPUSTR}"
 fi
 if [[ $GDB ]]; then 
-    wrapper="gdbserver :1234 --wrapper $wrapper --";   
+    wrapper="gdbserver :1234 --wrapper $wrapper --";
 fi
 # args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS}"	#shenango args
 args="${NKEYS} ${NTHREADS}"

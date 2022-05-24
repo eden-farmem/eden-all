@@ -6,8 +6,11 @@
 #include <time.h>
 #include <sys/time.h>
 #ifdef SHENANGO
-#include <runtime/thread.h>
-#include <runtime/sync.h>
+#include "runtime/thread.h"
+#include "runtime/sync.h"
+#endif
+#ifdef WITH_KONA
+#include "klib.h"
 #endif
 #include "logging.h"
 
@@ -29,6 +32,16 @@
 #define BARRIER_WAIT 					pthread_barrier_wait
 #define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
 #endif
+
+/* remote memory primitives */
+#ifdef WITH_KONA
+#define RMALLOC		rmalloc
+#define RFREE		rfree
+#else
+#define RMALLOC		malloc
+#define RFREE		free
+#endif
+
 
 /* local macros */
 #define master if (id == 0) 
@@ -165,30 +178,6 @@ void phase3(struct thread_data* data) {
 	// printf("thread %d - phase 3 took %ld ms\n", id, time);
 }
 
-/* 
- * given the exchange_indices, it returns the value and index of the first valid value.
- * 
- * explanation: exchange_indices is an array of the form [s1, e1, s2, e2...] where 
- * si represents the start of a range, and ei represents the end of that range.
- * 
- * a valid value means any si where si != ei
- * it is used for merging k sorted arrays, and this method finds the first valid value, 
- * so that it can be used as an initial minimum (as opposed to using int_max)
- * 
- * returns: an array of 2 elements [minumum value, its position] 
- */
-size_t* find_initial_min(size_t* exchange_indices, int len) {
-	for (int i = 0; i < len; i += 2) {
-		if (exchange_indices[i] != exchange_indices[i+1]) {
-			size_t* min_and_pos = malloc(lsize * 2);
-			min_and_pos[0] = input[exchange_indices[i]];
-			min_and_pos[1] = i;
-			return min_and_pos;
-		}
-	}
-	return NULL;
-}
-
 /*
  * merges the array with a given size into the original input array
  */
@@ -209,7 +198,7 @@ void merge_into_original_array(int id, size_t* array, size_t array_size) {
 	}
 	// long int time = end_time;
 	// printf("thread %d - phase merge took %ld ms\n", id, time);	
-	free(array);
+	RFREE(array);
 }
 
 /*
@@ -242,32 +231,33 @@ void phase4(struct thread_data* data) {
 		total_merge_length += exchange_indices[i + 1] - exchange_indices[i];
 	}
 	
-	size_t* merged_values = malloc(sizeof(size_t) * total_merge_length);
+	size_t* merged_values = RMALLOC(sizeof(size_t) * total_merge_length);
 	merged_partition_length[id] = total_merge_length;
-	int mi = 0; // merged_values index
-	// do it until we have reached the amount that we have to merge
+	int mi = 0;
+	int min, min_pos;
 	while (mi < total_merge_length) {
-		// find initial minimum among current items
-		// alternative would be going with int_max initially
-		size_t* min_and_pos = find_initial_min(exchange_indices, t * 2);
-		if (min_and_pos == NULL) break;
-		// get the minimum value
-		size_t min = min_and_pos[0];
-		// and which position that value is in
-		// so that we can increase the counter if it is indeed the minimum
-		int min_pos = min_and_pos[1];
-		free(min_and_pos);
-		
-		for (int i = 0; i < t * 2; i+=2) {
+		/* find the next min element of all sorted partitions */
+		bool found = false;
+		for (int i = 0; i < t * 2; i += 2) {
 			if (exchange_indices[i] != exchange_indices[i+1]) {
-				size_t ix = exchange_indices[i];
-				// update the variables when we see a new minimum
-				if (input[ix] < min) {
-					min = input[ix];
+				if (!found) {
+					min = input[exchange_indices[i]];
+					min_pos = i;
+					found = true;
+					continue;
+				}
+				
+				if (input[exchange_indices[i]] < min) {
+					min = input[exchange_indices[i]];
 					min_pos = i;
 				}
 			}
 		}
+
+		/* nothing left */
+		if(!found)
+			break;
+
 		// save the minimum to the final array
 		merged_values[mi++] = min;
 		// increase the counter of the range that 
@@ -279,7 +269,7 @@ void phase4(struct thread_data* data) {
 	// printf("thread %d - phase 4 took %ld ms, merged %lu keys\n", id, time, total_merge_length);
 
 	BARRIER;
-	master { free(partitions); }
+	master { RFREE(partitions); }
 	merge_into_original_array(id, merged_values, total_merge_length);
 }
 
@@ -315,7 +305,7 @@ void* psrs(void *args) {
 	master {
 		time = end_timing(time_start);
 		printf("phase 2 took %ld ms\n", time);
-		free(regular_samples); 
+		RFREE(regular_samples); 
 	}
 
 	/* phase 3 */
@@ -327,7 +317,7 @@ void* psrs(void *args) {
 	master { 
 		time = end_timing(time_start);
 		printf("phase 3 took %ld ms\n", time);
-		free(pivots); 
+		RFREE(pivots); 
 	}
 	
 	/* phase 4 */
@@ -339,7 +329,7 @@ void* psrs(void *args) {
 	master { 
 		time = end_timing(time_start);
 		printf("phase 4 took %ld ms\n", time);
-		free(merged_partition_length); 
+		RFREE(merged_partition_length); 
 	}
 
 	free(data);
@@ -359,10 +349,10 @@ struct thread_data* get_thread_data(int id, size_t per_thread) {
 void main_thread(void* arg) {
 	/* initializing/allocating data */
 	input = generate_array_of_size(size);
-	regular_samples = malloc(isize *t*t); 
-	pivots = malloc(isize * (t - 1));
-	merged_partition_length = malloc(sizeof(size_t) * t);
-	partitions = malloc(sizeof(size_t) *  t * (t+1));
+	regular_samples = RMALLOC(isize *t*t); 
+	pivots = RMALLOC(isize * (t - 1));
+	merged_partition_length = RMALLOC(sizeof(size_t) * t);
+	partitions = RMALLOC(sizeof(size_t) *  t * (t+1));
 	
 	// size of a chunk per thread
 	size_t per_thread = size / t;
@@ -392,7 +382,7 @@ void main_thread(void* arg) {
 	
  	is_sorted(); // for validation to see if the array has really been sorted
 
-	free(input);
+	RFREE(input);
 	free(threads);
 	BARRIER_DESTROY(&barrier);
 }
@@ -412,10 +402,15 @@ int main(int argc, char *argv[]){
 	printf("size: %lu\n", size);
 
 #ifdef SHENANGO
+	/* initialize shenango */
 	char shenangocfg[] = "shenango.config"; /* ensure this file exists  */
 	int ret = runtime_init(shenangocfg, main_thread, NULL);
 	assert(ret != 0);
 #else
+#ifdef WITH_KONA
+	/* initialize kona. in case of shenango, it is taken care of. */
+	rinit();
+#endif
 	main_thread(NULL);
 #endif
 
@@ -450,7 +445,7 @@ long int end_timing(struct timeval* start) {
 // used for generating random arrays of the given size
 int* generate_array_of_size(size_t size) {
 	srandom(15);
-	int* randoms = malloc(isize * size);
+	int* randoms = RMALLOC(isize * size);
 	for (size_t i = 0; i < size; i++) {
 		randoms[i] = (int) random();
 	}
