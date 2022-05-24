@@ -5,21 +5,49 @@
 #include <limits.h>
 #include <time.h>
 #include <sys/time.h>
+#ifdef SHENANGO
+#include <runtime/thread.h>
+#include <runtime/sync.h>
+#endif
+#include "logging.h"
 
+/* thread/sync primitives from various platforms */
+#ifdef SHENANGO
+#define THREAD_T						unsigned long
+#define THREAD_CREATE(id,routine,arg)	thread_spawn(routine,arg)
+#define THREAD_EXIT(ret)				thread_exit()
+#define BARRIER_T		 				barrier_t
+#define BARRIER_INIT(b,c)				barrier_init(b, c)
+#define BARRIER_WAIT 					barrier_wait
+#define BARRIER_DESTROY(b)				{}
+#else 
+#define THREAD_T						pthread_t
+#define THREAD_CREATE(tid,routine,arg)	pthread_create(tid,NULL,routine,arg)
+#define THREAD_EXIT(ret)				pthread_exit(ret)
+#define BARRIER_T		 				pthread_barrier_t
+#define BARRIER_INIT(b,c)				pthread_barrier_init(b, NULL, c)
+#define BARRIER_WAIT 					pthread_barrier_wait
+#define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
+#endif
+
+/* local macros */
 #define master if (id == 0) 
 #define isize sizeof(int)
 #define lsize sizeof(size_t)
-#define BARRIER pthread_barrier_wait(&barrier)
+#define BARRIER BARRIER_WAIT(&barrier)
 #define start_time struct timeval* time_start = get_time();
 #define end_time end_timing(time_start);
 
+/* global data */
 size_t size; 
 size_t w; 
 int t;
 int ro; 
 
+/* 
+ * input array (currently elements are int-sized) 
+ */
 int* input;
-
 /*
  * regular_samples is an array of t*t elements where each thread writes 
  * local samples to their own parts (disjoint) of the array.
@@ -53,10 +81,9 @@ struct thread_data {
 	int id;
 	size_t start;
 	size_t end;
-	long int time;
 };
 
-pthread_barrier_t barrier;
+BARRIER_T barrier;
 
 int cmpfunc(const void* a, const void* b);
 void is_sorted();
@@ -71,7 +98,7 @@ void checkpoint(char* name);
  * does the local sorting of the array, and collects sample.
  */
 void phase1(struct thread_data* data) {
-	start_time;
+	// start_time;
 
 	size_t start = data->start;
 	size_t end = data->end;
@@ -86,8 +113,8 @@ void phase1(struct thread_data* data) {
 		ix++;
 	}
 	
-	long int time = end_time;
-	printf("thread %d - phase 1 took %ld ms, sorted %lu items\n", id, time, (end - start));	
+	// long int time = end_time;
+	// printf("thread %d - phase 1 took %ld ms, sorted %lu items\n", id, time, (end - start));	
 }
 
 /*
@@ -97,7 +124,7 @@ void phase1(struct thread_data* data) {
 void phase2(struct thread_data* data) {
 	int id = data->id;
 	master { 
-		start_time;
+		// start_time;
 	
 		qsort(regular_samples, t*t, isize, cmpfunc);
 		int ix = 0;
@@ -106,8 +133,8 @@ void phase2(struct thread_data* data) {
 			pivots[ix++] = regular_samples[pos];
 		}
 		
-		long int time = end_time;
-		printf("thread %d - phase 2 took %ld ms\n", id, time);
+		// long int time = end_time;
+		// printf("thread %d - phase 2 took %ld ms\n", id, time);
 	}
 }
 
@@ -116,7 +143,7 @@ void phase2(struct thread_data* data) {
  * local splitting of the data based on the pivots
  */
 void phase3(struct thread_data* data) {
-	start_time;
+	// start_time;
 
 	size_t start = data->start;
 	size_t end = data->end;
@@ -133,10 +160,9 @@ void phase3(struct thread_data* data) {
 			pi++;
 		}
 	}
-
 	
-	long int time = end_time;
-	printf("thread %d - phase 3 took %ld ms\n", id, time);
+	// long int time = end_time;
+	// printf("thread %d - phase 3 took %ld ms\n", id, time);
 }
 
 /* 
@@ -167,7 +193,7 @@ size_t* find_initial_min(size_t* exchange_indices, int len) {
  * merges the array with a given size into the original input array
  */
 void merge_into_original_array(int id, size_t* array, size_t array_size) {
-	start_time;
+	// start_time;
 
 	// find the position that the thread needs to start from
 	// in order to put values into the original array
@@ -181,8 +207,8 @@ void merge_into_original_array(int id, size_t* array, size_t array_size) {
 	for (size_t i = start_pos; i < start_pos + array_size; i++) {
 		input[i] = array[i - start_pos];
 	}
-	long int time = end_time;
-	printf("thread %d - phase merge took %ld ms\n", id, time);	
+	// long int time = end_time;
+	// printf("thread %d - phase merge took %ld ms\n", id, time);	
 	free(array);
 }
 
@@ -193,7 +219,7 @@ void merge_into_original_array(int id, size_t* array, size_t array_size) {
  * it also saves the merged values into their appropriate place in the input array.
  */
 void phase4(struct thread_data* data) {
-	start_time;
+	// start_time;
 	
 	// this array contains the range indicating pairs
 	// [r1_start, r1_end, r2_start, r2_end, ...]
@@ -249,52 +275,76 @@ void phase4(struct thread_data* data) {
 		exchange_indices[min_pos]++;
 	}
 	// k way merge - end
-	long int time = end_time;
+	// long int time = end_time;
+	// printf("thread %d - phase 4 took %ld ms, merged %lu keys\n", id, time, total_merge_length);
+
 	BARRIER;
 	master { free(partitions); }
-	
-	printf("thread %d - phase 4 took %ld ms, merged %lu keys\n", id, time, total_merge_length);
-	
 	merge_into_original_array(id, merged_values, total_merge_length);
 }
 
+#ifdef SHENANGO
+void* _psrs(void* args);
+void psrs(void* args) {  _psrs(args);	}
+void* _psrs(void *args) {
+#else
 void* psrs(void *args) {
+#endif
 	struct thread_data* data = (struct thread_data*) args;
 	int id = data->id; 
+	struct timeval* time_start;
+	long int time;
 
 	/* phase 1 */
-	master { checkpoint("phase1_start"); }
+	// master { checkpoint("phase1_start"); }
+	time_start = get_time();
 	BARRIER;
 	phase1(data);
 	BARRIER;
+	master { 
+		time = end_timing(time_start);
+		printf("phase 1 took %ld ms\n", time);
+	}
 
 	/* phase 2 */
-	master { checkpoint("phase2_start"); }
+	// master { checkpoint("phase2_start"); }
+	time_start = get_time();
 	BARRIER;
 	phase2(data);
 	BARRIER;
-	master { free(regular_samples); }
+	master {
+		time = end_timing(time_start);
+		printf("phase 2 took %ld ms\n", time);
+		free(regular_samples); 
+	}
 
 	/* phase 3 */
-	master { checkpoint("phase3_start"); }
+	// master { checkpoint("phase3_start"); }
+	time_start = get_time();
 	BARRIER;
 	phase3(data);
 	BARRIER;
-	master { free(pivots); }
+	master { 
+		time = end_timing(time_start);
+		printf("phase 3 took %ld ms\n", time);
+		free(pivots); 
+	}
 	
 	/* phase 4 */
-	master { checkpoint("phase4_start"); }
+	// master { checkpoint("phase4_start"); }
+	time_start = get_time();
 	BARRIER;
 	phase4(data);
 	BARRIER;
-	master { free(merged_partition_length); }
+	master { 
+		time = end_timing(time_start);
+		printf("phase 4 took %ld ms\n", time);
+		free(merged_partition_length); 
+	}
 
 	free(data);
-	
-	master {
-		return NULL;
-	}
-	pthread_exit(0);
+	master { return NULL; }
+	THREAD_EXIT(0);
 }
 
 struct thread_data* get_thread_data(int id, size_t per_thread) {
@@ -306,21 +356,8 @@ struct thread_data* get_thread_data(int id, size_t per_thread) {
 }
 
 
-int main(int argc, char *argv[]){
-	if (argc != 3) {
-		fprintf(stderr, "2 arguments required - <size> <thread_count>\n");
-		exit(1);
-	} 
-	
-	// initializing parameters
-	size = atol(argv[1]);
-	t = atoi(argv[2]);
-	w = (size/(t*t));
-	ro 	= t / 2;
-	
-	printf("size: %lu\n", size);
-	
-	// initializing/allocating data
+void main_thread(void* arg) {
+	/* initializing/allocating data */
 	input = generate_array_of_size(size);
 	regular_samples = malloc(isize *t*t); 
 	pivots = malloc(isize * (t - 1));
@@ -330,21 +367,23 @@ int main(int argc, char *argv[]){
 	// size of a chunk per thread
 	size_t per_thread = size / t;
 	
-	pthread_barrier_init(&barrier, NULL, t);
+	BARRIER_INIT(&barrier, t);
 	
-	pthread_t* threads = malloc(sizeof(pthread_t) * t);
-
 	start_time;	
 	
+	/* start worker threads */
+	THREAD_T* threads = malloc(sizeof(THREAD_T) * t);
 	int i = 1;
-	for (i = 1; i < t - 1; i++) {
+	for (; i < t - 1; i++) {
 		struct thread_data* data = get_thread_data(i, per_thread);
-		pthread_create(&threads[i], NULL, psrs, (void *) data);
+		THREAD_CREATE(&threads[i], psrs, (void *) data);
 	}
-	// the last thread gets the remaining part of the array
-	struct thread_data* data = get_thread_data(i, per_thread); data->end = size; // the last thread will get the remaining chunk
-	pthread_create(&threads[i], NULL, psrs, (void *) data);
-	// master thread
+	/* the last thread gets the remaining part of the array */
+	struct thread_data* data = get_thread_data(i, per_thread); 
+	data->end = size;
+	THREAD_CREATE(&threads[i], psrs, (void *) data);
+
+	/* master thread */
 	struct thread_data* data_master = get_thread_data(0, per_thread);
 	psrs((void *) data_master);
 	
@@ -354,8 +393,31 @@ int main(int argc, char *argv[]){
  	is_sorted(); // for validation to see if the array has really been sorted
 
 	free(input);
-	free(threads);	
-	pthread_barrier_destroy(&barrier);
+	free(threads);
+	BARRIER_DESTROY(&barrier);
+}
+
+
+int main(int argc, char *argv[]){
+	if (argc != 3) {
+		fprintf(stderr, "2 arguments required - <size> <thread_count>\n");
+		exit(1);
+	} 
+	
+	/* initializing parameters */
+	size = atol(argv[1]);
+	t = atoi(argv[2]);
+	w = (size/(t*t));
+	ro 	= t / 2;
+	printf("size: %lu\n", size);
+
+#ifdef SHENANGO
+	char shenangocfg[] = "shenango.config"; /* ensure this file exists  */
+	int ret = runtime_init(shenangocfg, main_thread, NULL);
+	assert(ret != 0);
+#else
+	main_thread(NULL);
+#endif
 
 	return 0;
 }

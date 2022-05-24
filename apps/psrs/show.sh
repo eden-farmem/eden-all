@@ -114,14 +114,14 @@ fi
 for exp in $LS_CMD; do
     # echo $exp
     name=$(basename $exp)
-    cores=$(cat $exp/settings | grep "cores" | awk -F: '{ print $2 }')
-    threads=$(cat $exp/settings | grep "threads" | awk -F: '{ print $2 }')
-    localmem=$(cat $exp/settings | grep "localmem" | awk -F: '{ printf $2/1000000 }')
-    pgfaults=$(cat $exp/settings | grep "pgfaults" | awk -F: '{ print $2 }')
-    sched=$(cat $exp/settings | grep "scheduler" | awk -F: '{ print $2 }')
-    backend=$(cat $exp/settings | grep "backend" | awk -F: '{ print $2 }')
-    nkeys=$(cat $exp/settings | grep "keys" | awk -F: '{ print $2 }')
-    desc=$(cat $exp/settings | grep "desc" | awk -F: '{ print $2 }')
+    cores=$(cat $exp/settings | grep "cores:" | awk -F: '{ print $2 }')
+    threads=$(cat $exp/settings | grep "threads:" | awk -F: '{ print $2 }')
+    localmem=$(cat $exp/settings | grep "localmem:" | awk -F: '{ printf $2/1000000 }')
+    pgfaults=$(cat $exp/settings | grep "pgfaults:" | awk -F: '{ print $2 }')
+    sched=$(cat $exp/settings | grep "scheduler:" | awk -F: '{ print $2 }')
+    backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
+    nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
+    desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
     sched=${sched:-none}
     backend=${backend:-none}
     pgfaults=${pgfaults:-none}
@@ -137,9 +137,13 @@ for exp in $LS_CMD; do
     # if [[ $DESC ]] && [[ "$desc" != *"$DESC"*  ]];        then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
     
-    # sort times
+    # overall performance
     rtime=$(grep -Eo "took: [0-9]+ ms \(microseconds\)" ${exp}/app.out | awk '{ print $2 }')
+    cpuwork=
+    if [[ $rtime ]]; then cpuwork=$((rtime*cores/1000000)); fi
     times=$(grep -Eo "thread [0-9] - phase ([0-9]+|merge) took [0-9]+ ms" ${exp}/app.out | awk '{ print $2,$5,$7 }')
+
+    # time breakdown
     phase=1
     ptimes=$(echo "$times"  | awk '{ if($2=='$phase')  print $3 }')
     p1mean=$(mean "$ptimes" | xargs printf "%.0f")
@@ -160,6 +164,8 @@ for exp in $LS_CMD; do
     ptimes=$(echo "$times"  | awk '{ if($2=="'$phase'")  print $3 }')
     pmmean=$(mean "$ptimes" | xargs printf "%.0f")
     pmstd=$(stdev "$ptimes" | xargs printf "%.0f")
+    unaccounted=
+    if [[ $rtime ]]; then unaccounted=$((rtime-p1mean-p2mean-p3mean-p4mean));   fi
 
     # kona numbers
     konastatsout=${exp}/kona_counters_parsed
@@ -176,19 +182,20 @@ for exp in $LS_CMD; do
 
     # write
     HEADER="Exp";                   LINE="$name";
-    # HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
+    HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
     # HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
     # HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
     HEADER="$HEADER,Keys";          LINE="$LINE,$((nkeys/1000000))M";
-    HEADER="$HEADER,Total(µs)";     LINE="$LINE,$((rtime))";
-    HEADER="$HEADER,Work";          LINE="$LINE,$((rtime*cores/1000000))";
-    HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1mean*100/rtime))($((p1std*100/rtime)))";
-    HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2mean*100/rtime))($((p2std*100/rtime)))";
-    HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3mean*100/rtime))($((p3std*100/rtime)))";
-    HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4mean*100/rtime))($((p4std*100/rtime)))";
-    HEADER="$HEADER,Merge";         LINE="$LINE,$((pmmean*100/rtime))($((pmstd*100/rtime)))";
+    HEADER="$HEADER,Total(µs)";     LINE="$LINE,${rtime}";
+    HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
+    HEADER="$HEADER,Phase1";        LINE="$LINE,$(percentof "$p1mean" "$rtime")"; #($(percentof $"p1std" "$rtime"))";
+    HEADER="$HEADER,Phase2";        LINE="$LINE,$(percentof "$p2mean" "$rtime")"; #($(percentof $"p2std" "$rtime"))";
+    HEADER="$HEADER,Phase3";        LINE="$LINE,$(percentof "$p3mean" "$rtime")"; #($(percentof $"p3std" "$rtime"))";
+    HEADER="$HEADER,Phase4";        LINE="$LINE,$(percentof "$p4mean" "$rtime")"; #($(percentof $"p4std" "$rtime"))";
+    HEADER="$HEADER,Merge";         LINE="$LINE,$(percentof "$pmmean" "$rtime")"; #($(percentof $"pmstd" "$rtime"))";
+    HEADER="$HEADER,Unacc";         LINE="$LINE,$(percentof "$unaccounted" "$rtime")"; 
 
     # HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
     # HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";

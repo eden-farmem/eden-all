@@ -200,7 +200,7 @@ fi
 echo ${SCRIPT_DIR}
 
 # build kona
-if [[ $FORCE ]] && [[ $KONA ]]; then 
+if [[ $FORCE ]] && [[ $KONA ]]; then
     pushd ${KONA_BIN}
     make je_clean
     make clean
@@ -212,7 +212,7 @@ if [[ $FORCE ]] && [[ $KONA ]]; then
 fi
 
 # rebuild shenango
-if [[ $FORCE ]] && [[ $SHENANGO ]]; then 
+if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     pushd ${SHENANGO_DIR} 
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
@@ -226,15 +226,16 @@ if [[ $FORCE ]] && [[ $SHENANGO ]]; then
 fi
 
 # link kona
-if [[ $KONA ]]; then 
+if [[ $KONA ]]; then
     INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
     LIBS="${LIBS} -L${KONA_BIN}"
     LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
 fi
 
 # link shenango
-if [[ $SHENANGO ]]; then 
+if [[ $SHENANGO ]]; then
 	SCHEDULER="shenango"
+	CFLAGS="${CFLAGS} -DSHENANGO"
     INC="${INC} -I${SHENANGO_DIR}/inc"
     LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
     LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
@@ -243,7 +244,7 @@ fi
 # compile
 gcc main.c -lpthread -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
-if [[ $BUILD_ONLY ]]; then 
+if [[ $BUILD_ONLY ]]; then
     exit 0
 fi
 
@@ -264,7 +265,7 @@ save_cfg "desc"     $README
 echo -e "$SETTINGS" > settings
 
 # prepare kona memory server
-if [[ $KONA ]]; then 
+if [[ $KONA ]]; then
     echo "starting kona servers"
     # starting kona controller
     scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
@@ -278,7 +279,7 @@ if [[ $KONA ]]; then
 fi
 
 # setup shenango runtime
-if [[ $SHENANGO ]]; then 
+if [[ $SHENANGO ]]; then
     start_iokernel() {
         echo "starting iokerneld"
         sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
@@ -291,19 +292,19 @@ if [[ $SHENANGO ]]; then
 
     # prepare shenango config
     shenango_cfg="""
-    host_addr 192.168.0.100
-    host_netmask 255.255.255.0
-    host_gateway 192.168.0.1
-    runtime_kthreads ${NCORES}
-    runtime_guaranteed_kthreads ${NCORES}
-    runtime_spinning_kthreads 0
-    host_mac 02:ba:dd:ca:ad:08
-    disable_watchdog true"""
+host_addr 192.168.0.100
+host_netmask 255.255.255.0
+host_gateway 192.168.0.1
+runtime_kthreads ${NCORES}
+runtime_guaranteed_kthreads ${NCORES}
+runtime_spinning_kthreads 0
+host_mac 02:ba:dd:ca:ad:08
+disable_watchdog true"""
     echo "$shenango_cfg" > $CFGFILE
 fi
 
 # run
-if [[ $KONA ]]; then 
+if [[ $KONA ]]; then
     env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
     env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
     env="$env EVICTION_THRESHOLD=0.99"
