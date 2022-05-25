@@ -1,17 +1,12 @@
 [submodule "memcached"]
-	path = memcached
+	path = apps/memcached
 	url = git@gitlab.eng.vmware.com:kona/memcached.git
 [submodule "shenango"]
-	path = shenango
+	path = scheduler
 	url = git@gitlab.eng.vmware.com:kona/shenango.git
 [submodule "kona"]
-	path = kona
+	path = backends/kona
 	url = git@gitlab.eng.vmware.com:kona/kona.git
 [submodule "umap"]
-	path = umap
+	path = backends/umap
 	url = git@gitlab.eng.vmware.com:kona/umap.git
-
-# Activate it if/when needed (initial setup takes a lot of time)
-# [submodule "data"]
-# 	path = data
-# 	url = git@gitlab.eng.vmware.com:ayelam/rmem-scheduler-data.git

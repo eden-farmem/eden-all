@@ -21,9 +21,10 @@ usage="Example: bash run.sh -f\n
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
+ROOT_DIR="${SCRIPT_DIR}/../../.."
 kona_cfg="PBMEM_CONFIG=CONFIG_WP"
 BINFILE="prefetch.out"
-KONA_DIR="${SCRIPT_DIR}/../../../kona"
+KONA_DIR="${ROOT_DIR}/backends/kona"
 KONA_BIN="${KONA_DIR}/pbmem"
 KONA_RCNTRL_SSH="sc07"
 KONA_RCNTRL_IP="192.168.0.7"
