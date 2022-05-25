@@ -1,0 +1,3 @@
+Server              Kernel      Change              Time 
+======              ========    =================   ======   
+sc2-hs2-b1630       5.11-rc1    Original Patch      1.72 µs (+/- 0.4 µs)

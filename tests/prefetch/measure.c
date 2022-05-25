@@ -110,7 +110,7 @@ int main(int argc, char **argv)
 		start = rdtsc();
 		r = prefetch_page(p);
 		ASSERT(page_mapped == (r == 0));
-		duration = rdtsc() - start;
+		duration = rdtscp(NULL) - start;
 		page_not_mapped_cycles += duration;
 
 		/*map the page*/
