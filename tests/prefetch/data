@@ -1,3 +1,10 @@
-Server              Kernel      Change              Time 
-======              ========    =================   ======   
-sc2-hs2-b1630       5.11-rc1    Original Patch      1.72 µs (+/- 0.4 µs)
+Server              Kernel      Time                    Change              
+======              ========    ===================     ===============
+sc2-hs2-b1630       5.11-rc1    1.72 µs (+/- 0.4 µs)    Original Patch      
+sc2-hs2-b1632       5.11-rc1    2.35 µs (+/- 0.1 µs)    Original Patch      
+sc2-hs2-b1632       5.11-rc1    2.00 µs (+/- 0.1 µs)    Moved vdso upto the original first vdso check     
+sc2-hs2-b1632       5.11-rc1    1.95 µs (+/- 0.0 µs)    Moved it further up
+sc2-hs2-b1632       5.11-rc1    1.91 µs (+/- 0.1 µs)    Moved it out of handle_page_fault()
+sc2-hs2-b1632       5.11-rc1    1.87 µs (+/- 0.0 µs)    Moved it before kvm_handle_async_pf()
+sc2-hs2-b1632       5.11-rc1    1.47 µs (+/- 0.1 µs)    Turned off page table isolation (spectre mitigations)
+(no improvement after this, this is as far up as we can go I think)
