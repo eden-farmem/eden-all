@@ -59,13 +59,25 @@ gcc measure.c region.c uffd.c parse_vdso.c ${DEBUG} -o ${OUTFILE}
 # run
 set +e    #to continue to cleanup even on failure
 rm -f out
-for i in `seq 1 1 25`; do 
-    sudo ${env} ./${OUTFILE} | tee -a out
+for i in `seq 1 1 2`; do 
+    sudo ${env} ./${OUTFILE} | tee out
 done
 
+
 # analyze
-samples=$(cat out | grep "Prefetch page time (on miss)" | grep -Eo "[0-9.]+ µs" | awk '{ print $1 }')
-echo Result: $(mean "$samples") µs \(+/- $(stdev "$samples") µs\)
+metrics=(
+    "is_page_mapped (hit)"
+    "is_page_mapped (miss)" 
+    "is_page_mapped_and_wp (hit)"
+    "is_page_mapped_and_wp (miss - no page)"
+    "is_page_mapped_and_wp (miss - wprotected)"
+    "UFFD copy time (page mapping)"
+    "UFFD wp time (page write-protecting)"
+)
+for metric in "${metrics[@]}"; do
+    samples=$(cat out | grep "$metric" | grep -Eo "[0-9.]+ µs" | awk '{ print $1 }')
+    echo "$metric:" $(mean "$samples") µs \(+/- $(stdev "$samples") µs\)
+done
 
 
 # cleanup
