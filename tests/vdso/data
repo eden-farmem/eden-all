@@ -7,15 +7,28 @@ sc2-hs2-b1632       5.11-rc1    1.95 µs (+/- 0.0 µs)    Moved it further up
 sc2-hs2-b1632       5.11-rc1    1.91 µs (+/- 0.1 µs)    Moved it out of handle_page_fault()
 sc2-hs2-b1632       5.11-rc1    1.87 µs (+/- 0.0 µs)    Moved it before kvm_handle_async_pf()
 sc2-hs2-b1632       5.11-rc1    1.47 µs (+/- 0.1 µs)    Turned off page table isolation (spectre mitigations)
-(no improvement after this, this is as far up as we can go I think)
+
+sc2-hs2-b1630       5.11-rc1    1.72 µs (+/- 0.4 µs)    Original Patch      
+sc2-hs2-b1630       5.11-rc1    0.92 µs (+/- 0.4 µs)    Improvements + TurnOff PTI 
 
 
 Current numbers (sc2-hs2-b1632)
 ===============================
-is_page_mapped (hit):                       0.03 µs (+/- 0.0 µs)
-is_page_mapped (miss):                      1.49 µs (+/- 0.0 µs)
+is_page_mapped (hit):                       0.03 µs (+/- -nan µs)
+is_page_mapped (miss):                      1.49 µs (+/- 0.1 µs)
 is_page_mapped_and_wp (hit):                0.06 µs (+/- 0.0 µs)
-is_page_mapped_and_wp (miss - no page):     1.44 µs (+/- 0.0 µs)
+is_page_mapped_and_wp (miss - no page):     1.46 µs (+/- 0.0 µs)
 is_page_mapped_and_wp (miss - wprotected):  1.38 µs (+/- 0.0 µs)
-UFFD copy time (page mapping):              2.92 µs (+/- 0.0 µs)
-UFFD wp time (page write-protecting):       1.18 µs (+/- 0.0 µs)
+UFFD copy time (page mapping):              2.67 µs (+/- 0.3 µs)
+UFFD wp time (page write-protecting):       1.17 µs (+/- 0.0 µs)
+
+
+Current numbers (sc2-hs2-b1630)
+===============================
+is_page_mapped (hit):                       0.03 µs (+/- 0.0 µs)
+is_page_mapped (miss):                      0.85 µs (+/- 0.2 µs)
+is_page_mapped_and_wp (hit):                0.03 µs (+/- 0.0 µs)
+is_page_mapped_and_wp (miss - no page):     0.85 µs (+/- 0.2 µs)
+is_page_mapped_and_wp (miss - wprotected):  0.81 µs (+/- 0.2 µs)
+UFFD copy time (page mapping):              1.72 µs (+/- 0.3 µs)
+UFFD wp time (page write-protecting):       0.68 µs (+/- 0.2 µs)

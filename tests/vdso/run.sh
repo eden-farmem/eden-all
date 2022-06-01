@@ -59,8 +59,8 @@ gcc measure.c region.c uffd.c parse_vdso.c ${DEBUG} -o ${OUTFILE}
 # run
 set +e    #to continue to cleanup even on failure
 rm -f out
-for i in `seq 1 1 2`; do 
-    sudo ${env} ./${OUTFILE} | tee out
+for i in `seq 1 1 25`; do 
+    sudo ${env} ./${OUTFILE} | tee -a out
 done
 
 
