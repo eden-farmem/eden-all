@@ -1,9 +1,5 @@
-// Original source: Linux selftest from Nadav Amit's patch
-// https://lore.kernel.org/lkml/20210225072910.2811795-4-namit@vmware.com/
-
 /*
- * Extending "vdso_test_prefetch_page.c: Test vDSO's prefetch_page()" for user faults
- * Backed by Kona's userfault manager
+ * Userfaultfd Page Ops Benchmarks 
  */
 
 #define _GNU_SOURCE
@@ -33,17 +29,6 @@
 #include "ops.h"
 #include "uffd.h"
 #include "region.h"
-
-#ifdef USE_PREFETCH 
-#include "parse_vdso.h"
-#endif
-
-#ifdef USE_PREFETCH 
-const char *version = "LINUX_2.6";
-const char *name = "__vdso_prefetch_page";
-typedef long (*prefetch_page_t)(const void *p);
-static prefetch_page_t prefetch_page;
-#endif
 
 #define GIGA 				(1ULL << 30)
 #define PHY_CORES_PER_NODE 	14
@@ -99,23 +84,6 @@ struct handler_data {
 	 * separate cachelines */
 	struct pollfd evt[MAX_FDS];	
 } CACHE_ALIGN;
-
-int is_page_mapped(const void* p) {
-	p = page_align(p);
-
-#ifdef USE_PREFETCH
-	return prefetch_page(p) == 0;
-#else
-	/* NOTE: mincore() doesn't exactly get whether page is 
-	 * is mapped but for userfaultfd purposes it seems to be ok? */
-	char vec;
-	if (mincore((void *)p, PAGE_SIZE, &vec)) {
-		pr_err("mincore failed: %s\n", strerror(errno));
-		ASSERT(0);
-	}
-	return vec & 1;
-#endif
-}
 
 /* main for measuring threads */
 void* app_main(void* args) {
@@ -301,22 +269,6 @@ int main(int argc, char **argv)
     ASSERT(sizeof(struct handler_data) % CACHE_LINE_SIZE == 0);
 	cycles_per_us = time_calibrate_tsc();
 	ASSERT(cycles_per_us);
-
-#ifdef USE_PREFETCH 
-	/*find prefetch_page vDSO symbol*/
-	sysinfo_ehdr = getauxval(AT_SYSINFO_EHDR);
-	if (!sysinfo_ehdr) {
-		printf("[ERROR]\tAT_SYSINFO_EHDR is not present!\n");
-		return 1;
-	}
-
-	vdso_init_from_sysinfo_ehdr(getauxval(AT_SYSINFO_EHDR));
-	prefetch_page = (prefetch_page_t)vdso_sym(version, name);
-	if (!prefetch_page) {
-		printf("[ERROR]\tCould not find %s in vdso\n", name);
-		return 1;
-	}
-#endif
 
 	/*uffd init*/
 	uffd_info.fd_count = 0;

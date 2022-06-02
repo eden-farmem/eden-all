@@ -2,9 +2,7 @@
 set -e
 
 #
-# Test Nadav Amit's prefetch_page() API for Userfaultfd pages
-# Requires this kernel patch/feature: 
-# https://lore.kernel.org/lkml/20210225072910.2811795-4-namit@vmware.com/
+# Run vDSO call benchmark
 # 
 
 usage="\n

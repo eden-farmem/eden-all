@@ -2,8 +2,7 @@
 // https://lore.kernel.org/lkml/20210225072910.2811795-4-namit@vmware.com/
 
 /*
- * Extending "vdso_test_prefetch_page.c: Test vDSO's prefetch_page()" for user faults
- * Backed by Kona's userfault manager
+ * Benchmark page status vDSO calls
  */
 
 #define _GNU_SOURCE
@@ -41,7 +40,6 @@ const char *name_wp = "__vdso_is_page_mapped_and_wrprotected";
 typedef long (*vdso_check_page_t)(const void *p);
 static vdso_check_page_t is_page_mapped;
 static vdso_check_page_t is_page_mapped_and_wrprotected;
-#define SUCCESS 0
 
 uint64_t cycles_per_us;
 
@@ -58,7 +56,7 @@ int main(int argc, char **argv)
 	cycles_per_us = time_calibrate_tsc();
 	ASSERT(cycles_per_us);
 
-	/*find prefetch_page vDSO symbol*/
+	/*find vDSO symbols*/
 	sysinfo_ehdr = getauxval(AT_SYSINFO_EHDR);
 	if (!sysinfo_ehdr) {
 		printf("[ERROR]\tAT_SYSINFO_EHDR is not present!\n");
@@ -93,7 +91,7 @@ int main(int argc, char **argv)
 	/* NOTE: While we registered a uffd region, we don't have a manager 
 	 * handling uffd events from the kernel in this test. Any access to uffd 
 	 * region will trigger such an event so we can't do any direct access.
-	 * Prefetch_page access won't trigger this event so we're fine. */
+	 * Access through vDSO won't trigger this event so we're fine. */
 
 	uint64_t page_map_hit_cycles = 0;
 	uint64_t page_map_miss_cycles = 0;

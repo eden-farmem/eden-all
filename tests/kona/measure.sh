@@ -50,7 +50,7 @@ mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 
 # for kind in "faults" "appfaults" "mixed"; do
-for kind in "faults" "appfaults"; do
+for kind in "appfaults"; do
     for op in "read" "write"; do        # "r+w"
         cfg=${kind}-${op}
         KC=CONFIG_WP
@@ -75,15 +75,15 @@ for kind in "faults" "appfaults"; do
 
         datafile=$DATADIR/${cfg}
         if [ ! -f $datafile ] || [[ $FORCE ]]; then 
-            bash run.sh -f -kc="$KC" -ko="$KO"  #rebuild kona
+            bash run.sh -f -kc="$KC" -ko="$KO" --buildonly  #rebuild kona
             tmpfile=${TEMP_PFX}out
             echo "cores,xput,latency" > $datafile
-            for thr in `seq 1 1 6`; do 
-                # bash run.sh -t=${thr} 
+            for thr in `seq 4 1 6`; do 
                 bash run.sh -t=${thr} -fl="""$CFLAGS""" -o=${tmpfile}
             done
             grep "result:" $tmpfile | sed 's/result://' >> $datafile
             rm -f $tmpfile
+            cat $datafile
         fi
         cat $datafile
         plots="$plots -d $datafile -l $cfg -ls $LS"

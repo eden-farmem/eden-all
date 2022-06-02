@@ -1,9 +1,7 @@
 #!/bin/bash
 
 #
-# Test Nadav Amit's prefetch_page() API for Userfaultfd pages using Kona
-# Requires this kernel patch/feature: 
-# https://lore.kernel.org/lkml/20210225072910.2811795-4-namit@vmware.com/
+# Kona Benchmarks w/ appfaults
 # 
 
 usage="Example: bash run.sh -f\n
@@ -16,6 +14,7 @@ usage="Example: bash run.sh -f\n
 -s, --safemode \t build kona with safe mode on\n
 -c, --clean \t run only the cleanup part\n
 -d, --debug \t build debug\n
+-bo, --buildonly \t exit after build\n
 -d, --gdb \t run with a gdb server (on port :1234) to attach to\n
 -h, --help \t this usage information message\n"
 
@@ -67,7 +66,7 @@ case $i in
     ;;
 
     -t=*|--threads=*)
-    NUM_THREADS=${i#*=}
+    NTHREADS=${i#*=}
     ;;
 
     -o=*|--out=*)
@@ -76,6 +75,10 @@ case $i in
 
     -s|--safemode)
     kona_cflags="$kona_cflags -DSAFE_MODE"
+    ;;
+
+    -bo|--buildonly)
+    BUILDONLY=1
     ;;
 
     -g|--gdb)
@@ -115,6 +118,7 @@ if [[ $FORCE ]]; then
     make clean
     make je_jemalloc
     kona_cflags="$kona_cflags -DSERVE_APP_FAULTS"
+    # kona_cflags="$kona_cflags -DRDMA_SERVER_NSLABS=524288L"      #64gb remote memory
     make all -j $kona_cfg PROVIDED_CFLAGS="""$kona_cflags""" ${DEBUG}
     popd
 fi
@@ -125,6 +129,10 @@ gcc main.c parse_vdso.c utils.c                 \
     -I${KONA_DIR}/liburing/src/include          \
     -I${KONA_BIN}                               \
     ${CFLAGS} ${LDFLAGS} -L${KONA_BIN} -o ${BINFILE}
+
+if [[ $BUILDONLY ]]; then 
+    exit 0
+fi
 
 set +e    #to continue to cleanup even on failure
 
@@ -139,15 +147,15 @@ sleep 2
 ssh ${KONA_MEMSERVER_SSH} "mkdir -p ~/scratch"
 scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
 ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
-sleep 30
+sleep 60    #bigger memory means longer wait
 
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
 if [[ $OUTFILE ]]; then 
-    sudo ${env} ${gdbcmd} ./${BINFILE} ${NUM_THREADS} >> $OUTFILE
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${NTHREADS} | tee -a $OUTFILE
 else 
-    sudo ${env} ${gdbcmd} ./${BINFILE} ${NUM_THREADS}
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${NTHREADS}
 fi
 
 # cleanup

@@ -1,9 +1,5 @@
-// Original source: Linux selftest from Nadav Amit's patch
-// https://lore.kernel.org/lkml/20210225072910.2811795-4-namit@vmware.com/
-
 /*
- * Extending "vdso_test_prefetch_page.c: Test vDSO's prefetch_page()" for user faults
- * Backed by Kona's userfault manager
+ * Kona Benchmarks w/ appfaults
  */
 
 #define _GNU_SOURCE
@@ -34,16 +30,12 @@
 #include "klib_sfaults.h"
 #include "parse_vdso.h"
 
-#ifdef USE_APP_FAULTS
-#define USE_PREFETCH
-#endif
-
-#ifdef USE_PREFETCH 
 const char *version = "LINUX_2.6";
-const char *name = "__vdso_prefetch_page";
-typedef long (*prefetch_page_t)(const void *p);
-static prefetch_page_t prefetch_page;
-#endif
+const char *name_mapped = "__vdso_is_page_mapped";
+const char *name_wp = "__vdso_is_page_mapped_and_wrprotected";
+typedef long (*vdso_check_page_t)(const void *p);
+static vdso_check_page_t is_page_mapped;
+static vdso_check_page_t is_page_mapped_and_wrprotected;
 
 #define GIGA (1ULL << 30)
 
@@ -66,7 +58,7 @@ const int KONA_CORES[] = {
 #define NUM_EXCLUDED (sizeof(EXCLUDED)/sizeof(EXCLUDED[0]))
 #define MAX_APP_CORES (NUM_CORES - NUM_EXCLUDED)
 #define MAX_THREADS (MAX_APP_CORES-1)
-#define RUNTIME_SECS 5
+#define RUNTIME_SECS 10
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready, lockstep_start, lockstep_end;
@@ -125,8 +117,15 @@ static inline void post_app_fault_sync(int channel, unsigned long fault_addr, in
 	ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
 
 	app_fault_packet_t resp;
-	while(app_read_fault_resp_async(channel, &resp)) 
+	// unsigned long start = rdtsc();
+	// unsigned long now;
+	while(app_read_fault_resp_async(channel, &resp)) {
 		cpu_relax();
+		// now = (rdtsc() - start) / cycles_per_us;
+		// if (now > 10000) 
+		// 	pr_info("thread stuck on channel %d %lu %d", 
+		// 		channel, fault_addr, is_write);
+	}
 	ASSERT(resp.tag == (void*) fault_addr);	/*sanity check*/
 }
 
@@ -172,16 +171,21 @@ void* thread_main(void* args) {
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
 
-	while(!start_button)	cpu_relax();
+	unsigned long start = rdtsc();
+	unsigned long now;
+
+	while(!start_button)
+		cpu_relax();
 	while(!stop) {
 		if (op == FO_RANDOM)
 			op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
+			now = (rdtsc() - start) / cycles_per_us;
 
 		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
 #ifdef USE_APP_FAULTS
 			pr_debug("posting app fault on thread %d, channel %d", tdata->tid, chanid);
-			r = prefetch_page(p);	/*access before*/
-			ASSERT(r == -1);		/*page not expected to exist*/
+			// r = is_page_mapped(p);	/*access before*/
+			// ASSERTZ(r);				/*page not expected to exist*/
 
 			if (concurrent) {
 				/*sync with other threads before each fault*/
@@ -209,8 +213,10 @@ void* thread_main(void* args) {
 					ASSERT(0);
 			}
 			
-			r = prefetch_page(p);	/*access after*/
-			ASSERTZ(r);				/*page expected to exist*/
+			// r = is_page_mapped(p);	/*access after*/
+			// if (!r) 
+			// 	pr_info("page fault failed t %lu", (unsigned long)p);
+			// ASSERT(r);				/*page expected to exist*/
 			pr_debug("page fault served!");
 #else
 			BUG(1);	/*cannot be here without USE_APP_FAULTS*/
@@ -228,10 +234,15 @@ void* thread_main(void* args) {
 				tmp = *(int*)p;
 			if (op == FO_WRITE || op == FO_READ_WRITE)
 				*(int*)p = tmp;
+			
+			// r = is_page_mapped(p);	/*access after*/
+			// ASSERT(r);				/*page expected to exist*/
 		}
-		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 		tdata->xput_ops++;
 		p += PAGE_SIZE;
+		if (tdata->xput_ops % 10000)
+			pr_info("thread %d finished %d ops at %lu", self, tdata->xput_ops, now);
+		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 #ifdef DEBUG
 		i++;
 		if (i == 1000) 	
@@ -247,11 +258,15 @@ void* thread_main(void* args) {
 			r = pthread_barrier_wait(&lockstep_end);
 			ASSERT(r != EINVAL);
 			stop = stop_button_seen;
+			pr_info("here");
 		}
 		else	
 			stop = stop_button;
+		
+		if (stop_button || stop)
+			pr_info("thread %d stop button seen", self);
 	}
-	pr_debug("thread %d done with %d faults", tdata->tid, i);
+	pr_info("thread %d done with %d faults", tdata->tid, i);
 }
 
 int main(int argc, char **argv)
@@ -287,7 +302,8 @@ int main(int argc, char **argv)
 
 	/*kona init*/
 	char env_var[200];
-	size = 34359738368;
+	size = 34359738368;	/*32 gb*/
+	// size = 50000000000;	/*50 gb*/
 	sprintf(env_var, "MEMORY_LIMIT=%lu", size);	putenv(env_var);	/*32gb, BIG to avoid eviction*/
 	putenv("EVICTION_THRESHOLD=1");			/*32gb, BIG to avoid eviction*/
 	putenv("EVICTION_DONE_THRESHOLD=1");	/*32gb, BIG to avoid eviction*/
@@ -296,8 +312,7 @@ int main(int argc, char **argv)
 #endif
 	rinit();
 
-#ifdef USE_PREFETCH 
-	/*find prefetch_page vDSO symbol*/
+	/*find vDSO symbols*/
 	sysinfo_ehdr = getauxval(AT_SYSINFO_EHDR);
 	if (!sysinfo_ehdr) {
 		printf("[ERROR]\tAT_SYSINFO_EHDR is not present!\n");
@@ -305,12 +320,16 @@ int main(int argc, char **argv)
 	}
 
 	vdso_init_from_sysinfo_ehdr(getauxval(AT_SYSINFO_EHDR));
-	prefetch_page = (prefetch_page_t)vdso_sym(version, name);
-	if (!prefetch_page) {
-		printf("[ERROR]\tCould not find %s in vdso\n", name);
+	is_page_mapped = (vdso_check_page_t)vdso_sym(version, name_mapped);
+	if (!is_page_mapped) {
+		printf("[ERROR]\tCould not find %s in vdso\n", name_mapped);
 		return 1;
 	}
-#endif
+	is_page_mapped_and_wrprotected = (vdso_check_page_t)vdso_sym(version, name_wp);
+	if (!is_page_mapped_and_wrprotected) {
+		printf("[ERROR]\tCould not find %s in vdso\n", name_wp);
+		return 1;
+	}
 
 	p = rmalloc(size);
 	ASSERT(p != NULL);
@@ -349,10 +368,13 @@ int main(int argc, char **argv)
 		duration_secs = duration / (1000000.0 * cycles_per_us);
 	} while(duration_secs <= RUNTIME_SECS);
 	stop_button = 1;
+	pr_info("send stop signal");
 
 	/*wait for threads to finish*/
-	for(i = 0; i < num_threads; i++)
+	for(i = 0; i < num_threads; i++) {
 		pthread_join(threads[i], NULL);
+		pr_info("thread %d returned", i);
+	}
 
 	uint64_t xput = 0, errors = 0;
 	for (i = 0; i < num_threads; i++) {
@@ -364,7 +386,5 @@ int main(int argc, char **argv)
 	printf("result:%d,%.0lf,%.1lf\n", num_threads, 
 		xput / duration_secs, 								//total xput
 		duration * 1.0/(cycles_per_us*tdata[0].xput_ops));	//per-op latency
-
-	rdestroy();
 	return 0;
 }

@@ -59,7 +59,8 @@ mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 cores=1
 
-for kind in "vanilla" "regular" "apf-sync" "apf-async"; do    #
+for kind in "regular" "apf-sync" "apf-async"; do    # "vanilla" 
+# for kind in "apf-sync" "apf-async"; do    #
     for op in "random"; do        # "write" "read" "r+w" "random"
         # reset
         cfg=${kind}-${op}
@@ -114,7 +115,7 @@ plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
 python ${PLOTSRC} ${plots}                  \
     -xc cores -xl "App CPU"                 \
     -yc xput -yl "MOPS" --ymul 1e-6         \
-    --ymin 0 --ymax .2                      \
+    --ymin 0 --ymax .25                     \
     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 display $plotname & 
 
