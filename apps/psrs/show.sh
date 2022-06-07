@@ -140,7 +140,7 @@ for exp in $LS_CMD; do
     # overall performance
 
     # time breakdown
-    if [ -f ${exp}/start ]; then 
+    if [ -f ${exp}/start ] && [ -f ${exp}/end ]; then 
         start=`cat ${exp}/start`
         rtime=$((`cat ${exp}/end`-`cat ${exp}/phase1`))
         p1time=$((`cat ${exp}/phase2`-`cat ${exp}/phase1`))

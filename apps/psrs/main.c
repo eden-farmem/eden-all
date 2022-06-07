@@ -132,7 +132,7 @@ void phase1(struct thread_data* data) {
 	int id = data->id;
 	
 	QUICKSORT((input + start), (end - start), sizeof(element_t), cmpfunc);
-	
+
 	/* regular sampling */
 	int ix = 0;
 	for (int i = 0; i < t; i++) {

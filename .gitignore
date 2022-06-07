@@ -9,3 +9,4 @@ tests/*/*/lat-*
 data
 *.out
 out
+__running__

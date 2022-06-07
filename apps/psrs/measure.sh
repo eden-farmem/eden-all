@@ -25,6 +25,7 @@ case $i in
 
     -f|--force)
     FORCE=1
+    FFLAG="--force"
     ;;
 
     -h | --help)
@@ -56,19 +57,22 @@ check_for_stop() {
     fi
 }
 
-desc="withkona"
+desc="customqsort"
+CFLAGS="-DCUSTOM_QSORT"
 # for sflag in "" "--shenango"; do
 for kflag in "--kona"; do     #"--kona"
 	# for nkeys_ in 16 32 64 128 256 512 1024 2048 4096; do
 	for nkeys_ in 512; do
 		nkeys=$((nkeys_*1000000))
-		for cores in 8 12; do
+		for cores in 1 2 4 8 12; do
 			# for tpc in 1 2 4 8 16; do
 			for tpc in 1; do
                 check_for_stop
 				thr=$((cores*tpc))
 				echo "Running ${cores} cores, ${thr} threads, ${nkeys} keys"
-				bash run.sh -c=${cores} -t=${thr} -nk=${nkeys} ${sflag} ${kflag} -d="""${desc}"""
+				bash run.sh -c=${cores} -t=${thr} -nk=${nkeys}  \
+                    ${sflag} ${kflag} ${FFLAG} -d="""${desc}""" \
+                    -fl="""${CFLAGS}"""
 			done
 		done
 	done
