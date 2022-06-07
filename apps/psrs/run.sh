@@ -52,6 +52,7 @@ NCORES=1
 NKEYS=16000000
 LMEM=1000000000    # 1GB
 NO_HYPERTHREADING="-noht"
+README="notset"
 
 # save settings
 SETTINGS=
@@ -182,12 +183,15 @@ ${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 NTHREADS=${NTHREADS:-$NCORES}
 
-cleanup() {
-    rm -f ${BINFILE}
-    rm -f ${TMP_FILE_PFX}*
+kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
+}
+cleanup() {
+    rm -f ${BINFILE}
+    rm -f ${TMP_FILE_PFX}*
+    kill_remnants
 }
 cleanup     #start clean
 if [[ $CLEANUP ]]; then
@@ -241,7 +245,7 @@ if [[ $SHENANGO ]]; then
 fi
 
 # compile
-gcc main.c -lpthread -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+gcc main.c qsort.c -lpthread -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then
     exit 0
@@ -263,33 +267,8 @@ save_cfg "pgfaults" $PAGE_FAULTS
 save_cfg "desc"     $README
 echo -e "$SETTINGS" > settings
 
-# prepare kona memory server
-if [[ $KONA ]]; then
-    echo "starting kona servers"
-    # starting kona controller
-    scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
-    ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
-    sleep 2
-    # starting mem server
-    scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
-    ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT \
-        -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
-    sleep 30
-fi
-
-# setup shenango runtime
+# prepare shenango config
 if [[ $SHENANGO ]]; then
-    start_iokernel() {
-        echo "starting iokerneld"
-        sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-        binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
-        sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
-        echo "waiting on iokerneld"
-        sleep 5    #for iokernel to be ready
-    }
-    start_iokernel
-
-    # prepare shenango config
     shenango_cfg="""
 host_addr 192.168.0.100
 host_netmask 255.255.255.0
@@ -301,34 +280,73 @@ host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true"""
     echo "$shenango_cfg" > $CFGFILE
 fi
-
-# run
-if [[ $KONA ]]; then
-    env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
-    env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
-    env="$env EVICTION_THRESHOLD=0.99"
-    env="$env EVICTION_DONE_THRESHOLD=0.99"
-    env="$env MEMORY_LIMIT=$LMEM"
-    wrapper="$wrapper $env"
-fi
-if ! [[ $SHENANGO ]]; then 
-    # use cores 14-27 for non-hyperthreaded setting
-    if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
-    BASECORE=14
-    CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
-    wrapper="$wrapper taskset -a -c ${CPUSTR}"
-fi
-if [[ $GDB ]]; then 
-    wrapper="gdbserver :1234 --wrapper $wrapper --";
-fi
-# args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS}"	#shenango args
-args="${NKEYS} ${NTHREADS}"
-echo sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args}
-sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
 popd
 
-# all good, save the run
-mv ${expdir} $DATADIR/
+for retry in {1..3}; do
+    kill_remnants
+
+    # prepare kona memory server
+    if [[ $KONA ]]; then
+        echo "starting kona servers"
+        # starting kona controller
+        scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
+        ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
+        sleep 2
+        # starting mem server
+        scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
+        ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT \
+            -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
+        sleep 30
+    fi
+
+    # setup shenango runtime
+    if [[ $SHENANGO ]]; then
+        start_iokernel() {
+            echo "starting iokerneld"
+            sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
+            binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
+            sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
+            echo "waiting on iokerneld"
+            sleep 5    #for iokernel to be ready
+        }
+        start_iokernel
+    fi
+
+    # run
+    pushd $expdir
+    if [[ $KONA ]]; then
+        env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
+        env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
+        env="$env EVICTION_THRESHOLD=0.99"
+        env="$env EVICTION_DONE_THRESHOLD=0.99"
+        env="$env MEMORY_LIMIT=$LMEM"
+        wrapper="$wrapper $env"
+    fi
+    if ! [[ $SHENANGO ]]; then 
+        # use cores 14-27 for non-hyperthreaded setting
+        if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
+        BASECORE=14
+        CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
+        wrapper="$wrapper taskset -a -c ${CPUSTR}"
+    fi
+    if [[ $GDB ]]; then 
+        wrapper="gdbserver :1234 --wrapper $wrapper --";
+    fi
+    # args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS}"	#shenango args
+    args="${NKEYS} ${NTHREADS}"
+    echo sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args}
+    sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
+    popd
+
+    # if we're here, the run has mostly succeeded
+    # only retry if we have silenty failed because of kona server
+    res=$(grep "Unknown event: is server running?" ${expdir}/app.out || true)
+    if [ -z "$res" ]; then 
+        echo "no error; moving on"
+        mv ${expdir} $DATADIR/
+        break
+    fi
+done
 
 # cleanup
 cleanup

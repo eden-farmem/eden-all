@@ -13,7 +13,6 @@ usage="\n
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
 TMP_PFX=tmp_sort
-CONTROL=${TMP_PFX}_running
 WARMUP=1
 
 # parse cli
@@ -47,24 +46,23 @@ lmem=1000000000     # 1 GB
 cores=1
 thr=1
 
-# create a control fd
-touch ${CONTROL}
+# create a stop button
+touch __running__
 check_for_stop() {
     # stop if the fd is removed
-    if [ ! -f ${CONTROL} ]; then 
+    if [ ! -f __running__ ]; then 
         echo "stop requested"   
         exit 0
     fi
 }
 
-desc="testwithkona"
-# for sflag in "" "--shenango"; do 
-for kflag in "--kona"; do 
+desc="withkona"
+# for sflag in "" "--shenango"; do
+for kflag in "--kona"; do     #"--kona"
 	# for nkeys_ in 16 32 64 128 256 512 1024 2048 4096; do
 	for nkeys_ in 512; do
 		nkeys=$((nkeys_*1000000))
-		# for cores in 2 4 6 8 10 12; do
-		for cores in 2; do
+		for cores in 8 12; do
 			# for tpc in 1 2 4 8 16; do
 			for tpc in 1; do
                 check_for_stop
@@ -78,3 +76,4 @@ done
 
 # cleanup
 rm -f ${TMP_PFX}*
+rm -f __running__

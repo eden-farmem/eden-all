@@ -138,24 +138,35 @@ for exp in $LS_CMD; do
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
     
     # overall performance
-    rtime=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "took: [0-9]+ ms \(microseconds\)" ${exp}/app.out | awk '{ print $2 }')
-    cpuwork=
-    if [[ $rtime ]]; then cpuwork=$((rtime*cores/1000000)); fi
 
     # time breakdown
-    p1time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 1 took [0-9]+ ms" | awk '{ print $4 }')
-    p2time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 2 took [0-9]+ ms" | awk '{ print $4 }')
-    p3time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 3 took [0-9]+ ms" | awk '{ print $4 }')
-    p4time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "^phase 4 took [0-9]+ ms" | awk '{ print $4 }')
+    if [ -f ${exp}/start ]; then 
+        start=`cat ${exp}/start`
+        rtime=$((`cat ${exp}/end`-`cat ${exp}/phase1`))
+        p1time=$((`cat ${exp}/phase2`-`cat ${exp}/phase1`))
+        p2time=$((`cat ${exp}/phase3`-`cat ${exp}/phase2`))
+        p3time=$((`cat ${exp}/phase4`-`cat ${exp}/phase3`))
+        p4time=$((`cat ${exp}/end`-`cat ${exp}/phase4`))
+        # copyback=$((`cat ${exp}/end`-`cat ${exp}/copyback`))
+    else
+        rtime=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "took: [0-9]+ ms \(microseconds\)" ${exp}/app.out | awk '{ print $2 }')
+        p1time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "phase 1 took [0-9]+ ms" | awk '{ print $4 }')
+        p2time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "phase 2 took [0-9]+ ms" | awk '{ print $4 }')
+        p3time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "phase 3 took [0-9]+ ms" | awk '{ print $4 }')
+        p4time=$(cat ${exp}/app.out 2>/dev/null | grep -Eo "phase 4 took [0-9]+ ms" | awk '{ print $4 }')
+    fi
     unaccounted=
-    if [[ $rtime ]]; then unaccounted=$((rtime-p1time-p2time-p3time-p4time));   fi
+    cpuwork=
+    if [[ $rtime ]]; then 
+        cpuwork=$((rtime*cores))
+        unaccounted=$((rtime-p1time-p2time-p3time-p4time))
+    fi
 
     # kona numbers
     konastatsout=${exp}/kona_counters_parsed
     konastatsin=${exp}/kona_counters.out 
-    if [ ! -f $konastatsout ] && [ -f $konastatsin ] && [[ $rstart ]] && [[ $rend ]]; then 
-        python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py -i ${konastatsin} \
-            -st=${rstart} -et ${rend} -o ${konastatsout}
+    if [ ! -f $konastatsout ] && [ -f $konastatsin ]; then 
+        python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py -i ${konastatsin} -o ${konastatsout}
     fi
     faultsr=$(csv_column_mean "$konastatsout" "n_faults_r")
     faultsw=$(csv_column_mean "$konastatsout" "n_faults_w")
@@ -171,15 +182,15 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
     HEADER="$HEADER,Keys";          LINE="$LINE,$((nkeys/1000000))M";
-    HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime/1000000))";
+    HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime))";
     HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
-    HEADER="$HEADER,Phase1(%)";     LINE="$LINE,$(percentof "$p1time" "$rtime")";
-    HEADER="$HEADER,Phase2(%)";     LINE="$LINE,$(percentof "$p2time" "$rtime")";
-    HEADER="$HEADER,Phase3(%)";     LINE="$LINE,$(percentof "$p3time" "$rtime")";
-    HEADER="$HEADER,Phase4(%)";     LINE="$LINE,$(percentof "$p4time" "$rtime")";
-    HEADER="$HEADER,Unacc(%)";      LINE="$LINE,$(percentof "$unaccounted" "$rtime")"; 
+    HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1time))"; #$(percentof "$p1time" "$rtime")
+    HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
+    HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3time))";
+    HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4time))";
+    HEADER="$HEADER,Unacc";         LINE="$LINE,$((unaccounted))"; 
 
-    # HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
+    HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
     # HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
     # HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
     # HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";

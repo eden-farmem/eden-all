@@ -5,14 +5,28 @@
 #include <limits.h>
 #include <time.h>
 #include <sys/time.h>
+
+/* for uthreads */
 #ifdef SHENANGO
 #include "runtime/thread.h"
 #include "runtime/sync.h"
 #endif
+
+/* for kona */
 #ifdef WITH_KONA
 #include "klib.h"
 #endif
 #include "logging.h"
+
+/* for custom qsort */
+#ifdef CUSTOM_QSORT
+#include "qsort.h"
+#define QUICKSORT(base,len,size,cmp) quicksort(base,len)
+typedef qelement_t element_t;
+#else
+#define QUICKSORT qsort
+typedef int element_t;
+#endif
 
 /* thread/sync primitives from various platforms */
 #ifdef SHENANGO
@@ -42,10 +56,8 @@
 #define RFREE		free
 #endif
 
-
 /* local macros */
 #define master if (id == 0) 
-#define isize sizeof(int)
 #define lsize sizeof(size_t)
 #define BARRIER BARRIER_WAIT(&barrier)
 #define start_time struct timeval* time_start = get_time();
@@ -58,23 +70,23 @@ int t;
 int ro; 
 
 /* 
- * input array (currently elements are int-sized) 
+ * input array
  */
-int* input;
+element_t* input;
 /*
  * regular_samples is an array of t*t elements where each thread writes 
  * local samples to their own parts (disjoint) of the array.
  *
  * gets generated in phase 1, and used in phase 2
  */
-int* regular_samples;
+element_t* regular_samples;
 /*
  * pivots is an array of t - 1 elements, and is written to only once by the master thread, 
  * and afterwards is accessed in read-only fashion by the worker threads. 
  *
  * it stores pivots in phase 2
  */
-int* pivots;
+element_t* pivots;
 /*
  * partitions is an array of size t * (t + 1). 
  * it can be considered as a 2d array where each thread writes the partition indices to its own row. 
@@ -89,6 +101,10 @@ size_t* partitions;
  * the length of total merged keys per thread in phase 4.
  */
 size_t* merged_partition_length;
+/* 
+ * output array for merged values
+ */
+element_t* merged_values;
 
 struct thread_data {
 	int id;
@@ -111,13 +127,11 @@ void checkpoint(char* name);
  * does the local sorting of the array, and collects sample.
  */
 void phase1(struct thread_data* data) {
-	// start_time;
-
 	size_t start = data->start;
 	size_t end = data->end;
 	int id = data->id;
 	
-	qsort((input + start), (end - start), isize, cmpfunc);
+	QUICKSORT((input + start), (end - start), sizeof(element_t), cmpfunc);
 	
 	/* regular sampling */
 	int ix = 0;
@@ -125,9 +139,6 @@ void phase1(struct thread_data* data) {
 		regular_samples[id * t + ix] = input[start + (i * w)];
 		ix++;
 	}
-	
-	// long int time = end_time;
-	// printf("thread %d - phase 1 took %ld ms, sorted %lu items\n", id, time, (end - start));	
 }
 
 /*
@@ -136,18 +147,13 @@ void phase1(struct thread_data* data) {
  */
 void phase2(struct thread_data* data) {
 	int id = data->id;
-	master { 
-		// start_time;
-	
-		qsort(regular_samples, t*t, isize, cmpfunc);
+	master { 	
+		QUICKSORT(regular_samples, t*t, sizeof(element_t), cmpfunc);
 		int ix = 0;
 		for (int i = 1; i < t; i++) {
 			int pos = t * i + ro - 1;
 			pivots[ix++] = regular_samples[pos];
 		}
-		
-		// long int time = end_time;
-		// printf("thread %d - phase 2 took %ld ms\n", id, time);
 	}
 }
 
@@ -156,8 +162,6 @@ void phase2(struct thread_data* data) {
  * local splitting of the data based on the pivots
  */
 void phase3(struct thread_data* data) {
-	// start_time;
-
 	size_t start = data->start;
 	size_t end = data->end;
 	int id = data->id;
@@ -173,32 +177,15 @@ void phase3(struct thread_data* data) {
 			pi++;
 		}
 	}
-	
-	// long int time = end_time;
-	// printf("thread %d - phase 3 took %ld ms\n", id, time);
 }
 
 /*
  * merges the array with a given size into the original input array
  */
-void merge_into_original_array(int id, size_t* array, size_t array_size) {
-	// start_time;
-
-	// find the position that the thread needs to start from
-	// in order to put values into the original array
-	// start position is basically the summation of 
-	// the lengths of the previous partitions
-	size_t start_pos = 0;
-	int x = id - 1;
-	while (x >= 0) {
-		start_pos += merged_partition_length[x--];
+void copyback(element_t* data, int start_pos, size_t len) {
+	for (size_t i = start_pos; i < start_pos + len; i++) {
+		input[i] = data[i];
 	}
-	for (size_t i = start_pos; i < start_pos + array_size; i++) {
-		input[i] = array[i - start_pos];
-	}
-	// long int time = end_time;
-	// printf("thread %d - phase merge took %ld ms\n", id, time);	
-	RFREE(array);
 }
 
 /*
@@ -208,31 +195,38 @@ void merge_into_original_array(int id, size_t* array, size_t array_size) {
  * it also saves the merged values into their appropriate place in the input array.
  */
 void phase4(struct thread_data* data) {
-	// start_time;
-	
 	// this array contains the range indicating pairs
 	// [r1_start, r1_end, r2_start, r2_end, ...]
 	size_t exchange_indices[t*2];
 	int id = data->id;
+	int ei = 0;
 
-	int ei = 0; // exchange indices counter
 	for (int i = 0; i < t; i++) {
 		exchange_indices[ei++] = partitions[i*(t+1) + id];
 		exchange_indices[ei++] = partitions[i*(t+1) + id + 1];
 	}
-	// k way merge - start
-	// in k-way merge step, basically we go through each valid partition, and find the minimum in each step
-	// then we add that minimum to the local "merged_values" array in each step
-	// a valid partition is when rn_start < rn_end
-	// partition being invalid means that that partition has been merged completely already
-	// array size
+	
 	size_t total_merge_length = 0;
 	for (int i = 0; i < t * 2; i+=2) {
 		total_merge_length += exchange_indices[i + 1] - exchange_indices[i];
 	}
-	
-	size_t* merged_values = RMALLOC(sizeof(size_t) * total_merge_length);
 	merged_partition_length[id] = total_merge_length;
+
+	/* create output buffer	*/
+	master {  
+		merged_values = RMALLOC(sizeof(element_t) * size);
+	}
+	BARRIER;
+	size_t start_pos = 0;
+	for(int i = 0; i < id; i++)	
+		start_pos += merged_partition_length[i];
+	assert(start_pos + total_merge_length <= size);
+
+	/* k way merge
+	   in k-way merge step, basically we go through each valid partition, and find the minimum in each step
+	   then we add that minimum to the local "merged_values" array in each step
+	   a valid partition is when rn_start < rn_end
+	   partition being invalid means that that partition has been merged completely already */
 	int mi = 0;
 	int min, min_pos;
 	while (mi < total_merge_length) {
@@ -259,18 +253,20 @@ void phase4(struct thread_data* data) {
 			break;
 
 		// save the minimum to the final array
-		merged_values[mi++] = min;
+		merged_values[start_pos + mi] = min;
 		// increase the counter of the range that 
 		// the minimum value belongs to
 		exchange_indices[min_pos]++;
+		mi++;
 	}
-	// k way merge - end
-	// long int time = end_time;
-	// printf("thread %d - phase 4 took %ld ms, merged %lu keys\n", id, time, total_merge_length);
+	assert(mi == total_merge_length);
 
 	BARRIER;
-	master { RFREE(partitions); }
-	merge_into_original_array(id, merged_values, total_merge_length);
+	master { 
+		RFREE(partitions);
+		checkpoint("copyback"); 
+	}
+	copyback(merged_values, start_pos, total_merge_length);
 }
 
 #ifdef SHENANGO
@@ -286,7 +282,7 @@ void* psrs(void *args) {
 	long int time;
 
 	/* phase 1 */
-	// master { checkpoint("phase1_start"); }
+	master { checkpoint("phase1"); }
 	time_start = get_time();
 	BARRIER;
 	phase1(data);
@@ -297,7 +293,7 @@ void* psrs(void *args) {
 	}
 
 	/* phase 2 */
-	// master { checkpoint("phase2_start"); }
+	master { checkpoint("phase2"); }
 	time_start = get_time();
 	BARRIER;
 	phase2(data);
@@ -309,7 +305,7 @@ void* psrs(void *args) {
 	}
 
 	/* phase 3 */
-	// master { checkpoint("phase3_start"); }
+	master { checkpoint("phase3"); }
 	time_start = get_time();
 	BARRIER;
 	phase3(data);
@@ -321,7 +317,7 @@ void* psrs(void *args) {
 	}
 	
 	/* phase 4 */
-	// master { checkpoint("phase4_start"); }
+	master { checkpoint("phase4"); }
 	time_start = get_time();
 	BARRIER;
 	phase4(data);
@@ -347,31 +343,32 @@ struct thread_data* get_thread_data(int id, size_t per_thread) {
 
 
 void main_thread(void* arg) {
+	size_t per_thread = size / t;
+	BARRIER_INIT(&barrier, t);
+
 	/* initializing/allocating data */
+	checkpoint("start");
 	input = generate_array_of_size(size);
-	regular_samples = RMALLOC(isize *t*t); 
-	pivots = RMALLOC(isize * (t - 1));
+	regular_samples = RMALLOC(sizeof(element_t) *t*t); 
+	pivots = RMALLOC(sizeof(element_t) * (t - 1));
 	merged_partition_length = RMALLOC(sizeof(size_t) * t);
 	partitions = RMALLOC(sizeof(size_t) *  t * (t+1));
-	
-	// size of a chunk per thread
-	size_t per_thread = size / t;
-	
-	BARRIER_INIT(&barrier, t);
-	
-	start_time;	
-	
+		
 	/* start worker threads */
+	start_time;	
 	THREAD_T* threads = malloc(sizeof(THREAD_T) * t);
 	int i = 1;
 	for (; i < t - 1; i++) {
 		struct thread_data* data = get_thread_data(i, per_thread);
 		THREAD_CREATE(&threads[i], psrs, (void *) data);
 	}
+
 	/* the last thread gets the remaining part of the array */
-	struct thread_data* data = get_thread_data(i, per_thread); 
-	data->end = size;
-	THREAD_CREATE(&threads[i], psrs, (void *) data);
+	if (i < t) {
+		struct thread_data* data = get_thread_data(i, per_thread); 
+		data->end = size;
+		THREAD_CREATE(&threads[i], psrs, (void *) data);
+	}
 
 	/* master thread */
 	struct thread_data* data_master = get_thread_data(0, per_thread);
@@ -379,6 +376,7 @@ void main_thread(void* arg) {
 	
 	long int time = end_time;
 	printf("took: %ld ms (microseconds)\n", time);
+	checkpoint("end");
 	
  	is_sorted(); // for validation to see if the array has really been sorted
 
@@ -445,9 +443,9 @@ long int end_timing(struct timeval* start) {
 // used for generating random arrays of the given size
 int* generate_array_of_size(size_t size) {
 	srandom(15);
-	int* randoms = RMALLOC(isize * size);
+	int* randoms = RMALLOC(sizeof(element_t) * size);
 	for (size_t i = 0; i < size; i++) {
-		randoms[i] = (int) random();
+		randoms[i] = (element_t) random();
 	}
 	return randoms;
 }
