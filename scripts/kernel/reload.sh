@@ -14,6 +14,7 @@ SCRIPT_DIR=`dirname "$0"`
 usage="
 -v, --version \t kernel version\n
 -f, --force \t force override the warnings\n
+-h, --headers \t update (global) headers as well \n
 -h, --help \t this usage information message\n"
 
 # parse cli
@@ -27,6 +28,10 @@ case $i in
     -f|--force)
     FORCE=1
     FFLAG="-f"
+    ;;
+
+    -h|--headers)
+    HEADERS=1
     ;;
     
     -h | --help)
@@ -47,5 +52,8 @@ sudo make modules_install -j 40
 bash ${SCRIPT_DIR}/strip.sh -v=${VERSION} ${FFLAG}
 bash ${SCRIPT_DIR}/remove.sh -v=${VERSION} ${FFLAG}
 sudo make install 
+if [[ $HEADERS ]]; then 
+    sudo make headers_install INSTALL_HDR_PATH=/usr
+fi
 echo "ready to reboot"
 sudo reboot
