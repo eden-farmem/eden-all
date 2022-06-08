@@ -282,7 +282,7 @@ disable_watchdog true"""
 fi
 popd
 
-for retry in {1..3}; do
+for retry in 1; do
     kill_remnants
 
     # prepare kona memory server

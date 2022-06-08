@@ -60,7 +60,7 @@ check_for_stop() {
 desc="customqsort"
 CFLAGS="-DCUSTOM_QSORT"
 # for sflag in "" "--shenango"; do
-for kflag in "--kona"; do     #"--kona"
+for kflag in "" "--kona"; do     #"--kona"
 	# for nkeys_ in 16 32 64 128 256 512 1024 2048 4096; do
 	for nkeys_ in 512; do
 		nkeys=$((nkeys_*1000000))

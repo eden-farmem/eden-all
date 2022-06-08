@@ -102,22 +102,22 @@ if [ "$PLOTID" == "1" ]; then
         -yc n_evictions -l "evictions"  -ls dashed      \
         -xc "time" -xl "time (s)"  ${VLINES}            \
         -yl "KFPS" --ymul 1e-3  -nm --ymin 0 --ymax 150 \
-        --size 10 4 -fs 11  -of $PLOTEXT  -o $plotname
+        --size 10 2.5 -fs 11  -of $PLOTEXT  -o $plotname
     files="${files} ${plotname}"
 
-    plotname=${plotdir}/memory_${RUNID}.${PLOTEXT}
-    python ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
-        --ymul 1e-9 -yl "Memory (GB)"                   \
-        -yc "malloc_size" -l "mallocd mem"              \
-        -yc "mem_pressure" -l "working set"             \
-        -xc "time" -xl "time (s)" ${VLINES} -nm         \
-        --size 10 2 -fs 11  -of $PLOTEXT  -o $plotname
-    files="${files} ${plotname}"
+    # plotname=${plotdir}/memory_${RUNID}.${PLOTEXT}
+    # python ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
+    #     --ymul 1e-9 -yl "Memory (GB)"                   \
+    #     -yc "malloc_size" -l "mallocd mem"              \
+    #     -yc "mem_pressure" -l "working set"             \
+    #     -xc "time" -xl "time (s)" ${VLINES} -nm         \
+    #     --size 10 2 -fs 11  -of $PLOTEXT  -o $plotname
+    # files="${files} ${plotname}"
 
     # Combine
-    plotname=${plotdir}/kona_stats_${RUNID}.$PLOTEXT
-    montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
-    rm -f ${files}
+    # plotname=${plotdir}/kona_stats_${RUNID}.$PLOTEXT
+    # montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
+    # rm -f ${files}
     display ${plotname} &
 fi
 
