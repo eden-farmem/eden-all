@@ -195,12 +195,16 @@ ${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 NTHREADS=${NTHREADS:-$NCORES}
 
-cleanup() {
-    rm -f ${BINFILE}
-    rm -f ${TMP_FILE_PFX}*
+
+kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
+}
+cleanup() {
+    rm -f ${BINFILE}
+    rm -f ${TMP_FILE_PFX}*
+    kill_remnants
 }
 cleanup     #start clean
 if [[ $CLEANUP ]]; then
@@ -223,7 +227,7 @@ fi
 
 # rebuild shenango
 if [[ $FORCE ]]; then 
-    pushd ${SHENANGO_DIR} 
+    pushd ${SHENANGO_DIR}
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
     if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
@@ -271,6 +275,7 @@ fi
 # initialize run
 expdir=$EXPNAME
 mkdir -p $expdir
+
 pushd $expdir
 echo "running ${EXPNAME}"
 save_cfg "cores"    $NCORES
@@ -285,31 +290,7 @@ save_cfg "pgfaults" $PAGE_FAULTS
 save_cfg "desc"     $README
 echo -e "$CFGSTORE" > settings
 
-# prepare for run
-if [[ $WITH_KONA ]]; then 
-    echo "starting kona servers"
-    # starting kona controller
-    scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
-    ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
-    sleep 2
-    # starting mem server
-    scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
-    ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT \
-        -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
-    sleep 30
-fi
-
-start_iokernel() {
-    echo "starting iokerneld"
-    sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-    binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
-    sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
-    echo "waiting on iokerneld"
-    sleep 5    #for iokernel to be ready
-}
-start_iokernel
-
-# prepare shenango config
+# write shenango config
 shenango_cfg="""
 host_addr 192.168.0.100
 host_netmask 255.255.255.0
@@ -320,23 +301,62 @@ runtime_spinning_kthreads 0
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true"""
 echo "$shenango_cfg" > $CFGFILE
-
-# run
-if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
-if [[ $WITH_KONA ]]; then 
-    env="$env RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
-    env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
-    env="$env EVICTION_THRESHOLD=0.99"
-    env="$env EVICTION_DONE_THRESHOLD=0.99"
-    env="$env MEMORY_LIMIT=$LMEM"
-fi
-args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
-echo sudo ${env} ${gdbcmd} ${BINFILE} ${args}
-sudo ${env} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
 popd
 
-# all good, save the run
-mv ${expdir} $DATADIR/
+# for retry in {1..3}; do
+for retry in 1; do
+    # prepare for run
+    kill_remnants
+
+    if [[ $WITH_KONA ]]; then 
+        echo "starting kona servers"
+
+        # starting kona controller
+        scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
+        ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
+        sleep 2
+        # starting mem server
+        scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
+        ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT \
+            -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
+        sleep 30
+    fi
+
+    start_iokernel() {
+        echo "starting iokerneld"
+        sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
+        binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
+        sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
+        echo "waiting on iokerneld"
+        sleep 5    #for iokernel to be ready
+    }
+    start_iokernel
+
+    # run
+    pushd $expdir
+    if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
+    if [[ $WITH_KONA ]]; then 
+        env="$env RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
+        env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
+        env="$env EVICTION_THRESHOLD=0.99"
+        env="$env EVICTION_DONE_THRESHOLD=0.99"
+        env="$env MEMORY_LIMIT=$LMEM"
+    fi
+    args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
+    echo sudo ${env} ${gdbcmd} ${BINFILE} ${args}
+    sudo ${env} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
+    popd
+
+    # if we're here, the run has mostly succeeded
+    # only retry if we have silenty failed because of kona server
+    res=$(grep "Unknown event: is server running?" ${expdir}/app.out || true)
+    if [ -z "$res" ]; then 
+        echo "no error; moving on"
+        mv ${expdir} $DATADIR/
+        break
+    fi
+done
 
 # cleanup
+echo "final cleanup"
 cleanup

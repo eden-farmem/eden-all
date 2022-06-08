@@ -20,7 +20,7 @@ usage="\n
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 DATADIR="${SCRIPT_DIR}/data"
-ROOT_DIR="${SCRIPT_DIR}/../"
+ROOT_DIR="${SCRIPT_DIR}/../../"
 ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
 HOST="sc2-hs2-b1630"
 CLIENT="sc2-hs2-b1632"
@@ -166,8 +166,8 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
     HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
     HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";
-    HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
-    HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
+    # HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
+    # HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
     HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    
     OUT=`echo -e "${OUT}\n${LINE}"`
 

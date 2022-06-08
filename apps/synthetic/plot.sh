@@ -6,6 +6,7 @@
 PLOTEXT=png
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
+ROOTDIR="${SCRIPT_DIR}/../../"
 PLOTDIR=${SCRIPT_DIR}/plots
 DATADIR=${SCRIPT_DIR}/data
 TMP_FILE_PFX=tmp_syn_plot_
@@ -113,7 +114,7 @@ if [ "$PLOTID" == "1" ]; then
     YLIMS="--ymin 0 --ymax 1000"
     plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}   \
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}   \
             -yc Xput -yl "Xput KOPS" --ymul 1e-3 ${YLIMS}   \
             -xc Local_MB -xl "Local Memo MB)"               \
             --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
@@ -124,7 +125,7 @@ if [ "$PLOTID" == "1" ]; then
     YLIMS="--ymin 0 --ymax 150"
     plotname=${plotdir}/rfaults_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}               \
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}               \
             -yc "ReadPF" -yl "Read Faults KOPS" --ymul 1e-3 ${YLIMS}    \
             -xc Local_MB -xl "Local Mem (MB)"                           \
             --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
@@ -134,7 +135,7 @@ if [ "$PLOTID" == "1" ]; then
     #plot faults
     plotname=${plotdir}/rafaults_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}               \
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}               \
             -yc "ReadAPF" -yl "Read App Faults" --ymul 1e-3 ${YLIMS}     \
             -xc Local_MB -xl "Local Mem (MB)"                           \
             --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
@@ -144,7 +145,7 @@ if [ "$PLOTID" == "1" ]; then
     # #plot faults
     # plotname=${plotdir}/wpfaults_${cfg}.${PLOTEXT}
     # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-    #     python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}               \
+    #     python3 ${ROOTDIR}/scripts/plot.py ${plots}               \
     #         -yc "WPFaults" -yl "WP Faults KOPS" --ymul 1e-3 ${YLIMS}    \
     #         -xc Local_MB -xl "Local Mem (MB)"                           \
     #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
@@ -184,7 +185,7 @@ if [ "$PLOTID" == "2" ]; then
         YLIMS="--ymin 0 --ymax 4"
         plotname=${plotdir}/xput_buckets_per_lock_zs${zparams}.${PLOTEXT}
         if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-            python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}   \
+            python3 ${ROOTDIR}/scripts/plot.py ${plots}   \
                 -yc XputPerCore -yl "MOPS / core" --ymul 1e-6 ${YLIMS}        \
                 -xc CPU -xl "CPU cores"                         \
                 --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "BucketsPerLock"
@@ -214,14 +215,20 @@ if [ "$PLOTID" == "3" ]; then
     ## data
     # pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip"
     # pattern="05-1[56]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip+"
-    # pattern="05-1[78]";    bkend=kona; zipfs=1;    tperc=100;  desc="noht"        ymax=2500
-    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht"   ymax=700
-    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip50-noht"  ymax=75
-    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip500-noht" ymax=10
+    # pattern="05-1[78]";    bkend=kona; zipfs=1;    tperc=100;  desc="noht"            ymax=500
+    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht"       ymax=300
+    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip50-noht"      ymax=75
+    # pattern="05-1[89]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip500-noht"     ymax=10
+    # pattern="06-0[23]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip-new-vdso"    ymax=1000
+    # pattern="06-0[23]";    bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso"   ymax=300
+    # pattern="06-03";      bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso2"   ymax=300
+    # pattern="06-0\(6-22\|7\)"; bkend=kona; zipfs=1; tperc=100;  desc="zip-withpti"    ymax=500
+    # pattern="06-07"         bkend=kona; zipfs=1;    tperc=100;  desc="zip5-withpti"     ymax=300
 
     cfg=be${bkend}_zs${zipfs}_tperc${tperc}_${desc}
     if [[ $desc ]]; then descopt="-d=$desc"; fi
-    for cores in 1 2 3 4 5; do 
+    # for cores in 1 2 3 4 5; do 
+    for cores in 1; do 
         thr=$((cores*tperc))
         speedup=$plotdir/data_speedup_${cores}cores_${cfg}
 
@@ -259,11 +266,10 @@ if [ "$PLOTID" == "3" ]; then
     YLIMS="--ymin 0 --ymax $ymax"
     plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}   \
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}         \
             -yc Xput -yl "Xput KOPS" --ymul 1e-3 ${YLIMS}   \
             -xc Local_MB -xl "Local Mem MB"                 \
-            -l "1" -l "" -l "2" -l ""                       \
-            -l "3" -l "" -l "4" -l "" -l "5" -l ""          \
+            -l "1" -l ""                                    \
             --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
     fi
     files="$files $plotname"
@@ -272,11 +278,10 @@ if [ "$PLOTID" == "3" ]; then
     YLIMS="--ymin 0 --ymax 200"
     plotname=${plotdir}/faults_$cfg.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${SCRIPT_DIR}/../scripts/plot.py ${plots}               \
-            -yc "ReadPF" -yl "Page Faults" --ymul 1e-3 ${YLIMS}         \
-            -xc Local_MB -xl "Local Mem (MB)"                           \
-            -l "" -l "" -l "" -l ""                                     \
-            -l "" -l "" -l "" -l "" -l "" -l ""                         \
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}                 \
+            -yc "ReadPF" -yl "Page Faults" --ymul 1e-3 ${YLIMS}     \
+            -xc Local_MB -xl "Local Mem (MB)"                       \
+            -l "" -l ""                                             \
             --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
     fi
     files="$files $plotname"
@@ -285,7 +290,7 @@ if [ "$PLOTID" == "3" ]; then
     YLIMS="--ymin 1 --ymax 3"
     plotname=${plotdir}/speedup_$cfg.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${SCRIPT_DIR}/../scripts/plot.py ${speedplots}  \
+        python3 ${ROOTDIR}/scripts/plot.py ${speedplots}        \
             -yc "speedup" -yl "Speedup"                         \
             -xc Local_MB -xl "Local Mem (MB)"                   \
             --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
@@ -298,6 +303,78 @@ if [ "$PLOTID" == "3" ]; then
     display ${plotname} &
 fi
 
+
+# performance of async page faults (vdso updates)
+if [ "$PLOTID" == "4" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    speedplots=
+    cmiopts=
+    linestyles=
+    files=
+    LMEMCOL=6
+    XPUTCOL=9
+    ymax=300
+
+    ## data
+    # pattern="05-1[89]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht";        ymax=300
+    # pattern="06-0[23]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso";    ymax=300
+    # pattern="06-03";      bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso2";    ymax=300
+    # pattern="06-07"       bkend=kona; zipfs=1;    tperc=100;  desc="zip5-withpti";     ymax=300
+
+    cores=1
+    bkend=kona; zipfs=1; tperc=100; 
+    cfg=${cores}cores_zs${zipfs}_tperc${tperc}
+    for kind in "kona" "original" "improved" "improved_nopti1" "improved_nopti2"; do 
+        case $kind in
+            "kona")             pattern="05-1[89]"; pgf=none;   desc="zip5-noht";;
+            "original")         pattern="05-1[89]"; pgf=ASYNC;  desc="zip5-noht";;
+            "improved")         pattern="06-07";    pgf=ASYNC;  desc="zip5-withpti";;
+            "improved_nopti1")  pattern="06-0[23]"; pgf=ASYNC;  desc="zip5-new-vdso";;
+            "improved_nopti2")  pattern="06-03";    pgf=ASYNC;  desc="zip5-new-vdso2";;
+            *)                  echo "Unknown op"; exit;;
+        esac
+        if [[ $desc ]]; then descopt="-d=$desc"; fi
+
+        cores=2
+        datafile=$plotdir/data_${kind}_pgf${pgf}_${cfg}_${desc}
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf \
+                -c=$cores -of=$datafile -t=${thr} -zs=${zipfs} ${descopt}
+        fi
+        # cat $datafile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_baseline_xput
+        plots="$plots -d $datafile -l $kind"
+        cat $datafile
+    done
+
+    # plot xput
+    # YLIMS="--ymin 0 --ymax $ymax"
+    plotname=${plotdir}/vdso_xput_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}         \
+            -yc Xput -yl "Xput KOPS" --ymul 1e-3 ${YLIMS}   \
+            -xc Local_MB -xl "Local Mem MB"                 \
+            --size 5 3.5 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    #plot faults
+    YLIMS="--ymin 0 --ymax 200"
+    plotname=${plotdir}/vdso_faults_$cfg.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}                 \
+            -yc "ReadPF" -yl "Page Faults" --ymul 1e-3 ${YLIMS}     \
+            -xc Local_MB -xl "Local Mem (MB)"                       \
+            --size 5 3.5 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    # Combine
+    plotname=${plotdir}/vdso_improvements_$cfg.$PLOTEXT
+    montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
+    display ${plotname} &
+fi
 
 # cleanup
 rm -f ${TMP_FILE_PFX}*

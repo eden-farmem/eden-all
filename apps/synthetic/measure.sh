@@ -6,7 +6,6 @@ set -e
 # 
 
 usage="\n
--f, --force \t\t force re-run experiments\n
 -w, --warmup \t run warmup for a few seconds before taking measurement\n
 -d, --debug \t\t build debug\n
 -h, --help \t\t this usage information message\n"
@@ -28,19 +27,10 @@ case $i in
     -d|--debug)
     CFLAGS="$CFLAGS -DDEBUG"
     ;;
-
-    -f|--force)
-    FORCE=1
-    ;;
     
     -w|--warmup)
     WARMUP=1
     WFLAG="--warmup"
-    ;;
-    
-    -l|--lat)
-    LATENCIES=1
-    CFLAGS="$CFLAGS -DLATENCY"
     ;;
 
     -h | --help)
@@ -58,7 +48,6 @@ done
 
 # settings
 mkdir -p $DATADIR
-CFLAGS_BEFORE=$CFLAGS
 MAX_MOPS=50000000   
 NKEYS=10000000      # 2.5 GB
 NBLOBS=400000       # 3 GB
@@ -67,6 +56,16 @@ cores=1
 thr=1
 sample=1
 zparams=0.1         # uniform
+
+# create a stop button
+touch __running__
+check_for_stop() {
+    # stop if the fd is removed
+    if [ ! -f __running__ ]; then 
+        echo "stop requested"   
+        exit 0
+    fi
+}
 
 run_vary_lmem() {
     kind=$1
@@ -106,7 +105,9 @@ run_vary_lmem() {
     # run
     # for s in `seq 1 1 10`; do 
     #     zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
-    for m in `seq 10 5 60`; do 
+    # for m in `seq 10 5 60`; do 
+    for m in 10; do 
+        check_for_stop
         name=run-$(date '+%m-%d-%H-%M-%S')
         lmem=$(echo $m | awk '{ print $1 * 1000000000/10 }')
         lmem_mb=$(echo $lmem | awk '{ print $1 /1000000 }')
@@ -120,12 +121,13 @@ run_vary_lmem() {
 }
 
 # runs
-for op in "zip5" "zip50" "zip500"; do
+for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do 
-        for c in `seq 1 1 5`; do 
-            desc="${op}-noht"
+        # for c in `seq 1 1 2`; do 
+        for c in 2; do 
+            desc="${op}-withpti"
             t=$((c*100))
-            run_vary_lmem "kona"       $op $c $t $zs 
+            # run_vary_lmem "kona"       $op $c $t $zs 
             run_vary_lmem "apf-async"  $op $c $t $zs 
         done
     done
@@ -133,3 +135,4 @@ done
 
 # cleanup
 rm -f ${TEMP_PFX}*
+rm -f __running__
