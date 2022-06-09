@@ -28,8 +28,13 @@ case $i in
 esac
 done
 
-RANDOM_OP=2
+# RANDOM_OP=2
+# bash run.sh \
+#     --cflags="-DUSE_APP_FAULTS -DFAULT_OP=${RANDOM_OP} -DCONCURRENT" \
+#     --kcflags="-DNO_ZEROPAGE_OPT"   \
+#     --threads=8  --safemode --force ${DEBUG}
+
+READ_OP=0
 bash run.sh \
-    --cflags="-DUSE_APP_FAULTS -DFAULT_OP=${RANDOM_OP} -DCONCURRENT" \
-    --kcflags="-DNO_ZEROPAGE_OPT"   \
+    --cflags="-DFAULT_OP=${READ_OP}" --kcflags="-DNO_ZEROPAGE_OPT"   \
     --threads=8  --safemode --force ${DEBUG}

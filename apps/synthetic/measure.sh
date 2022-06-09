@@ -113,7 +113,7 @@ run_vary_lmem() {
         lmem_mb=$(echo $lmem | awk '{ print $1 /1000000 }')
         bash run.sh ${OPTS} -n=${name} -fl="""$CFLAGS""" ${WFLAG} ${KFLAG}                          \
                 -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS} -lm=${lmem} -zs=${zparams}     \
-                -d="""${desc}"""
+                -d="""${desc}""" --nopie
         xput=$(grep "result:" ${DATADIR}/$name/app.out | sed -n "s/^.*result://p")
         if [[ $xput ]]; then xputpc=$((xput/cores)); else   xputpc=;    fi
         echo "$cores,$thr,$lmem_mb,$NKEYS,$zparams,$xput,$xputpc"
@@ -121,14 +121,14 @@ run_vary_lmem() {
 }
 
 # runs
-for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
+for op in "zip"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do 
         # for c in `seq 1 1 2`; do 
         for c in 2; do 
-            desc="${op}-withpti"
+            desc="${op}-withfaultips"
             t=$((c*100))
-            # run_vary_lmem "kona"       $op $c $t $zs 
-            run_vary_lmem "apf-async"  $op $c $t $zs 
+            run_vary_lmem "kona"       $op $c $t $zs 
+            # run_vary_lmem "apf-async"  $op $c $t $zs 
         done
     done
 done

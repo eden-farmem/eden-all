@@ -240,7 +240,7 @@ void* thread_main(void* args) {
 		}
 		tdata->xput_ops++;
 		p += PAGE_SIZE;
-		if (tdata->xput_ops % 10000)
+		if (tdata->xput_ops % 50000 == 0)
 			pr_info("thread %d finished %d ops at %lu", self, tdata->xput_ops, now);
 		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 #ifdef DEBUG
@@ -311,6 +311,7 @@ int main(int argc, char **argv)
 	sprintf(env_var, "APP_FAULT_CHANNELS=%d", num_threads);	putenv(env_var);
 #endif
 	rinit();
+	sleep(1);
 
 	/*find vDSO symbols*/
 	sysinfo_ehdr = getauxval(AT_SYSINFO_EHDR);
@@ -368,7 +369,6 @@ int main(int argc, char **argv)
 		duration_secs = duration / (1000000.0 * cycles_per_us);
 	} while(duration_secs <= RUNTIME_SECS);
 	stop_button = 1;
-	pr_info("send stop signal");
 
 	/*wait for threads to finish*/
 	for(i = 0; i < num_threads; i++) {

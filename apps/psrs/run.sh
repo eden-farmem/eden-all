@@ -25,6 +25,7 @@ usage="Example: bash run.sh\n
 -c, --clean \t\t run only the cleanup part\n
 -d, --debug \t\t build debug\n
 -g, --gdb \t\t run with a gdb server (on port :1234) to attach to\n
+-np, --nopie \t\t build without PIE/address randomization\n
 -bo, --buildonly \t just recompile everything; do not run\n
 -h, --help \t\t this usage information message\n"
 
@@ -151,6 +152,14 @@ case $i in
     CFLAGS="$CFLAGS -DDEBUG -g -ggdb"
     ;;
 
+    -np|--nopie)
+    KEEPBIN=1
+    CFLAGS="$CFLAGS -g"                 #for symbols
+    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE
+    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
+    KONA_OPTS="$KONA_OPTS -DSAMPLE_KERNEL_FAULTS"  #turn on logging in kona
+    ;;
+
     -bo|--buildonly)
     BUILD_ONLY=1
     ;;
@@ -189,7 +198,9 @@ kill_remnants() {
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
 cleanup() {
-    rm -f ${BINFILE}
+    if [ -z "$KEEPBIN" ]; then
+        rm -f ${BINFILE}
+    fi
     rm -f ${TMP_FILE_PFX}*
     kill_remnants
 }

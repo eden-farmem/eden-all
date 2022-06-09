@@ -5,7 +5,7 @@
 # 
 
 set -e
-usage="Example: bash run.sh\n
+usage="bash run.sh
 -n, --name \t optional exp name (becomes folder name)\n
 -d, --readme \t optional exp description\n
 -f, --force \t force recompile everything\n
@@ -26,6 +26,7 @@ usage="Example: bash run.sh\n
 -c, --clean \t run only the cleanup part\n
 -d, --debug \t build debug\n
 -g, --gdb \t run with a gdb server (on port :1234) to attach to\n
+-np, --nopie \t\t build without PIE/address randomization\n
 -bo, --buildonly \t just recompile everything; do not run\n
 -h, --help \t this usage information message\n"
 
@@ -163,6 +164,14 @@ case $i in
     CFLAGS="$CFLAGS -DDEBUG -g -ggdb"
     ;;
 
+    -np|--nopie)
+    KEEPBIN=1
+    CFLAGS="$CFLAGS -g"                 #for symbols
+    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE
+    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
+    KONA_OPTS="$KONA_OPTS -DSAMPLE_KERNEL_FAULTS"  #turn on logging in kona
+    ;;
+
     -bo|--buildonly)
     BUILD_ONLY=1
     ;;
@@ -195,14 +204,15 @@ ${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 NTHREADS=${NTHREADS:-$NCORES}
 
-
 kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
     ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
 cleanup() {
-    rm -f ${BINFILE}
+    if [ -z "$KEEPBIN" ]; then
+        rm -f ${BINFILE}
+    fi
     rm -f ${TMP_FILE_PFX}*
     kill_remnants
 }
@@ -243,7 +253,7 @@ fi
 if [[ $FORCE ]]; then 
     pushd ${SNAPPY_DIR} 
     make clean
-    make
+    make PROVIDED_CFLAGS="""$CFLAGS"""
     popd 
 fi
 

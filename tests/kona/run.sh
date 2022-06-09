@@ -20,7 +20,7 @@ usage="Example: bash run.sh -f\n
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
-ROOT_DIR="${SCRIPT_DIR}/../../.."
+ROOT_DIR="${SCRIPT_DIR}/../../"
 kona_cfg="PBMEM_CONFIG=CONFIG_WP"
 BINFILE="prefetch.out"
 KONA_DIR="${ROOT_DIR}/backends/kona"

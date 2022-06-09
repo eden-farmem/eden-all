@@ -216,7 +216,7 @@ void* handler_main(void* args) {
 					pr_debug("handler %d resolving fault %llu", self, msg.arg.pagefault.address);
 					r = uffd_zero(hdata->evt[fdnow].fd, msg.arg.pagefault.address & PAGE_MASK, PAGE_SIZE, false, &retries);
 					ASSERT(r == 0);
-					// pr_info("fault ip, addr: 0x%lx 0x%llx", (long) msg.ip, msg.arg.pagefault.address);
+					pr_info("fault ip, addr: 0x%lx 0x%llx", (long) msg.ip, msg.arg.pagefault.address);
 					break;
 				case UFFD_EVENT_FORK:
 				case UFFD_EVENT_REMAP:
