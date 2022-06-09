@@ -10,8 +10,9 @@ usage="\n
 -o, --opts \t\t CFLAGS to include during build\n
 -t, --thr \t\t number of threads/cores to run with\n
 -nsu, --nosharefd \t do not a share uffd across threads\n
--th, --handlers \t\t number of handler threads/cores to handle fds\n
--of, --outfile \t\t append results to this file\n
+-th, --handlers \t number of handler threads/cores to handle fds\n
+-of, --outfile \t append results to this file\n
+-g, --gdb \t run with debugging support\n
 -h, --help \t\t this usage information message\n"
 
 #Defaults
@@ -54,6 +55,12 @@ case $i in
     OUTFILE="${i#*=}"
     ;;
 
+    -g|--gdb)
+    GDB=1
+    CFLAGS="$CFLAGS -g -ggdb"           #for gdb
+    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE/ASLR
+    ;;
+
     -h | --help)
     echo -e $usage
     exit
@@ -75,7 +82,7 @@ gcc measure.c region.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${BIN
 # run
 if [[ $OUTFILE ]]; then
     sudo ./${BINFILE} $NTHREADS $SHARE_UFFD $NHANDLERS | tee -a $OUTFILE
-else 
+else
     sudo ./${BINFILE} $NTHREADS $SHARE_UFFD $NHANDLERS 
 fi
 
