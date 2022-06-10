@@ -1,0 +1,11 @@
+ip,kind,count
+0x41611c,read,23884
+0x7ffff7d87ad1,write,7447
+0x7ffff7d877a3,read,524
+0x7ffff7d877a7,read,291
+0x7ffff7d80e60,read,274
+0x415218,wrprotect,167
+0x411552,wrprotect,9
+0x4162f1,wrprotect,3
+0x41155f,wrprotect,1
+0x413c13,read,1

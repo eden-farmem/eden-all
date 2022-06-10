@@ -1,8 +1,5 @@
 ip,kind,count
-0x415b3b,write,14680
-0x41155f,write,10605
-0x7ffff7d87ad1,write,7429
-0x41611c,read,1035
-0x41155f,wrprotect,23
-0x414b36,read,1
-0x7ffff7d80e60,read,1
+0x7ffff7d87ad1,write,7289
+0x41611c,read,1327
+0x7ffff7d80e60,read,2
+0x413c13,read,1

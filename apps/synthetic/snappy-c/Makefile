@@ -1,13 +1,9 @@
-CFLAGS ?= -Wall -g -O2  -fPIC 
+CFLAGS ?= -Wall -g -O2  -fPIC
 # Remove -DSG=1 if you don't need scather-gather support
 # NDEBUG=1 is recommended for production
 
 #CFLAGS += -m32
 #LDFLAGS += -m32
-
-ifneq ($(PROVIDED_CFLAGS),)
-CFLAGS += $(PROVIDED_CFLAGS)
-endif
 
 # just needs the kerneldoc script. if you don't have a kernel source
 # download it somewhere and point to it

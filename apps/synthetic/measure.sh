@@ -100,7 +100,7 @@ run_vary_lmem() {
     esac
 
     # build
-    bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG} -f --buildonly   #recompile
+    bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG} -f --buildonly #--nopie   #recompile
 
     # run
     # for s in `seq 1 1 10`; do 

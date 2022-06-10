@@ -38,7 +38,6 @@ def main():
     # write out
     out = args.out if args.out else sys.stdout
     df.to_csv(out, index=False, header=True)
-    
 
 if __name__ == '__main__':
     main()

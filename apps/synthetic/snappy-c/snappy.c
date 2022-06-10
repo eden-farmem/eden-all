@@ -1619,7 +1619,7 @@ int snappy_init_env_with_buf(struct snappy_env *env, void* ht_buf, int ht_size)
 {
     clear_env(env);
 	if((sizeof(u16) * kmax_hash_table_size) != ht_size) {
-		printf("unexpected ht_buf size. provided: %u, expected: %lu\n", 
+		printf("unexpected ht_buf size. provided: %u, expected: %u\n", 
 			ht_size, sizeof(u16) * kmax_hash_table_size);
 		return -ENOMEM;
 	}
