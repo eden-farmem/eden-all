@@ -6,6 +6,8 @@
 #include <time.h>
 #include <sys/time.h>
 
+#include "common.h"
+
 /* for uthreads */
 #ifdef SHENANGO
 #include "runtime/thread.h"
@@ -16,7 +18,6 @@
 #ifdef WITH_KONA
 #include "klib.h"
 #endif
-#include "logging.h"
 
 /* for custom qsort */
 #ifdef CUSTOM_QSORT
@@ -171,6 +172,7 @@ void phase3(struct thread_data* data) {
 	partitions[id*(t+1)+0] = start;
 	partitions[id*(t+1)+t] = end;
 	for (size_t i = start; i < end && pi != t-1; i++) {
+		POSSIBLE_READ_FAULT_AT(&input[i]);
 		if (pivots[pi] < input[i]) {
 			partitions[id*(t+1) + pc] = i;
 			pc++;
@@ -184,6 +186,8 @@ void phase3(struct thread_data* data) {
  */
 void copyback(element_t* data, int start_pos, size_t len) {
 	for (size_t i = start_pos; i < start_pos + len; i++) {
+		POSSIBLE_READ_FAULT_AT(&data[i]);
+		POSSIBLE_WRITE_FAULT_AT(&input[i]);
 		input[i] = data[i];
 	}
 }
@@ -234,6 +238,7 @@ void phase4(struct thread_data* data) {
 		bool found = false;
 		for (int i = 0; i < t * 2; i += 2) {
 			if (exchange_indices[i] != exchange_indices[i+1]) {
+				POSSIBLE_READ_FAULT_AT(&input[exchange_indices[i]]);
 				if (!found) {
 					min = input[exchange_indices[i]];
 					min_pos = i;
@@ -253,6 +258,7 @@ void phase4(struct thread_data* data) {
 			break;
 
 		// save the minimum to the final array
+		POSSIBLE_WRITE_FAULT_AT(&merged_values[start_pos + mi]);
 		merged_values[start_pos + mi] = min;
 		// increase the counter of the range that 
 		// the minimum value belongs to
@@ -445,6 +451,7 @@ int* generate_array_of_size(size_t size) {
 	srandom(15);
 	int* randoms = RMALLOC(sizeof(element_t) * size);
 	for (size_t i = 0; i < size; i++) {
+		POSSIBLE_WRITE_FAULT_AT(&randoms[i]);
 		randoms[i] = (element_t) random();
 	}
 	return randoms;

@@ -72,7 +72,7 @@ for kflag in "--kona"; do     #"--kona"
 				echo "Running ${cores} cores, ${thr} threads, ${nkeys} keys"
 				bash run.sh -c=${cores} -t=${thr} -nk=${nkeys}  \
                     ${sflag} ${kflag} ${FFLAG} -d="""${desc}""" \
-                    -fl="""${CFLAGS}""" --nopie
+                    -fl="""${CFLAGS}"""
 			done
 		done
 	done

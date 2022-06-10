@@ -1,3 +1,4 @@
+#include "common.h"
 #include "qsort.h"
 
 /*
@@ -14,12 +15,16 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
 
     while (i < j) {
         /* left-approx i to pivot */
-        do ++i;
-        while (base[i] <= pivot && i <= r);
+        do { 
+            ++i;
+            POSSIBLE_WRITE_FAULT_AT(&base[i]);
+        } while (base[i] <= pivot && i <= r);
 
         /* right-approx j to pivot */
-        do --j;
-        while (base[j] > pivot && j >= l);
+        do {
+            --j;
+            POSSIBLE_WRITE_FAULT_AT(&base[j]);
+        } while (base[j] > pivot && j >= l);
 
         /* do swap if swap is possible */
         if (i < j) {

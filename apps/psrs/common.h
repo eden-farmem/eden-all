@@ -1,3 +1,6 @@
+// Copyright © 2018-2021 VMware, Inc. All Rights Reserved.
+// SPDX-License-Identifier: BSD-2-Clause
+
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
@@ -10,6 +13,16 @@
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
+
+/* fault annotations */
+#ifdef SHENANGO
+#include "runtime/pgfault.h"
+#define POSSIBLE_READ_FAULT_AT    possible_read_fault_on
+#define POSSIBLE_WRITE_FAULT_AT   possible_write_fault_on
+#else 
+#define POSSIBLE_READ_FAULT_AT(a)	  {}
+#define POSSIBLE_WRITE_FAULT_AT(a)	{}
+#endif
 
 /********************************************
   logging
