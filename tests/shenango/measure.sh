@@ -21,7 +21,7 @@ DATADIR=data
 PLOTEXT=png
 CFGFILE=${TEMP_PFX}shenango.config
 LATFILE=latencies
-LATCORES=3
+LATCORES=1
 
 # parse cli
 for i in "$@"
@@ -59,9 +59,8 @@ mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 cores=1
 
-for kind in "regular" "apf-sync" "apf-async"; do    # "vanilla" 
-# for kind in "apf-sync" "apf-async"; do    #
-    for op in "random"; do        # "write" "read" "r+w" "random"
+for kind in "kona" "apf-sync" "apf-async"; do    # "vanilla"
+    for op in "write" "read"; do        # "write" "read" "r+w" "random"
         # reset
         cfg=${kind}-${op}
         CFLAGS=${CFLAGS_BEFORE}
@@ -72,7 +71,7 @@ for kind in "regular" "apf-sync" "apf-async"; do    # "vanilla"
 
         case $kind in
         "vanilla")          ;;
-        "regular")          CFLAGS="$CFLAGS -DFAULT_KIND=0"; OPTS="$OPTS --with-kona";;
+        "kona")             CFLAGS="$CFLAGS -DFAULT_KIND=0"; OPTS="$OPTS --with-kona";;
         "apf-sync")         CFLAGS="$CFLAGS -DFAULT_KIND=1"; OPTS="$OPTS --with-kona --pgfaults=SYNC";;
         "apf-async")        CFLAGS="$CFLAGS -DFAULT_KIND=1"; OPTS="$OPTS --with-kona --pgfaults=ASYNC";;
         *)                  echo "Unknown fault kind"; exit;;
@@ -92,7 +91,8 @@ for kind in "regular" "apf-sync" "apf-async"; do    # "vanilla"
             bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
             tmpfile=${TEMP_PFX}out
             echo "cores,xput" > $datafile
-            for cores in `seq 1 1 10`; do 
+            # for cores in `seq 1 1 5`; do 
+            for cores in 1; do 
                 bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -o=${tmpfile}
                 xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
                 rm -f $tmpfile
@@ -105,26 +105,28 @@ for kind in "regular" "apf-sync" "apf-async"; do    # "vanilla"
         fi
         cat $datafile
         plots="$plots -d $datafile -l $kind"
-        latplots="$latplots -d $DATADIR/lat-${cfg}-${LATCORES} -l $kind"
+        latplots="$latplots -d $DATADIR/lat-${cfg}-${LATCORES} -l $kind-$op"
+        wc -l $DATADIR/lat-${cfg}-${LATCORES}
     done
 done
 
 mkdir -p ${PLOTDIR}
 
-plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
-python ${PLOTSRC} ${plots}                  \
-    -xc cores -xl "App CPU"                 \
-    -yc xput -yl "MOPS" --ymul 1e-6         \
-    --ymin 0 --ymax .25                     \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
-display $plotname & 
+# plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
+# python ${PLOTSRC} ${plots}                  \
+#     -xc cores -xl "App CPU"                 \
+#     -yc xput -yl "MOPS" --ymul 1e-6         \
+#     --ymin 0 --ymax .25                     \
+#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
+# display $plotname & 
 
 if [[ $LATENCIES ]]; then 
-    plotname=${PLOTDIR}/latency-${LATCORES}cores.${PLOTEXT}
+    echo $latplots
+    plotname=${PLOTDIR}/latency.${PLOTEXT}
     python3 ${PLOTSRC} -z cdf ${latplots}   \
         -yc latency -xl "Latency (µs)"      \
-        --xmin 0 --xmax 200 -nm            \
-        --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
+        --xmin 10 --xmax 20 -nm             \
+        --size 8 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
     display $plotname & 
 fi
 

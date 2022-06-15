@@ -13,8 +13,8 @@
 #define MEM_REGION_SIZE ((1ull<<30) * 32)	//32 GB
 #define RUNTIME_SECS 10
 #define NUM_LAT_SAMPLES 5000
-#define BATCH_SIZE 64
-BUILD_ASSERT(!(BATCH_SIZE & (BATCH_SIZE-1)));	/* power of 2 */
+#define BATCH_SIZE 1
+// BUILD_ASSERT(!(BATCH_SIZE & (BATCH_SIZE-1)));	/* power of 2 */
 
 #ifdef WITH_KONA
 #define heap_alloc rmalloc
@@ -63,6 +63,7 @@ void thread_main(void* arg) {
 	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
 	char tmp;
+	unsigned long addr;
 	if (args->start_tsc > 0)
 		args->start_tsc = rdtsc();
 
@@ -78,30 +79,34 @@ void thread_main(void* arg) {
 	if (op == FO_RANDOM)
 		op = (args->rand_num & (1<<16)) ? FO_READ : FO_WRITE;
 
+	/* point to a random offset in the page */
+	addr = (unsigned long) args->addr + (args->rand_num & _PAGE_OFFSET_MASK);
+	addr &= ~0x7;	/* 64-bit align */
+
 	/* perform access/trigger fault */
 	switch (op) {
 		case FO_READ:
 			if (kind == FK_APPFAULT)
-				possible_read_fault_on(args->addr);
-			tmp = *(char*)args->addr;
+				possible_read_fault_on((void*)addr);
+			tmp = *(char*)(void*)addr;
 			break;
 		case FO_WRITE:
 			if (kind == FK_APPFAULT)
-				possible_write_fault_on(args->addr);
-			*(char*)args->addr = tmp;
+				possible_write_fault_on((void*)addr);
+			*(char*)(void*)addr = tmp;
 			break;
 		case FO_READ_WRITE:
 			if (kind == FK_APPFAULT)
-				possible_write_fault_on(args->addr);
-			tmp = *(char*)args->addr;
-			*(char*)args->addr = tmp;
+				possible_write_fault_on((void*)addr);
+			tmp = *(char*)(void*)addr;
+			*(char*)(void*)addr = tmp;
 			break;
 		default:
 			ASSERT(0);	/* bug */
 	}
 
 	pr_debug("thread %lx done", (unsigned long) args->addr);
-	args->end_tsc = rdtsc();
+	args->end_tsc = rdtscp(NULL);
 	waitgroup_add(&workers, -1);	/* signal done */
 }
 
@@ -135,7 +140,7 @@ void main_handler(void* arg) {
 			randomness = rand_next(&rand);
 			next_tsc = (now_tsc - start_tsc) + 
 				next_poisson_time(sampling_rate, randomness);
-			sample_in_batch = randomness & (BATCH_SIZE-1);
+			sample_in_batch = randomness % BATCH_SIZE;
 		}
 #endif
 		for (i = 0; i < BATCH_SIZE; i++) {
@@ -144,7 +149,7 @@ void main_handler(void* arg) {
 			targs[i].rand_num = rand_next(&rand);
 			targs[i].start_tsc = sample_in_batch == i ? now_tsc : 0;
 			targs[i].end_tsc = 0;
-			start += PAGE_SIZE;
+			start += _PAGE_SIZE;
 			if (start >= (region + MEM_REGION_SIZE))
 				break;
 		}
@@ -193,7 +198,7 @@ void main_handler(void* arg) {
 		else {
 			fprintf(outfile, "latency\n");
 			for (i = 0; i < samples; i++)
-				fprintf(outfile, "%.1lf\n", latencies[i] * 1.0 / cycles_per_us);
+				fprintf(outfile, "%.3lf\n", latencies[i] * 1.0 / cycles_per_us);
 			fclose(outfile);
 			pr_info("Wrote %d sampled latencies", samples);
 		}

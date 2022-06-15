@@ -21,7 +21,10 @@
 #define ASSERT(x) assert((x))
 #define ASSERTZ(x) ASSERT(!(x))
 
-#define PAGE_SIZE 4096
+#define _PAGE_SHIFT       (12)
+#define _PAGE_SIZE        (1ull << _PAGE_SHIFT)
+#define _PAGE_OFFSET_MASK (_PAGE_SIZE - 1)
+#define _PAGE_MASK        (~_PAGE_OFFSET_MASK)
 #define CACHE_LINE_SIZE 64
 #define __aligned(x) __attribute__((aligned(x)))
 #define CACHE_ALIGN __aligned(CACHE_LINE_SIZE)
@@ -34,7 +37,7 @@ uint64_t time_calibrate_tsc(void);
 
 static inline const void *page_align(const void *p)
 {
-	return (const void *)((unsigned long)p & ~(PAGE_SIZE - 1));
+	return (const void *)((unsigned long)p & ~(_PAGE_SIZE - 1));
 }
 
 static inline unsigned int uint_min(unsigned int a, unsigned int b) {
