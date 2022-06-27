@@ -148,11 +148,18 @@ set -e
 # build kona
 if [[ $FORCE ]] && [[ $WITH_KONA ]]; then 
     pushd ${KONA_BIN}
-    make je_clean
+    # make je_clean
     make clean
     make je_jemalloc
     KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS"
-    make all -j $KONA_CFG PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
+    OPTS=
+    OPTS="$OPTS POLLER_CORE=$KONA_POLLER_CORE"
+    OPTS="$OPTS FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE"
+    OPTS="$OPTS EVICTION_CORE=$KONA_EVICTION_CORE"
+    OPTS="$OPTS ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE}"
+    make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
+    sudo sysctl -w vm.unprivileged_userfaultfd=1   
+    echo 0 | sudo tee /proc/sys/kernel/numa_balancing   # to avoid numa hint faults 
     popd
 fi
 

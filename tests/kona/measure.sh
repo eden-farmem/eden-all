@@ -8,6 +8,7 @@ set -e
 
 usage="\n
 -f, --force \t\t force re-run experiments\n
+-l, --lat \t\t get latencies\n
 -d, --debug \t\t build debug\n
 -h, --help \t\t this usage information message\n"
 
@@ -18,6 +19,7 @@ PLOTSRC=${SCRIPT_DIR}/../../../scripts/plot.py
 PLOTDIR=plots 
 DATADIR=data
 PLOTEXT=png
+LATFILE=latencies
 
 # parse cli
 for i in "$@"
@@ -25,6 +27,11 @@ do
 case $i in
     -d|--debug)
     CFLAGS="$CFLAGS -DDEBUG"
+    ;;
+
+    -l|--lat)
+    LATENCIES=1
+    CFLAGS="$CFLAGS -DLATENCY"
     ;;
 
     -f|--force)
@@ -47,11 +54,12 @@ done
 # run
 set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
+# CFLAGS="$CFLAGS -DSAFE_MODE"
 CFLAGS_BEFORE=$CFLAGS
 
 # for kind in "faults" "appfaults" "mixed"; do
-for kind in "appfaults"; do
-    for op in "read" "write"; do        # "r+w"
+for kind in "faults" "appfaults"; do
+    for op in "read"; do        # "r+w" "write"
         cfg=${kind}-${op}
         KC=CONFIG_WP
         KO="-DNO_ZEROPAGE_OPT"  #to estimate normal faults after first access
@@ -73,20 +81,25 @@ for kind in "appfaults"; do
         *)                  echo "Unknown fault op"; exit;;
         esac
 
-        datafile=$DATADIR/${cfg}
+        datafile=$DATADIR/xput-${cfg}
         if [ ! -f $datafile ] || [[ $FORCE ]]; then 
             bash run.sh -f -kc="$KC" -ko="$KO" --buildonly  #rebuild kona
             tmpfile=${TEMP_PFX}out
-            echo "cores,xput,latency" > $datafile
-            for thr in `seq 4 1 6`; do 
+            echo "cores,xput" > $datafile
+            for thr in `seq 1 1 1`; do 
                 bash run.sh -t=${thr} -fl="""$CFLAGS""" -o=${tmpfile}
             done
             grep "result:" $tmpfile | sed 's/result://' >> $datafile
             rm -f $tmpfile
             cat $datafile
+            latfile=$DATADIR/lat-${cfg}
+            if [[ $LATENCIES ]] && [ -f $LATFILE ]; then 
+                mv -f ${LATFILE} ${latfile}            # save latency
+            fi
         fi
         cat $datafile
         plots="$plots -d $datafile -l $cfg -ls $LS"
+        latplots="$latplots -d $latfile -l $cfg"
 
         # gather latency numbers
         latfile=${TEMP_PFX}latency-${op}
@@ -101,28 +114,23 @@ done
 
 mkdir -p ${PLOTDIR}
 
-plotname=fault_xput.${PLOTEXT}
-python3 ${PLOTSRC} ${plots}             \
-    -xc cores -xl "Cores"               \
-    -yc xput -yl "Million faults / sec" \
-    --ymul 1e-6 --ymin 0 --ymax 0.2     \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
-display $plotname & 
+# plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
+# python3 ${PLOTSRC} ${plots}             \
+#     -xc cores -xl "Cores"               \
+#     -yc xput -yl "Million faults / sec" \
+#     --ymul 1e-6 --ymin 0 --ymax 0.2     \
+#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
+# display $plotname & 
 
-plotname=fault_latency.${PLOTEXT}
-python3 ${PLOTSRC} -z bar ${latplots}   \
-    -xc config -xl "Fault Type"         \
-    -yc latency -yl "Cost (µs)"         \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
-display $plotname & 
-
-plotname=fault_latency_zoomed.${PLOTEXT}
-python3 ${PLOTSRC} -z bar ${latplots}   \
-    -xc config -xl "Fault Type"         \
-    -yc latency -yl "Cost (µs)"         \
-    --ymin 13 --ymax 19 --hlines 14 15 16 17 18 \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname & 
+# if [[ $LATENCIES ]]; then 
+#     echo $latplots
+#     plotname=${PLOTDIR}/latency.${PLOTEXT}
+#     python3 ${PLOTSRC} -z cdf ${latplots}   \
+#         -yc latency -xl "Latency (µs)"      \
+#         --xmin 10 --xmax 20 -nm             \
+#         --size 8 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
+#     display $plotname & 
+# fi
 
 # cleanup
 rm -f ${TEMP_PFX}*

@@ -13,8 +13,11 @@
 #define MEM_REGION_SIZE ((1ull<<30) * 32)	//32 GB
 #define RUNTIME_SECS 10
 #define NUM_LAT_SAMPLES 5000
+#ifdef LATENCY
 #define BATCH_SIZE 1
-// BUILD_ASSERT(!(BATCH_SIZE & (BATCH_SIZE-1)));	/* power of 2 */
+#else 
+#define BATCH_SIZE 100
+#endif
 
 #ifdef WITH_KONA
 #define heap_alloc rmalloc
@@ -198,7 +201,7 @@ void main_handler(void* arg) {
 		else {
 			fprintf(outfile, "latency\n");
 			for (i = 0; i < samples; i++)
-				fprintf(outfile, "%.3lf\n", latencies[i] * 1.0 / cycles_per_us);
+				fprintf(outfile, "%.3lf\n", latencies[i] * 1.0);
 			fclose(outfile);
 			pr_info("Wrote %d sampled latencies", samples);
 		}
@@ -217,11 +220,11 @@ int main(int argc, char *argv[]) {
 
 #ifdef WITH_KONA
 	/*shenango includes kona init with runtime; just set params */
-	char env_var[200];
-	sprintf(env_var, "MEMORY_LIMIT=%llu", MEM_REGION_SIZE);	
-	putenv(env_var);	/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_THRESHOLD=1");			/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_DONE_THRESHOLD=1");	/*32gb, BIG to avoid eviction*/
+	char value[50];
+	sprintf(value, "%lu", 34359738368);	
+	setenv("MEMORY_LIMIT", value, 1);		/*32gb, BIG to avoid eviction*/
+	setenv("EVICTION_THRESHOLD", "1", 1);		
+	setenv("EVICTION_DONE_THRESHOLD", "1", 1);
 #endif
 
     ret = runtime_set_initializers(global_pre_init, perthread_init, global_post_init);

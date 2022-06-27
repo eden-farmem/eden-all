@@ -29,9 +29,10 @@ import pandas as pd
 import numpy as np
 from enum import Enum
 import scipy.stats as scstats
+import statistics
 
 
-colors = ['b', 'g', 'r', 'brown', 'c','k', 'orange', 'm','orangered','y']
+colors = ['r', 'g', 'b', 'brown', 'c', 'k', 'orange', 'm','orangered','y']
 linetypes = ['g-','g--','g-+']
 markers = ['o','x','+','s','+', '|', '^']
 
@@ -576,16 +577,15 @@ def main():
                 marker=(None if args.nomarker else markers[midx]))
                 # markerfacecolor=(None if args.nomarker else colors[cidx]))
 
-            # Add a line at mode (TODO: make this a command line option)
-            # mode = scstats.mode(xc).mode[0]
+            # # Add a line at median (TODO: make this a command line option)
+            # median = statistics.median(xc)
             # if not args.vlines:     args.vlines = []
-            # args.vlines.append(mode)        
+            # args.vlines.append(median)        
             ylabel = "CDF"
 
         if args.colormarkerincr:
-            if args.colormarkerincr[plot_num] == 1:
-                cidx = (cidx + 1) % len(colors)
-                midx = (midx + 1) % len(markers)
+            cidx = (cidx + args.colormarkerincr[plot_num]) % len(colors)
+            midx = (midx + args.colormarkerincr[plot_num]) % len(markers)
         else:
             cidx = (cidx + 1) % len(colors)
             midx = (midx + 1) % len(markers)

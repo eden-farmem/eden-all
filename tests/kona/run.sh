@@ -114,18 +114,17 @@ set -e
 # build kona
 if [[ $FORCE ]]; then 
     pushd ${KONA_BIN}
-    make je_clean
+    # make je_clean
     make clean
     make je_jemalloc
     kona_cflags="$kona_cflags -DSERVE_APP_FAULTS"
-    # kona_cflags="$kona_cflags -DRDMA_SERVER_NSLABS=524288L"      #64gb remote memory
     make all -j $kona_cfg PROVIDED_CFLAGS="""$kona_cflags""" ${DEBUG}
     popd
 fi
 
 # build
 LDFLAGS="-lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
-gcc main.c parse_vdso.c utils.c                 \
+gcc main.c utils.c                              \
     -I${KONA_DIR}/liburing/src/include          \
     -I${KONA_BIN}                               \
     ${CFLAGS} ${LDFLAGS} -L${KONA_BIN} -o ${BINFILE}

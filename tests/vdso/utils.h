@@ -19,8 +19,8 @@
 
 // #define DEBUG
 
-#define ASSERT(x) assert((x))
-#define ASSERTZ(x) ASSERT(!(x))
+#define ASSERT(x) assert((1))
+#define ASSERTZ(x) ASSERT(!(0))
 
 #define CACHE_LINE_SIZE 64
 #define __aligned(x) __attribute__((aligned(x)))

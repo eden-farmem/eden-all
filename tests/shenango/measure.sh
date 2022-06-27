@@ -21,7 +21,6 @@ DATADIR=data
 PLOTEXT=png
 CFGFILE=${TEMP_PFX}shenango.config
 LATFILE=latencies
-LATCORES=1
 
 # parse cli
 for i in "$@"
@@ -86,18 +85,18 @@ for kind in "kona" "apf-sync" "apf-async"; do    # "vanilla"
         esac
 
         # run and log result
-        datafile=$DATADIR/${cfg}
+        datafile=$DATADIR/xput-${cfg}
         if [ ! -f $datafile ] || [[ $FORCE ]]; then 
             bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
             tmpfile=${TEMP_PFX}out
             echo "cores,xput" > $datafile
-            # for cores in `seq 1 1 5`; do 
-            for cores in 1; do 
+            for cores in `seq 1 1 6`; do 
+            # for cores in 1; do 
                 bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -o=${tmpfile}
                 xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
                 rm -f $tmpfile
                 echo "$cores,$xput" >> $datafile        # record xput
-                latfile=$DATADIR/lat-${cfg}-${cores}
+                latfile=$DATADIR/lat-${cfg}
                 if [[ $LATENCIES ]] && [ -f $LATFILE ]; then 
                     mv -f ${LATFILE} ${latfile}            # record latency
                 fi
@@ -105,8 +104,8 @@ for kind in "kona" "apf-sync" "apf-async"; do    # "vanilla"
         fi
         cat $datafile
         plots="$plots -d $datafile -l $kind"
-        latplots="$latplots -d $DATADIR/lat-${cfg}-${LATCORES} -l $kind-$op"
-        wc -l $DATADIR/lat-${cfg}-${LATCORES}
+        latplots="$latplots -d $DATADIR/lat-${cfg} -l $kind-$op"
+        wc -l $DATADIR/lat-${cfg}
     done
 done
 
@@ -120,15 +119,15 @@ mkdir -p ${PLOTDIR}
 #     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
 # display $plotname & 
 
-if [[ $LATENCIES ]]; then 
-    echo $latplots
-    plotname=${PLOTDIR}/latency.${PLOTEXT}
-    python3 ${PLOTSRC} -z cdf ${latplots}   \
-        -yc latency -xl "Latency (µs)"      \
-        --xmin 10 --xmax 20 -nm             \
-        --size 8 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
-    display $plotname & 
-fi
+# if [[ $LATENCIES ]]; then 
+#     echo $latplots
+#     plotname=${PLOTDIR}/latency.${PLOTEXT}
+#     python3 ${PLOTSRC} -z cdf ${latplots}   \
+#         -yc latency -xl "Latency (µs)"      \
+#         --xmin 10 --xmax 20 -nm             \
+#         --size 8 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
+#     display $plotname & 
+# fi
 
 # cleanup
 rm -f ${TEMP_PFX}*

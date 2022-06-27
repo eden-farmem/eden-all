@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 	char *p;
 	bool page_mapped;
 	int i, r, retries, mode;
-	const int SAMPLES = 100;
+	const int SAMPLES = 1;
 	uint64_t start, duration;
 
 	/*init*/

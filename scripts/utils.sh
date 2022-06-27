@@ -36,6 +36,14 @@ stdev(){
     fi
 }
 
+sum() {
+    VALUES="$1"
+    if [[ $VALUES ]]; then 
+        echo "$VALUES" | awk '{ s += $0; n++ } 
+            END { if (n > 0) printf "%d", s }'
+    fi
+}
+
 percentof(){
     NUMERATOR=$1
     DENOMINATOR=$2
@@ -79,6 +87,13 @@ csv_column_stdev() {
         echo "$values" | awk '{ x+=$0; y+=$0^2; n++ } 
             END { if (n > 0) print sqrt(y/n-(x/n)^2)}'
     fi
+}
+
+csv_column_sum() {
+    FILE=$1
+    COLNAME=$2
+    values=$(csv_column "$FILE" "$COLNAME")
+    sum "$values"
 }
 
 # tests

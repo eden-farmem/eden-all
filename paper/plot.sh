@@ -5,9 +5,11 @@ set -e
 # Plot figures for the paper
 #
 
-PLOTEXT=png
+PLOTEXT=pdf
 SCRIPT_DIR=`dirname "$0"`
 PLOTDIR=${SCRIPT_DIR}/plots
+ROOTDIR=${SCRIPT_DIR}/../
+PLOTSRC=${ROOTDIR}/scripts/plot.py
 
 usage="\n
 -f,   --force \t\t force re-summarize data and re-generate plots\n
@@ -57,6 +59,7 @@ fi
 
 # setup
 DATADIR=${SCRIPT_DIR}/$PLOTID
+mkdir -p ${DATADIR}
 mkdir -p $PLOTDIR
 
 ## Figure 1: memcached - effect of lru on fault type
@@ -197,7 +200,6 @@ fi
 ## Data
 # bash sim/plot.sh -id=4 -f and data in sim/data/4/xput_*_50000
 if [ "$PLOTID" == "4" ]; then
-    mkdir -p ${DATADIR}
     PFRATE=500000
     for PFRATE in 125000 250000 500000; do 
         cp ${SCRIPT_DIR}/../sim/data/4/xput_*_${PFRATE} ${DATADIR}/
@@ -283,6 +285,64 @@ if [ "$PLOTID" == "4" ]; then
         #         display $plotname & 
         # fi
     done
+fi
+
+## Figure 5: Microbenchmarks - Kona
+if [ "$PLOTID" == "5" ]; then
+    # # Data
+    # SRCDIR=${ROOTDIR}/tests/kona/data/
+    # cp ${SRCDIR}/xput-appfaults-read    ${DATADIR}/xput-user-read
+    # cp ${SRCDIR}/xput-appfaults-write   ${DATADIR}/xput-user-write
+    # cp ${SRCDIR}/xput-faults-read       ${DATADIR}/xput-kernel-read
+    # cp ${SRCDIR}/xput-faults-write      ${DATADIR}/xput-kernel-write
+
+    plotname=${PLOTDIR}/kona_xput.${PLOTEXT}
+    python3 ${PLOTSRC} -xc cores -xl "CPU Cores"                                \
+        -d ${DATADIR}/xput-kernel-read  -l "Kernel" -ls dashed                  \
+        -d ${DATADIR}/xput-user-read    -l "User"   -ls solid                   \
+        -yc xput -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax .20                     \
+        --size 4 3.5 -fs 15 -of ${PLOTEXT} -o $plotname 
+    display $plotname & 
+fi
+
+## Figure 6: Microbenchmarks - Sched
+if [ "$PLOTID" == "6" ]; then
+    # # Data
+    # SRCDIR=${ROOTDIR}/tests/shenango/data/
+    # cp ${SRCDIR}/xput-apf-async-read    ${DATADIR}/
+    # cp ${SRCDIR}/xput-apf-sync-read     ${DATADIR}/
+    # cp ${SRCDIR}/xput-kona-read         ${DATADIR}/
+
+    plotname=${PLOTDIR}/sched_xput.${PLOTEXT}
+    python3 ${PLOTSRC} -xc cores -xl "CPU Cores"                            \
+        -d ${DATADIR}/xput-kona-read        -l "None"   -ls dashed  -cmi 2  \
+        -d ${DATADIR}/xput-apf-sync-read    -l "Poll"   -ls dashdot -cmi 1  \
+        -d ${DATADIR}/xput-apf-async-read   -l "Yield"  -ls solid   -cmi 1  \
+        -yc xput -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax .20                 \
+        --size 4 3.5 -fs 15 -of ${PLOTEXT} -o $plotname 
+    display $plotname & 
+fi
+
+## Figure 7: Microbenchmarks - Fault Latencies
+if [ "$PLOTID" == "7" ]; then
+    # # Data
+    # KONA_DIR=${ROOTDIR}/tests/kona/data/
+    # SCHED_DIR=${ROOTDIR}/tests/shenango/data/
+    # cp ${KONA_DIR}/lat-faults-read      ${DATADIR}/
+    # cp ${KONA_DIR}/lat-appfaults-read   ${DATADIR}/
+    # cp ${SCHED_DIR}/lat-kona-read       ${DATADIR}/     #kernel2
+    # cp ${SCHED_DIR}/lat-apf-async-read  ${DATADIR}/
+    # cp ${SCHED_DIR}/lat-apf-sync-read   ${DATADIR}/
+
+    plotname=${PLOTDIR}/latencies.${PLOTEXT}
+    python3 ${PLOTSRC} -z cdf                                                       \
+        -d ${DATADIR}/lat-faults-read       -l "Kernel"         -ls dashed  -cmi 1  \
+        -d ${DATADIR}/lat-appfaults-read    -l "User"           -ls dashdot -cmi 1  \
+        -d ${DATADIR}/lat-apf-sync-read     -l "Annot (Poll)"   -ls solid   -cmi 1  \
+        -d ${DATADIR}/lat-apf-async-read    -l "Annot (Yield"   -ls solid   -cmi 1  \
+        -yc latency -xl "Latency (µs)" --xmin 0 --xmax 20 -nm                       \
+        --size 5 3.5 -fs 15 -of ${PLOTEXT} -o $plotname
+    display $plotname & 
 fi
 
 # cleanup

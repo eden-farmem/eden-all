@@ -28,14 +28,7 @@
 #include "ops.h"
 #include "klib.h"
 #include "klib_sfaults.h"
-#include "parse_vdso.h"
 
-const char *version = "LINUX_2.6";
-const char *name_mapped = "__vdso_is_page_mapped";
-const char *name_wp = "__vdso_is_page_mapped_and_wrprotected";
-typedef long (*vdso_check_page_t)(const void *p);
-static vdso_check_page_t is_page_mapped;
-static vdso_check_page_t is_page_mapped_and_wrprotected;
 
 #define GIGA (1ULL << 30)
 
@@ -59,11 +52,14 @@ const int KONA_CORES[] = {
 #define MAX_APP_CORES (NUM_CORES - NUM_EXCLUDED)
 #define MAX_THREADS (MAX_APP_CORES-1)
 #define RUNTIME_SECS 10
+#define NUM_LAT_SAMPLES 5000
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready, lockstep_start, lockstep_end;
 int start_button = 0, stop_button = 0;
 int stop_button_seen = 0;
+uint64_t latencies[NUM_LAT_SAMPLES];
+int latcount = 0;
 
 struct thread_data {
     int tid;
@@ -90,11 +86,11 @@ enum fault_op {
 
 int next_available_core(int coreidx) {
 	int i;
-	ASSERT(coreidx < NUM_CORES);
+	ASSERT(coreidx >= 0 && coreidx < NUM_CORES);
 	coreidx++;
 	while (coreidx < NUM_CORES) {
 		for(i = 0; i < NUM_EXCLUDED; i++) {
-			if (EXCLUDED[i] == CORELIST[i])
+			if (EXCLUDED[i] == CORELIST[coreidx])
 				break;
 		}
 		if (i == NUM_EXCLUDED)
@@ -117,22 +113,16 @@ static inline void post_app_fault_sync(int channel, unsigned long fault_addr, in
 	ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
 
 	app_fault_packet_t resp;
-	// unsigned long start = rdtsc();
-	// unsigned long now;
-	while(app_read_fault_resp_async(channel, &resp)) {
+	while(app_read_fault_resp_async(channel, &resp))
 		cpu_relax();
-		// now = (rdtsc() - start) / cycles_per_us;
-		// if (now > 10000) 
-		// 	pr_info("thread stuck on channel %d %lu %d", 
-		// 		channel, fault_addr, is_write);
-	}
+
 	ASSERT(resp.tag == (void*) fault_addr);	/*sanity check*/
 }
 
 void* thread_main(void* args) {
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
-	pr_debug("thread %d pinned to core %d", tdata->tid, tdata->core);
+	pr_info("thread %d pinned to core %d", tdata->tid, tdata->core);
 
     int self = tdata->tid, chanid;
 	int r, retries, tmp, i = 0, stop = 0;
@@ -141,6 +131,14 @@ void* thread_main(void* args) {
 	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
 	bool concurrent = false;
+
+	struct rand_state rand;
+	double sampling_rate = (NUM_LAT_SAMPLES * 1.0 / (RUNTIME_SECS * 1e6 * cycles_per_us));
+	unsigned long start_tsc, now_tsc, next_tsc;
+	bool sample;
+
+	ASSERTZ(rand_seed(&rand, time(NULL)));
+	start_tsc = rdtsc();
 
 /*fault kind*/
 #ifdef USE_APP_FAULTS
@@ -165,33 +163,39 @@ void* thread_main(void* args) {
 
 	p = (void*)(tdata->range_start);
 	p = (void*) page_align(p);
-	printf("thread %d with channel %d, memory start %lu, size %lu, kind %d, op %d\n", 
-		self, chanid, tdata->range_start, tdata->range_len, kind, op);
+	pr_info("thread %d with channel %d, memory start %lu, size %lu, kind %d, op %d, concurrent %d", 
+		self, chanid, tdata->range_start, tdata->range_len, kind, op, concurrent);
 
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
 
-	unsigned long start = rdtsc();
-	unsigned long now;
 
 	while(!start_button)
 		cpu_relax();
 	while(!stop) {
 		if (op == FO_RANDOM)
 			op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
-			now = (rdtsc() - start) / cycles_per_us;
 
+#ifdef LATENCY
+		sample = false;
+		now_tsc = rdtsc();
+		if (now_tsc - start_tsc >= next_tsc) {
+			sample = true;
+			next_tsc = (now_tsc - start_tsc) + poisson_event(sampling_rate, rand_next(&rand));
+		}
+#endif
 		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
 #ifdef USE_APP_FAULTS
 			pr_debug("posting app fault on thread %d, channel %d", tdata->tid, chanid);
-			// r = is_page_mapped(p);	/*access before*/
-			// ASSERTZ(r);				/*page not expected to exist*/
 
 			if (concurrent) {
 				/*sync with other threads before each fault*/
 				r = pthread_barrier_wait(&lockstep_start);
 				ASSERT(r != EINVAL);
 			}
+
+			if (sample)
+				now_tsc = rdtsc();
 
 			switch(op) {
 				case FO_READ:
@@ -212,11 +216,6 @@ void* thread_main(void* args) {
 					pr_err("unknown fault op %d", op);
 					ASSERT(0);
 			}
-			
-			// r = is_page_mapped(p);	/*access after*/
-			// if (!r) 
-			// 	pr_info("page fault failed t %lu", (unsigned long)p);
-			// ASSERT(r);				/*page expected to exist*/
 			pr_debug("page fault served!");
 #else
 			BUG(1);	/*cannot be here without USE_APP_FAULTS*/
@@ -230,22 +229,28 @@ void* thread_main(void* args) {
 				ASSERT(r != EINVAL);
 			}
 			pr_debug("posting regular fault on thread %d\n", tdata->tid);
+
+			if (sample)
+				now_tsc = rdtsc();
+
 			if (op == FO_READ || op == FO_READ_WRITE)
 				tmp = *(int*)p;
 			if (op == FO_WRITE || op == FO_READ_WRITE)
-				*(int*)p = tmp;
-			
-			// r = is_page_mapped(p);	/*access after*/
-			// ASSERT(r);				/*page expected to exist*/
+				*(int*)p = tmp;			
 		}
+
+		if (sample && latcount < NUM_LAT_SAMPLES) {
+			latencies[latcount] = rdtscp(NULL) - now_tsc;
+			latcount++;
+		}
+
 		tdata->xput_ops++;
 		p += PAGE_SIZE;
-		if (tdata->xput_ops % 50000 == 0)
-			pr_info("thread %d finished %d ops at %lu", self, tdata->xput_ops, now);
+		ASSERT(((unsigned long) p) > tdata->range_start); 
 		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 #ifdef DEBUG
 		i++;
-		if (i == 1000) 	
+		if (i == 1000)
 			break;
 #endif
 
@@ -258,13 +263,9 @@ void* thread_main(void* args) {
 			r = pthread_barrier_wait(&lockstep_end);
 			ASSERT(r != EINVAL);
 			stop = stop_button_seen;
-			pr_info("here");
 		}
 		else	
 			stop = stop_button;
-		
-		if (stop_button || stop)
-			pr_info("thread %d stop button seen", self);
 	}
 	pr_info("thread %d done with %d faults", tdata->tid, i);
 }
@@ -273,7 +274,6 @@ int main(int argc, char **argv)
 {
 	unsigned long sysinfo_ehdr;
 	char *p;
-	bool page_mapped;
 	int i, j, r, num_threads, max_threads;
 	uint64_t start, duration;
 	double duration_secs;
@@ -299,38 +299,24 @@ int main(int argc, char **argv)
 	cycles_per_us = time_calibrate_tsc();
 	printf("time calibration - cycles per µs: %lu\n", cycles_per_us);
 	ASSERT(cycles_per_us);
+#ifdef LATENCY
+	/* no lat support for multiple threads yet */
+	ASSERT(num_threads == 1);
+#endif
 
 	/*kona init*/
-	char env_var[200];
+	char value[50];
 	size = 34359738368;	/*32 gb*/
-	// size = 50000000000;	/*50 gb*/
-	sprintf(env_var, "MEMORY_LIMIT=%lu", size);	putenv(env_var);	/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_THRESHOLD=1");			/*32gb, BIG to avoid eviction*/
-	putenv("EVICTION_DONE_THRESHOLD=1");	/*32gb, BIG to avoid eviction*/
+	sprintf(value, "%lu", size);	
+	setenv("MEMORY_LIMIT", value, 1);		/*32gb, BIG to avoid eviction*/
+	setenv("EVICTION_THRESHOLD", "1", 1);		
+	setenv("EVICTION_DONE_THRESHOLD", "1", 1);
 #ifdef USE_APP_FAULTS
-	sprintf(env_var, "APP_FAULT_CHANNELS=%d", num_threads);	putenv(env_var);
+	sprintf(value, "%d", num_threads);	
+	setenv("APP_FAULT_CHANNELS", value, 1);
 #endif
 	rinit();
 	sleep(1);
-
-	/*find vDSO symbols*/
-	sysinfo_ehdr = getauxval(AT_SYSINFO_EHDR);
-	if (!sysinfo_ehdr) {
-		printf("[ERROR]\tAT_SYSINFO_EHDR is not present!\n");
-		return 1;
-	}
-
-	vdso_init_from_sysinfo_ehdr(getauxval(AT_SYSINFO_EHDR));
-	is_page_mapped = (vdso_check_page_t)vdso_sym(version, name_mapped);
-	if (!is_page_mapped) {
-		printf("[ERROR]\tCould not find %s in vdso\n", name_mapped);
-		return 1;
-	}
-	is_page_mapped_and_wrprotected = (vdso_check_page_t)vdso_sym(version, name_wp);
-	if (!is_page_mapped_and_wrprotected) {
-		printf("[ERROR]\tCould not find %s in vdso\n", name_wp);
-		return 1;
-	}
 
 	p = rmalloc(size);
 	ASSERT(p != NULL);
@@ -348,7 +334,7 @@ int main(int argc, char **argv)
 		ASSERTZ(rand_seed(&tdata[i].rs, time(NULL) ^ i));
         ASSERT(coreidx < NUM_CORES);
 		coreidx = next_available_core(coreidx);
-        tdata[i].core = coreidx;
+        tdata[i].core = CORELIST[coreidx];
 #ifndef CONCURRENT
 		tdata[i].range_start = ((unsigned long) p) + i * (size / num_threads);
 		tdata[i].range_len = (size / num_threads);
@@ -370,21 +356,32 @@ int main(int argc, char **argv)
 	} while(duration_secs <= RUNTIME_SECS);
 	stop_button = 1;
 
-	/*wait for threads to finish*/
+	/* wait for threads to finish */
 	for(i = 0; i < num_threads; i++) {
 		pthread_join(threads[i], NULL);
-		pr_info("thread %d returned", i);
 	}
 
+	/* collect xput numbers */
 	uint64_t xput = 0, errors = 0;
 	for (i = 0; i < num_threads; i++) {
 		xput += tdata[i].xput_ops;
 		errors += tdata[i].errors;
 	}
-	
 	printf("ran for %.1lf secs; total xput %lu\n", duration_secs, xput);
-	printf("result:%d,%.0lf,%.1lf\n", num_threads, 
-		xput / duration_secs, 								//total xput
-		duration * 1.0/(cycles_per_us*tdata[0].xput_ops));	//per-op latency
+	printf("result:%d,%.0lf\n", num_threads, xput / duration_secs);
+
+	/* dump latencies to file */
+	if (latcount > 0) {
+		FILE* outfile = fopen("latencies", "w");
+		if (outfile == NULL)
+			pr_warn("could not write to latencies file");
+		else {
+			fprintf(outfile, "latency\n");
+			for (i = 0; i < latcount; i++)
+				fprintf(outfile, "%.3lf\n", latencies[i] * 1.0 / cycles_per_us);
+			fclose(outfile);
+			pr_info("Wrote %d sampled latencies", latcount);
+		}
+	}
 	return 0;
 }

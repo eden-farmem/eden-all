@@ -29,7 +29,7 @@ def main():
     "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
     "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
     "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pf_posted:(\d+),"
-    "pf_returned:(\d+),pf_retries:(\d+),pf_failed:(\d+),cycles_per_us:(\d+)")
+    "pf_returned:(\d+),pf_time_spent_mus:(\d+),pf_failed:(\d+),cycles_per_us:(\d+)")
     pattern = None
 
     data = defaultdict(list)
@@ -70,7 +70,7 @@ def main():
             if len(match.groups()) == 24:
                 pf_posted = diff[19]
                 pf_returned = diff[20]
-                pf_retries = diff[21]
+                pf_time_spent_mus = diff[21]
                 pf_failed = diff[22]
                 cycles_per_us = values[23]
 
@@ -79,7 +79,7 @@ def main():
 
             tstamps.append(ts)
             data['rescheds'].append((ts, reschedules))
-            data['schedtimepct'].append((ts, sched_cycles / (sched_cycles + program_cycles) * 100 
+            data['schedtimepct'].append((ts, sched_cycles * 100.0 / (sched_cycles + program_cycles) 
                 if (sched_cycles + program_cycles) else 0))
             data['localschedpct'].append((ts, (1 - threads_stolen / reschedules) * 100 if reschedules else 0))
             data['softirqs'].append((ts, softirqs_local + softirqs_stolen))
@@ -101,14 +101,14 @@ def main():
                 if (sched_cycles + program_cycles) else 0))
             data['pf_posted'].append((ts, pf_posted))
             data['pf_returned'].append((ts, pf_returned))
-            data['pf_retries'].append((ts, pf_retries))
-            data['pf_failed'].append((ts, pf_retries))
+            data['pf_time_spent_mus'].append((ts, pf_time_spent_mus))
+            data['pf_failed'].append((ts, pf_failed))
             continue
         assert False, line
 
     # filter
-    if args.start:  tstamps = filter(lambda x: x[0] >= args.start, tstamps)
-    if args.end:    tstamps = filter(lambda x: x[0] <= args.end, tstamps)
+    if args.start:  tstamps = filter(lambda x: x >= args.start, tstamps)
+    if args.end:    tstamps = filter(lambda x: x <= args.end, tstamps)
     for k in data.keys():
         if args.start:  data[k] = filter(lambda x: x[0] >= args.start, data[k])
         if args.end:    data[k] = filter(lambda x: x[0] <= args.end, data[k])
@@ -117,7 +117,7 @@ def main():
     f = sys.stdout
     if args.out:
         f = open(args.out, "w")
-        print("writing output stats to " + args.out)
+        # print("writing output stats to " + args.out)
     start = min(tstamps)
     keys = data.keys()
     f.write("time," + ",".join(keys) + "\n")    # header

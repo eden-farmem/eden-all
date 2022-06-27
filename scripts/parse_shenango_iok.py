@@ -60,15 +60,23 @@ def main():
         if args.start:  stats[k] = filter(lambda x: x[0] >= args.start, stats[k])
         if args.end:    stats[k] = filter(lambda x: x[0] <= args.end, stats[k])
 
+    # # detect anamoly
+    # mean = None
+    # for i, (_, val) in enumerate(stats['TX_PULLED']):
+    #     if mean:
+    #         if val < mean / 2.0:    print("WARNING! drastic throughput drop detected, possible soft crash")
+    #         mean = (mean * i + val) / (i + 1)
+    #     else:   
+    #         mean = val
+
     # write out
     f = sys.stdout
     if args.out:
         f = open(args.out, "w")
-        print("writing output stats to " + args.out)
+        # print("writing output stats to " + args.out)
     tstamps = [ts for ts,_ in stats.values()[0]]
     if len(tstamps) > 0:
         start = min(tstamps)
-        print(start)
         f.write("time," + ",".join(stats.keys()) + "\n")    # header
         for i, time in enumerate(tstamps):
             values = [str(time - start)] + [str(v[i][1]) for v in stats.values()]

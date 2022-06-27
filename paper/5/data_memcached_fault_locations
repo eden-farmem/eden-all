@@ -1,5 +1,9 @@
 ip,kind,count
-0x7ffff7d87ad1,write,7289
-0x41611c,read,1327
-0x7ffff7d80e60,read,2
-0x413c13,read,1
+0x41611c,read,20669
+0x7ffff7d877a3,read,386
+0x7ffff7d877a7,read,270
+0x7ffff7d80e60,read,250
+0x415218,wrprotect,151
+0x411552,wrprotect,8
+0x4162f1,wrprotect,2
+0x41155f,wrprotect,1

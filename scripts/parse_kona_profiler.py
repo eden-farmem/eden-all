@@ -1,6 +1,7 @@
 import os
 import argparse
 import pandas as pd
+import sys
 
 TIMECOL = "time"
 

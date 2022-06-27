@@ -13,6 +13,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <math.h>
 
 #include "config.h"
 #include "logging.h"
@@ -64,6 +65,14 @@ static int pin_thread(int core) {
       perror("pthread_setaffinitity_np");
   }
   return retcode;
+}
+
+/* returns the next time interval for events based on poisson arrivals */
+static inline double poisson_event(double rate, unsigned long rnd)
+{
+    return -logf(1.0f - ((double)(rnd % RAND_MAX)) 
+		/ (double)(RAND_MAX)) 
+		/ rate;
 }
 
 /* a fast xorshift pseudo-random generator
