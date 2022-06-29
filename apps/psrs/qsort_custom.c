@@ -1,6 +1,8 @@
 #include "common.h"
 #include "qsort.h"
 
+unsigned long counter = 0;
+
 /*
  * Quicksort partition function
  *
@@ -12,19 +14,26 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
     size_t i = l;             /* left approximation index */
     size_t j = r + 1;         /* right approximation index */
     qelement_t pivot = base[l];
+    qelement_t* addr;
 
     while (i < j) {
         /* left-approx i to pivot */
         do { 
             ++i;
-            POSSIBLE_WRITE_FAULT_AT(&base[i]);
-        } while (base[i] <= pivot && i <= r);
+            addr = &base[i];
+            if (((unsigned long)addr & _PAGE_OFFSET_MASK) == 0) {
+                // POSSIBLE_WRITE_FAULT_AT(addr);
+            }
+        } while (*addr <= pivot && i <= r);
 
         /* right-approx j to pivot */
         do {
             --j;
-            POSSIBLE_WRITE_FAULT_AT(&base[j]);
-        } while (base[j] > pivot && j >= l);
+            addr = &base[j];
+            if (((unsigned long)addr & _PAGE_OFFSET_MASK) == (_PAGE_SIZE - sizeof(qelement_t))) {
+                // POSSIBLE_WRITE_FAULT_AT(addr);
+            }
+        } while (*addr > pivot && j >= l);
 
         /* do swap if swap is possible */
         if (i < j) {
@@ -51,8 +60,14 @@ void _quicksort(qelement_t *base, size_t l, size_t r)
     if (l >= r)
         return;
 
-    size_t j = _partition(base, l, r);   /* pivot position */
-    _quicksort(base, j + 1, r);          /* right chunk */
+    size_t j = _partition(base, l, r);  /* pivot position */
+    _quicksort(base, j + 1, r);         /* right chunk */
     if (j > 0)  
         _quicksort(base, l, j - 1);     /* left chunk */
+
+}
+
+void _qsort (void *base, size_t size, size_t s, __compar_fn_t cmp) {
+    assert(s == sizeof(qelement_t));
+    _quicksort(base, 0, size - 1);
 }

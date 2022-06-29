@@ -14,14 +14,80 @@
 #include <unistd.h>
 #include <string.h>
 
-/* fault annotations */
+/* for uthreads */
 #ifdef SHENANGO
+#include "runtime/thread.h"
+#include "runtime/sync.h"
 #include "runtime/pgfault.h"
+#endif
+
+/* for kona */
+#ifdef WITH_KONA
+#include "klib.h"
+#endif
+
+/* for custom qsort */
+#ifdef CUSTOM_QSORT
+#include "qsort.h"
+#define QUICKSORT _qsort
+typedef qelement_t element_t;
+#else
+#define QUICKSORT qsort
+typedef int element_t;
+#endif
+
+/* thread/sync primitives from various platforms */
+#ifdef SHENANGO
+#define THREAD_T						unsigned long
+#define THREAD_CREATE(id,routine,arg)	thread_spawn(routine,arg)
+#define THREAD_EXIT(ret)				thread_exit()
+#define BARRIER_T		 				barrier_t
+#define BARRIER_INIT(b,c)				barrier_init(b, c)
+#define BARRIER_WAIT 					barrier_wait
+#define BARRIER_DESTROY(b)				{}
+#else 
+#define THREAD_T						pthread_t
+#define THREAD_CREATE(tid,routine,arg)	pthread_create(tid,NULL,routine,arg)
+#define THREAD_EXIT(ret)				pthread_exit(ret)
+#define BARRIER_T		 				pthread_barrier_t
+#define BARRIER_INIT(b,c)				pthread_barrier_init(b, NULL, c)
+#define BARRIER_WAIT 					pthread_barrier_wait
+#define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
+#endif
+
+/* remote memory primitives */
+#ifdef WITH_KONA
+#define RMALLOC		rmalloc
+#define RFREE		  rfree
+#else
+#define RMALLOC		malloc
+#define RFREE		  free
+#endif
+
+/* fault annotations */
+#if defined(SHENANGO) && defined(ANNOTATE_FAULTS)
+// #define POSSIBLE_READ_FAULT_AT   /* already defined */
+// #define POSSIBLE_WRITE_FAULT_AT  /* already defined */
 #define POSSIBLE_READ_FAULT_AT    possible_read_fault_on
 #define POSSIBLE_WRITE_FAULT_AT   possible_write_fault_on
-#else 
+// #define POSSIBLE_READ_FAULT_AT    is_page_mapped
+// #define POSSIBLE_WRITE_FAULT_AT   is_page_mapped_and_wrprotected
+#else
 #define POSSIBLE_READ_FAULT_AT(a)	  {}
 #define POSSIBLE_WRITE_FAULT_AT(a)	{}
+#endif
+
+/* page size parameters */
+#define _PAGE_SHIFT       (12)
+#define _PAGE_SIZE        (1ull << _PAGE_SHIFT)
+#define _PAGE_OFFSET_MASK (_PAGE_SIZE - 1)
+#define _PAGE_MASK        (~_PAGE_OFFSET_MASK)
+
+#ifndef likely
+#define likely(x) __builtin_expect(!!(x), 1)
+#endif
+#ifndef unlikely
+#define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
 
 /********************************************

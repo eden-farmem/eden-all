@@ -8,55 +8,6 @@
 
 #include "common.h"
 
-/* for uthreads */
-#ifdef SHENANGO
-#include "runtime/thread.h"
-#include "runtime/sync.h"
-#endif
-
-/* for kona */
-#ifdef WITH_KONA
-#include "klib.h"
-#endif
-
-/* for custom qsort */
-#ifdef CUSTOM_QSORT
-#include "qsort.h"
-#define QUICKSORT(base,len,size,cmp) quicksort(base,len)
-typedef qelement_t element_t;
-#else
-#define QUICKSORT qsort
-typedef int element_t;
-#endif
-
-/* thread/sync primitives from various platforms */
-#ifdef SHENANGO
-#define THREAD_T						unsigned long
-#define THREAD_CREATE(id,routine,arg)	thread_spawn(routine,arg)
-#define THREAD_EXIT(ret)				thread_exit()
-#define BARRIER_T		 				barrier_t
-#define BARRIER_INIT(b,c)				barrier_init(b, c)
-#define BARRIER_WAIT 					barrier_wait
-#define BARRIER_DESTROY(b)				{}
-#else 
-#define THREAD_T						pthread_t
-#define THREAD_CREATE(tid,routine,arg)	pthread_create(tid,NULL,routine,arg)
-#define THREAD_EXIT(ret)				pthread_exit(ret)
-#define BARRIER_T		 				pthread_barrier_t
-#define BARRIER_INIT(b,c)				pthread_barrier_init(b, NULL, c)
-#define BARRIER_WAIT 					pthread_barrier_wait
-#define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
-#endif
-
-/* remote memory primitives */
-#ifdef WITH_KONA
-#define RMALLOC		rmalloc
-#define RFREE		rfree
-#else
-#define RMALLOC		malloc
-#define RFREE		free
-#endif
-
 /* local macros */
 #define master if (id == 0) 
 #define lsize sizeof(size_t)
@@ -184,12 +135,15 @@ void phase3(struct thread_data* data) {
 /*
  * merges the array with a given size into the original input array
  */
-void copyback(element_t* data, int start_pos, size_t len) {
+void copyback(element_t* data, size_t start_pos, size_t len) {
 	for (size_t i = start_pos; i < start_pos + len; i++) {
-		POSSIBLE_READ_FAULT_AT(&data[i]);
-		POSSIBLE_WRITE_FAULT_AT(&input[i]);
+		// if (((unsigned long)&data[i] & _PAGE_OFFSET_MASK) == 0)
+		// 	POSSIBLE_READ_FAULT_AT(&data[i]);
+		// if (((unsigned long)&input[i] & _PAGE_OFFSET_MASK) == 0)
+		// 	POSSIBLE_WRITE_FAULT_AT(&input[i]);
 		input[i] = data[i];
 	}
+	pr_info("copying back range [%lu, %lu]", start_pos, i);
 }
 
 /*
@@ -216,11 +170,7 @@ void phase4(struct thread_data* data) {
 	}
 	merged_partition_length[id] = total_merge_length;
 
-	/* create output buffer	*/
-	master {  
-		merged_values = RMALLOC(sizeof(element_t) * size);
-	}
-	BARRIER;
+	BARRIER;	/* for everyone to figure out their merge lengths */
 	size_t start_pos = 0;
 	for(int i = 0; i < id; i++)	
 		start_pos += merged_partition_length[i];
@@ -233,21 +183,24 @@ void phase4(struct thread_data* data) {
 	   partition being invalid means that that partition has been merged completely already */
 	int mi = 0;
 	int min, min_pos;
+	element_t* addr;
 	while (mi < total_merge_length) {
 		/* find the next min element of all sorted partitions */
 		bool found = false;
 		for (int i = 0; i < t * 2; i += 2) {
 			if (exchange_indices[i] != exchange_indices[i+1]) {
-				POSSIBLE_READ_FAULT_AT(&input[exchange_indices[i]]);
+				addr = &input[exchange_indices[i]];
+				if (((unsigned long) addr & _PAGE_OFFSET_MASK) == 0)
+					POSSIBLE_READ_FAULT_AT(addr);
 				if (!found) {
-					min = input[exchange_indices[i]];
+					min = *addr;
 					min_pos = i;
 					found = true;
 					continue;
 				}
 				
-				if (input[exchange_indices[i]] < min) {
-					min = input[exchange_indices[i]];
+				if (*addr < min) {
+					min = *addr;
 					min_pos = i;
 				}
 			}
@@ -258,8 +211,10 @@ void phase4(struct thread_data* data) {
 			break;
 
 		// save the minimum to the final array
-		POSSIBLE_WRITE_FAULT_AT(&merged_values[start_pos + mi]);
-		merged_values[start_pos + mi] = min;
+		addr = &merged_values[start_pos + mi];
+		if (((unsigned long) addr & _PAGE_OFFSET_MASK) == 0)
+			POSSIBLE_WRITE_FAULT_AT(addr);
+		*addr = min;
 		// increase the counter of the range that 
 		// the minimum value belongs to
 		exchange_indices[min_pos]++;
@@ -359,7 +314,10 @@ void main_thread(void* arg) {
 	pivots = RMALLOC(sizeof(element_t) * (t - 1));
 	merged_partition_length = RMALLOC(sizeof(size_t) * t);
 	partitions = RMALLOC(sizeof(size_t) *  t * (t+1));
-		
+	merged_values = RMALLOC(sizeof(element_t) * size);			/* output buffer */	
+	// memset(merged_values, 0, sizeof(element_t) * size);			/* UNDO */
+	pr_info("output buffer: start: %p size %lu", merged_values, size);
+
 	/* start worker threads */
 	start_time;	
 	THREAD_T* threads = malloc(sizeof(THREAD_T) * t);
@@ -454,6 +412,7 @@ int* generate_array_of_size(size_t size) {
 		POSSIBLE_WRITE_FAULT_AT(&randoms[i]);
 		randoms[i] = (element_t) random();
 	}
+	pr_info("input buffer: start: %p size %lu", randoms, size);
 	return randoms;
 }
 

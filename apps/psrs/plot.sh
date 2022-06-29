@@ -88,13 +88,13 @@ if [ "$PLOTID" == "1" ]; then
     konastatsout=${exp}/kona_counters_parsed
     konastatsin=${exp}/kona_counters.out 
     if [ ! -f $konastatsout ] && [ -f $konastatsin ]; then 
-        python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py   \
+        python3 ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py   \
             -i ${konastatsin} -o ${konastatsout}            \
             -st=${start} -et=${end}
     fi
 
     plotname=${plotdir}/faults_${RUNID}.${PLOTEXT}
-    python ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
+    python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
         -yc n_faults    -l "total"      -ls solid       \
         -yc n_faults_r  -l "read"       -ls solid       \
         -yc n_faults_w  -l "write"      -ls solid       \
@@ -105,20 +105,88 @@ if [ "$PLOTID" == "1" ]; then
         --size 10 2.5 -fs 11  -of $PLOTEXT  -o $plotname
     files="${files} ${plotname}"
 
-    # plotname=${plotdir}/memory_${RUNID}.${PLOTEXT}
-    # python ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
-    #     --ymul 1e-9 -yl "Memory (GB)"                   \
-    #     -yc "malloc_size" -l "mallocd mem"              \
-    #     -yc "mem_pressure" -l "working set"             \
-    #     -xc "time" -xl "time (s)" ${VLINES} -nm         \
-    #     --size 10 2 -fs 11  -of $PLOTEXT  -o $plotname
-    # files="${files} ${plotname}"
+    plotname=${plotdir}/app_faults_${RUNID}.${PLOTEXT}
+    python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
+        -yc n_afaults   -l "total (apt)"    -ls solid   \
+        -yc n_afaults_r -l "read (apt)"     -ls dashed  \
+        -yc n_afaults_w -l "write (apt)"    -ls dashdot \
+        -xc "time" -xl "time (s)"  ${VLINES}            \
+        -yl "KFPS" --ymul 1e-3  -nm --ymin 0 --ymax 150 \
+        --size 10 2.5 -fs 11  -of $PLOTEXT  -o $plotname
+    files="${files} ${plotname}"
+
+    plotname=${plotdir}/memory_${RUNID}.${PLOTEXT}
+    python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
+        --ymul 1e-9 -yl "Memory (GB)"                   \
+        -yc "malloc_size" -l "mallocd mem"              \
+        -yc "mem_pressure" -l "working set"             \
+        -xc "time" -xl "time (s)" ${VLINES} -nm         \
+        --size 10 2 -fs 11  -of $PLOTEXT  -o $plotname
+    files="${files} ${plotname}"
 
     # Combine
+    plotname=${plotdir}/kona_stats_${RUNID}.$PLOTEXT
+    montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
+    rm -f ${files}
+    display ${plotname} &
+fi
+
+
+# kona page fault time series
+if [ "$PLOTID" == "2" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    BKEND_COL=3
+    PFTYPE_COL=4
+    TIME_COL=8
+
+
+    pattern="06-12"; tperc=1;   desc="upcalls"; 
+    cfg=tperc${tperc}_${desc}
+    if [[ $desc ]]; then descopt="-d=$desc"; fi
+    for cores in 2; do 
+        for kind in "baseline" "kona" "annot-sync" "annot-async"; do 
+
+            case $kind in
+            "baseline")     backend=none; pgf=none;;
+            "kona")         backend=kona; pgf=none;;
+            "annot-sync")   backend=kona; pgf=SYNC;;
+            "annot-async")  backend=kona; pgf=ASYNC;;
+            *)              echo "Unknown kind"; exit;;
+            esac
+
+            thr=$((cores*tperc))
+            datafile=$plotdir/data_${cores}cores
+            tmpfile=${TMP_FILE_PFX}_data
+            rm -f $tmpfile
+            if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -c=$cores \
+                    -t=${thr} ${descopt} -of=$tmpfile -sc=shenango -pf=${pgf} -be=${backend}
+            fi
+            cat $datafile
+        done
+        plots="$plots -d $datafile -ls dashed -cmi 0"
+    done
+
+    # plotname=${plotdir}/faults_${RUNID}.${PLOTEXT}
+    # python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout  \
+    #     -yc n_faults    -l "total"      -ls solid       \
+    #     -yc n_faults_r  -l "read"       -ls solid       \
+    #     -yc n_faults_w  -l "write"      -ls solid       \
+    #     -yc n_faults_wp -l "wrprotect"  -ls dashdot     \
+    #     -yc n_evictions -l "evictions"  -ls dashed      \
+    #     -xc "time" -xl "time (s)"  ${VLINES}            \
+    #     -yl "KFPS" --ymul 1e-3  -nm --ymin 0 --ymax 150 \
+    #     --size 10 2.5 -fs 11  -of $PLOTEXT  -o $plotname
+    # files="${files} ${plotname}"
+
+    # # Combine
     # plotname=${plotdir}/kona_stats_${RUNID}.$PLOTEXT
     # montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
     # rm -f ${files}
-    display ${plotname} &
+    # display ${plotname} &
 fi
 
 # cleanup

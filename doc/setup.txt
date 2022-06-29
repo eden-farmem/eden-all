@@ -107,6 +107,10 @@ is built for another kernel version)
     Turned off turboboost.
     https://askubuntu.com/questions/523640/how-i-can-disable-cpu-frequency-scaling-and-set-the-system-to-performance
 
+7. Diasble automatic NUMA load balancing. This feature raises spurious page faults to determine NUMA 
+node access patterns which interfere with our fault annotations
+    echo 0 | sudo tee /proc/sys/kernel/numa_balancing
+
 
 
 

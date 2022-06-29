@@ -42,8 +42,9 @@ esac
 done
 
 # settings
-NKEYS=16000000      # ? GB
-lmem=1000000000     # 1 GB
+NKEYS=512000000         # 2 GB input
+LMEM=1000000000         # 1 GB
+CFLAGS="$CFLAGS -DCUSTOM_QSORT"
 cores=1
 thr=1
 
@@ -57,25 +58,36 @@ check_for_stop() {
     fi
 }
 
-desc="customqsort"
-CFLAGS="-DCUSTOM_QSORT"
-# for sflag in "" "--shenango"; do
-for kflag in "--kona"; do     #"--kona"
-	# for nkeys_ in 16 32 64 128 256 512 1024 2048 4096; do
-	for nkeys_ in 512; do
-		nkeys=$((nkeys_*1000000))
-		for cores in 4; do
-			# for tpc in 1 2 4 8 16; do
-			for tpc in 1; do
+desc="copyback"
+# for tpc in 1 5 10 20 50; do
+for tpc in 1 10; do
+    # for cfg in "pthr" "uthr" "kona-pthr" "kona-uthr" "apf-sync" "apf-async"; do
+    for cfg in "kona-uthr"; do
+        OPTS=
+        # OPTS="$OPTS --nopie"    #no ASLR
+        case $cfg in
+        "pthr")             ;;
+        "uthr")             OPTS="$OPTS --shenango";;
+        "kona-pthr")        OPTS="$OPTS --kona";;
+        "kona-uthr")        OPTS="$OPTS --shenango --kona";;
+        "apf-sync")         OPTS="$OPTS --shenango --kona -pf=SYNC";;
+        "apf-async")        OPTS="$OPTS --shenango --kona -pf=ASYNC";;
+        *)                  echo "Unknown fault kind"; exit;;
+        esac
+        bash run.sh ${OPTS} -fl="""${CFLAGS}""" --force --buildonly #rebuild
+        for cores in 1; do
+            # for nkeys_ in 16 32 64 128 256 512; do
+            for nkeys_ in 1024; do
                 check_for_stop
-				thr=$((cores*tpc))
-				echo "Running ${cores} cores, ${thr} threads, ${nkeys} keys"
-				bash run.sh -c=${cores} -t=${thr} -nk=${nkeys}  \
-                    ${sflag} ${kflag} ${FFLAG} -d="""${desc}""" \
-                    -fl="""${CFLAGS}"""
-			done
-		done
-	done
+                nkeys=$((nkeys_*1000000))
+                lmem=$LMEM
+                thr=$((cores*tpc))
+                echo "Running ${cores} cores, ${thr} threads, ${nkeys} keys"
+                bash run.sh -c=${cores} -t=${thr} -nk=${nkeys} ${OPTS} ${FFLAG} \
+                    -d="""${desc}""" -fl="""${CFLAGS}""" -lm=${lmem}
+            done
+        done
+    done
 done
 
 # cleanup

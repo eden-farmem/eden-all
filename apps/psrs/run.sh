@@ -78,7 +78,8 @@ case $i in
     -d|--debug)
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
-    NKEYS=100
+    NKEYS=1000
+    LMEM=200000000    # 200MB
     ;;
 
     -s|--shenango)
@@ -98,11 +99,11 @@ case $i in
     ;;
         
     -pf=*|--pgfaults=*)
-    # only supported on shenango
-    SHENANGO=1
+    SHENANGO=1  #only supported on shenango
     KONA=1
     PAGE_FAULTS="${i#*=}"
     CFLAGS="$CFLAGS -DANNOTATE_FAULTS"
+    CFLAGS="$CFLAGS -DPAGE_FAULTS_${i#*=}"
     ;;
 
     -sc=*|--shencfg=*)
@@ -214,11 +215,16 @@ echo ${SCRIPT_DIR}
 # build kona
 if [[ $FORCE ]] && [[ $KONA ]]; then
     pushd ${KONA_BIN}
-    make je_clean
+    # make je_clean
     make clean
     make je_jemalloc
+    OPTS=
+    OPTS="$OPTS POLLER_CORE=$KONA_POLLER_CORE"
+    OPTS="$OPTS FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE"
+    OPTS="$OPTS EVICTION_CORE=$KONA_EVICTION_CORE"
+    OPTS="$OPTS ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE}"
     if [[ $SHENANGO ]]; then    KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS";  fi
-    make all -j $KONA_CFG PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
+    make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
     sudo sysctl -w vm.unprivileged_userfaultfd=1    
     popd
 fi
@@ -256,7 +262,7 @@ if [[ $SHENANGO ]]; then
 fi
 
 # compile
-gcc main.c qsort.c -lpthread -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+gcc main.c qsort_custom.c -lpthread -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then
     exit 0
