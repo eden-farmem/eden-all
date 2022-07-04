@@ -324,7 +324,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int *found)
             locked = true;
         }
 
-        possible_read_fault_on(&(bucket->timestamp));
+        HINT_READ_FAULT_AT(&(bucket->timestamp));
         timestamp = load_acquire(&(bucket->timestamp)); /* fence */
         hopinfo = bucket->hopinfo;
         if (hopinfo) {

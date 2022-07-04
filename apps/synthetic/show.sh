@@ -14,6 +14,7 @@ usage="\n
 -be, --backend \t results filter: == backend\n
 -pf, --pgfaults \t results filter: == pgfaults\n
 -zs, --zipfs \t\t results filter: == zipfs\n
+-g, --good \t\t show just the 'good' runs; definition of good depends on the metrics\n
 -rm, --remove \t\t (recoverably) delete runs that match these filters\n
 -of, --outfile \t output results to a file instead of stdout\n"
 
@@ -77,6 +78,10 @@ case $i in
     DESC="${i#*=}"
     ;;
 
+    -g|--good)
+    FILTER_GOOD="${i#*=}"
+    ;;
+
     -*|--*)     # unknown option
     echo "Unknown Option: $i"
     echo -e $usage
@@ -138,6 +143,9 @@ for exp in $LS_CMD; do
     xput=$(grep "result:" $exp/app.out | sed -n "s/^.*result://p")
     xputpercore=
     if [[ $xput ]]; then xputpercore=$((xput/cores));   fi
+
+    # if runtime is zero, exclude  
+    if [[ $FILTER_GOOD ]] && (! [[ $rtime ]] || [ $rtime -le 0 ]); then continue; fi
 
     konastatsout=${exp}/kona_counters_parsed
     konastatsin=${exp}/kona_counters.out 

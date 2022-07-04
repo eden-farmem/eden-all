@@ -1,0 +1,11 @@
+CPU,Xput,Faults,Backend,PFType,Threads,Zipfs,Local_MB
+1,86958,19758,kona,none,100,1,3000
+2,155547,42337,kona,none,200,1,3000
+3,201022,68410,kona,none,300,1,3000
+4,242736,87447,kona,none,400,1,3000
+5,258350,105004,kona,none,500,1,3000
+6,,,kona,none,600,1,3000
+7,,,kona,none,700,1,3000
+8,,,kona,none,800,1,3000
+9,,,kona,none,900,1,3000
+10,,,kona,none,1000,1,3000

@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# set -e
 
 #
 # Run synthetic benchmark in various settings
@@ -105,15 +105,15 @@ run_vary_lmem() {
     # run
     # for s in `seq 1 1 10`; do 
     #     zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
-    # for m in `seq 10 5 60`; do 
-    for m in 10; do 
+    for m in `seq 10 5 60`; do 
+    # for m in 60; do 
         check_for_stop
         name=run-$(date '+%m-%d-%H-%M-%S')
         lmem=$(echo $m | awk '{ print $1 * 1000000000/10 }')
         lmem_mb=$(echo $lmem | awk '{ print $1 /1000000 }')
         bash run.sh ${OPTS} -n=${name} -fl="""$CFLAGS""" ${WFLAG} ${KFLAG}                          \
                 -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS} -lm=${lmem} -zs=${zparams}     \
-                -d="""${desc}""" --nopie
+                -d="""${desc}"""
         xput=$(grep "result:" ${DATADIR}/$name/app.out | sed -n "s/^.*result://p")
         if [[ $xput ]]; then xputpc=$((xput/cores)); else   xputpc=;    fi
         echo "$cores,$thr,$lmem_mb,$NKEYS,$zparams,$xput,$xputpc"
@@ -121,14 +121,14 @@ run_vary_lmem() {
 }
 
 # runs
-for op in "zip"; do  # "zip5" "zip50" "zip500"; do
+for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do 
         # for c in `seq 1 1 2`; do 
-        for c in 2; do 
-            desc="${op}-withfaultips"
+        for c in 4 4 4 4 4 4 4 4 4 4; do 
+            desc="${op}-moreruns"
             t=$((c*100))
-            run_vary_lmem "kona"       $op $c $t $zs 
-            # run_vary_lmem "apf-async"  $op $c $t $zs 
+            # run_vary_lmem "kona"       $op $c $t $zs 
+            run_vary_lmem "apf-async"  $op $c $t $zs 
         done
     done
 done

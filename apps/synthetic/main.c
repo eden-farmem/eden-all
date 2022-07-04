@@ -202,8 +202,8 @@ static inline void process_request(int key, int nblobs,
 	nextin = blobdata + value * BLOB_SIZE;
 
 	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
-	possible_read_fault_on(nextin);
-	possible_read_fault_on(nextin + PAGE_SIZE);
+	HINT_READ_FAULT_AT(nextin);
+	HINT_READ_FAULT_AT(nextin + PAGE_SIZE);
 
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */

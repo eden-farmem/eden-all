@@ -7,9 +7,12 @@ PLOTEXT=png
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 ROOTDIR="${SCRIPT_DIR}/../../"
+ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 PLOTDIR=${SCRIPT_DIR}/plots
 DATADIR=${SCRIPT_DIR}/data
 TMP_FILE_PFX=tmp_syn_plot_
+
+source ${ROOT_SCRIPTS_DIR}/utils.sh
 
 usage="\n
 -f, --force \t\t force re-summarize data and re-generate plots\n
@@ -42,10 +45,6 @@ case $i in
     ;;
 esac
 done
-
-#Defaults
-TMP_FILE_PFX='tmp_paper_'
-PLOTLIST=${TMP_FILE_PFX}plots
 
 # point to last chart if not provided
 if [ -z "$PLOTID" ]; then 
@@ -320,7 +319,7 @@ if [ "$PLOTID" == "4" ]; then
     ## data
     # pattern="05-1[89]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht";        ymax=300
     # pattern="06-0[23]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso";    ymax=300
-    # pattern="06-03";      bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso2";    ymax=300
+    # pattern="06-03";      bkend=kona; zipfs=1;    tperc=100;  desc="zip5-new-vdso2";   ymax=300
     # pattern="06-07"       bkend=kona; zipfs=1;    tperc=100;  desc="zip5-withpti";     ymax=300
 
     cores=1
@@ -374,6 +373,197 @@ if [ "$PLOTID" == "4" ]; then
     plotname=${plotdir}/vdso_improvements_$cfg.$PLOTEXT
     montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
     display ${plotname} &
+fi
+
+# performance of async page faults (with multiple runs for each data point)
+## FOR PAPER
+if [ "$PLOTID" == "5" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    LMEMCOL=1
+    XPUTCOL=2
+    PLOTEXT=pdf
+
+    ## data
+    pattern="07-0[12]";   bkend=kona; zipfs=1; cores=4; tperc=100;  desc="zip5-moreruns"; ymax=600
+
+    cfg=${cores}cores_be${bkend}_zs${zipfs}_tperc${tperc}_${desc}
+    if [[ $desc ]]; then descopt="-d=$desc"; fi
+    thr=$((cores*tperc))
+
+    pgf=none    #baseline
+    basefile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
+    if [[ $FORCE ]] || [ ! -f "$basefile" ]; then
+        echo "lmemfr,Xput,Faults,Backend,PFType,CPU,Threads,Zipfs" > $basefile
+        for mem in `seq 1000 500 6000`; do 
+            tmpfile=${TMP_FILE_PFX}data
+            rm -f ${tmpfile}
+            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
+                -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+            cat $tmpfile
+            memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
+            xmean=$(csv_column_mean $tmpfile "Xput")
+            fmean=$(csv_column_mean $tmpfile "Faults")
+            # NOTE: changing this ordering may require updating LMEMCOL, XPUTCOL, etc. 
+            echo ${memf},${xmean},${fmean},${bkend},${pgf},${cores},${thr},${zipfs} >> ${basefile}
+        done
+    fi
+    cat $basefile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_baseline_xput
+    cat $basefile
+
+    pgf=ASYNC    #upcalls
+    upcallfile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
+    if [[ $FORCE ]] || [ ! -f "$upcallfile" ]; then
+        echo "lmemfr,Xput,Faults,Backend,PFType,CPU,Threads,Zipfs" > $upcallfile
+        for mem in `seq 1000 500 6000`; do 
+            tmpfile=${TMP_FILE_PFX}data
+            rm -f ${tmpfile}
+            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
+                -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+            cat $tmpfile
+            memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
+            xmean=$(csv_column_mean $tmpfile "Xput")
+            fmean=$(csv_column_mean $tmpfile "Faults")
+            # NOTE: changing this ordering may require updating LMEMCOL, XPUTCOL, etc. 
+            echo ${memf},${xmean},${fmean},${bkend},${pgf},${cores},${thr},${zipfs} >> ${upcallfile}
+        done
+    fi
+    cat $upcallfile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_upcall_xput
+    cat $upcallfile
+
+    # speedup
+    speedup=$plotdir/data_speedup_${cores}cores_${cfg}
+    cat $basefile | awk -F, '{ print $'$LMEMCOL' }' > ${TMP_FILE_PFX}_lmem
+    paste ${TMP_FILE_PFX}_baseline_xput ${TMP_FILE_PFX}_upcall_xput     \
+        | awk  'BEGIN  { print "speedup" }; 
+                NR>1   { if ($1 && $2)  print ($2-$1)*100/$1 
+                        else            print ""    }' > ${TMP_FILE_PFX}_speedup
+    paste -d, ${TMP_FILE_PFX}_lmem ${TMP_FILE_PFX}_speedup > ${speedup}
+    speedplots="$speedplots -d ${speedup} -l $cores"
+    cat $speedup
+
+    # plot xput & speedup
+    YLIMS="--ymin 0 --ymax $ymax"
+    plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}         \
+            -dyc ${basefile} Xput -ls dashed -l "No Annot"  \
+            -dyc ${upcallfile} Xput -ls solid -l "With Annot"   \
+            -dyc ${speedup} speedup -ls dashdot -l "Speedup"    \
+            -yl "KOPS" --ymul 1e-3 ${YLIMS}                 \
+            --twin 3 -tyl "Gain (%)"                        \
+            -xc lmemfr -xl "Local Memory Fraction"          \
+            --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname
+    fi
+    display ${plotname} &
+
+    #plot faults
+    YLIMS="--ymin 0 --ymax 150"
+    plotname=${plotdir}/faults_$cfg.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}             \
+            -dyc ${basefile} Faults -ls dashed -l "No Annot"    \
+            -dyc ${upcallfile} Faults -ls solid -l "With Annot" \
+            -yl "KFPS" --ymul 1e-3 ${YLIMS}                     \
+            -xc lmemfr -xl "Local Memory Fraction"              \
+            --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname
+    fi   
+    display ${plotname} &
+fi
+
+# performance of async page faults with changing cores (with multiple runs for each data point)
+## FOR PAPER
+if [ "$PLOTID" == "6" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    CPUCOL=1
+    XPUTCOL=2
+    PLOTEXT=pdf
+    speedplots=
+
+    ## data
+    pattern="05-1[89]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht"; ymax=300
+
+    cfg=be${bkend}_zs${zipfs}_tperc${tperc}_${desc}
+    if [[ $desc ]]; then descopt="-d=$desc"; fi
+
+    for mem in 1500 3000; do 
+        pgf=none    #baseline
+        basefile=$plotdir/data_lm${mem}_pgf${pgf}_${cfg}
+        if [[ $FORCE ]] || [ ! -f "$basefile" ]; then
+            echo "CPU,Xput,Faults,Backend,PFType,Threads,Zipfs,Local_MB" > $basefile
+            for cores in `seq 1 1 10`; do 
+                tmpfile=${TMP_FILE_PFX}data
+                rm -f ${tmpfile}
+                thr=$((cores*tperc))
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
+                    -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+                cat $tmpfile
+                xmean=$(csv_column_mean $tmpfile "Xput")
+                fmean=$(csv_column_mean $tmpfile "Faults")
+                # NOTE: changing this ordering may require updating LMEMCOL, XPUTCOL, etc. 
+                echo ${cores},${xmean},${fmean},${bkend},${pgf},${thr},${zipfs},${mem} >> ${basefile}
+            done
+        fi
+        cat $basefile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_baseline_xput
+        cat $basefile
+
+        pgf=ASYNC    #upcalls
+        upcallfile=$plotdir/data_lm${mem}_pgf${pgf}_${cfg}
+        if [[ $FORCE ]] || [ ! -f "$upcallfile" ]; then
+            echo "CPU,Xput,Faults,Backend,PFType,Threads,Zipfs,Local_MB" > $upcallfile
+            for cores in `seq 1 1 10`; do 
+                tmpfile=${TMP_FILE_PFX}data
+                rm -f ${tmpfile}
+                thr=$((cores*tperc))
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
+                    -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+                cat $tmpfile
+                xmean=$(csv_column_mean $tmpfile "Xput")
+                fmean=$(csv_column_mean $tmpfile "Faults")
+                # NOTE: changing this ordering may require updating LMEMCOL, XPUTCOL, etc. 
+                echo ${cores},${xmean},${fmean},${bkend},${pgf},${thr},${zipfs},${mem} >> ${upcallfile}
+            done
+        fi
+        cat $upcallfile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_upcall_xput
+        cat $upcallfile
+
+        # speedup
+        speedup=$plotdir/data_speedup_lm${mem}_${cfg}
+        cat $basefile | awk -F, '{ print $'$CPUCOL' }' > ${TMP_FILE_PFX}_cpu
+        paste ${TMP_FILE_PFX}_baseline_xput ${TMP_FILE_PFX}_upcall_xput     \
+            | awk  'BEGIN  { print "speedup" }; 
+                    NR>1   { if ($1 && $2)  print ($2-$1)*100/$1 
+                            else            print ""    }' > ${TMP_FILE_PFX}_speedup
+        paste -d, ${TMP_FILE_PFX}_cpu ${TMP_FILE_PFX}_speedup > ${speedup}
+        memf=$(echo $mem | awk '{ printf "%d", $0*100/6000 }' )
+        speedplots="$speedplots -d ${speedup} -l $memf%"
+        cat $speedup
+    done
+
+    # plot speedup
+    plotname=${plotdir}/speedup_${cfg}.${PLOTEXT}
+    echo $speedplots
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${speedplots}    \
+            -yc speedup -yl "Gain (%)" --ymin 0 --ymax 100  \
+            -xc CPU -xl "CPU Cores"                         \
+            --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname -lt "Local Memory"
+    fi
+    display ${plotname} &
+
+    # #plot faults
+    # YLIMS="--ymin 0 --ymax 150"
+    # plotname=${plotdir}/faults_$cfg.${PLOTEXT}
+    # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+    #     python3 ${ROOTDIR}/scripts/plot.py ${plots}             \
+    #         -dyc ${basefile} Faults -ls dashed -l "No Annot"    \
+    #         -dyc ${upcallfile} Faults -ls solid -l "With Annot" \
+    #         -yl "KFPS" --ymul 1e-3 ${YLIMS}                     \
+    #         -xc lmemfr -xl "Local Memory Fraction"              \
+    #         --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname
+    # fi   
+    # display ${plotname} &
 fi
 
 # cleanup
