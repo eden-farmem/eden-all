@@ -88,10 +88,12 @@ case $i in
     CFLAGS="$CFLAGS ${i#*=}"
     ;;
 
+    -s|--shenango)
+    SHENANGO=1
+    ;;
+
     -wk|--with-kona)
     WITH_KONA=1
-    BACKEND="kona"
-    CFLAGS="$CFLAGS -DWITH_KONA"
     ;;
 
     -kc=*|--kconfig=*)
@@ -104,7 +106,7 @@ case $i in
         
     -pf=*|--pgfaults=*)
     PAGE_FAULTS="${i#*=}"
-    BACKEND="kona"
+    SHENANGO=1
     WITH_KONA=1
     CFLAGS="$CFLAGS -DWITH_KONA -DANNOTATE_FAULTS"
     ;;
@@ -226,9 +228,7 @@ echo ${SCRIPT_DIR}
 # build kona
 if [[ $FORCE ]] && [[ $WITH_KONA ]]; then 
     pushd ${KONA_BIN}
-    # make je_clean
     make clean
-    make je_jemalloc
     OPTS=
     OPTS="$OPTS POLLER_CORE=$KONA_POLLER_CORE"
     OPTS="$OPTS FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE"
@@ -242,7 +242,7 @@ if [[ $FORCE ]] && [[ $WITH_KONA ]]; then
 fi
 
 # rebuild shenango
-if [[ $FORCE ]]; then 
+if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     pushd ${SHENANGO_DIR}
     make clean    
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
@@ -263,20 +263,25 @@ if [[ $FORCE ]]; then
     popd 
 fi
 
-## BUILD 
-# kona libs
+# link kona
 if [[ $WITH_KONA ]]; then 
+    BACKEND="kona"
+	CFLAGS="${CFLAGS} -DWITH_KONA"
     INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
     LIBS="${LIBS} -L${KONA_BIN}"
     LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
 fi
 
-# shenango libs
-INC="${INC} -I${SHENANGO_DIR}/inc"
-LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
-LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
+# link shenango
+if [[ $SHENANGO ]]; then
+	SCHEDULER="shenango"
+	CFLAGS="${CFLAGS} -DSHENANGO"
+    INC="${INC} -I${SHENANGO_DIR}/inc"
+    LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
+    LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
+fi
 
-# snappy libs
+# link snappy
 INC="${INC} -I${SNAPPY_DIR}/"
 LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
 
@@ -300,6 +305,7 @@ save_cfg "keys"     $NKEYS
 save_cfg "blobs"    $NBLOBS
 save_cfg "zipfs"    $ZIPFS
 save_cfg "warmup"   $WARMUP
+save_cfg "scheduler" $SCHEDULER
 save_cfg "backend"  $BACKEND
 save_cfg "localmem" $LMEM
 save_cfg "pgfaults" $PAGE_FAULTS
@@ -313,7 +319,7 @@ host_netmask 255.255.255.0
 host_gateway 192.168.0.1
 runtime_kthreads ${NCORES}
 runtime_guaranteed_kthreads ${NCORES}
-runtime_spinning_kthreads 0
+runtime_spinning_kthreads ${NCORES}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true"""
 echo "$shenango_cfg" > $CFGFILE
@@ -324,9 +330,9 @@ for retry in 1; do
     # prepare for run
     kill_remnants
 
+    # prepare kona memory server
     if [[ $WITH_KONA ]]; then 
         echo "starting kona servers"
-
         # starting kona controller
         scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
         ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
@@ -338,29 +344,44 @@ for retry in 1; do
         sleep 30
     fi
 
-    start_iokernel() {
-        echo "starting iokerneld"
-        sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-        binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
-        sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
-        echo "waiting on iokerneld"
-        sleep 5    #for iokernel to be ready
-    }
-    start_iokernel
+    # setup shenango runtime
+    if [[ $SHENANGO ]]; then
+        start_iokernel() {
+            echo "starting iokerneld"
+            sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
+            binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
+            sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${expdir}/iokernel.log &
+            echo "waiting on iokerneld"
+            sleep 5    #for iokernel to be ready
+        }
+        start_iokernel
+    fi
 
     # run
     pushd $expdir
-    if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
-    if [[ $WITH_KONA ]]; then 
-        env="$env RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
+    if [[ $WITH_KONA ]]; then
+        env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
         env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
         env="$env EVICTION_THRESHOLD=0.99"
         env="$env EVICTION_DONE_THRESHOLD=0.99"
         env="$env MEMORY_LIMIT=$LMEM"
+        wrapper="$wrapper $env"
+    fi
+
+    if ! [[ $SHENANGO ]]; then 
+        # pin the app to required number of cores ourselves
+        # use cores 14-27 for non-hyperthreaded setting
+        if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
+        CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
+        wrapper="$wrapper taskset -a -c ${CPUSTR}"
+    fi 
+
+    if [[ $GDB ]]; then 
+        wrapper="gdbserver :1234 --wrapper $wrapper --";
     fi
     args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
-    echo sudo ${env} ${gdbcmd} ${BINFILE} ${args}
-    sudo ${env} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
+    echo sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args}
+    sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
     popd
 
     # if we're here, the run has mostly succeeded

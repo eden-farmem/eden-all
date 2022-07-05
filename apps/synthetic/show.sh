@@ -110,15 +110,15 @@ fi
 for exp in $LS_CMD; do
     # echo $exp
     name=$(basename $exp)
-    cores=$(cat $exp/settings | grep "cores" | awk -F: '{ print $2 }')
-    threads=$(cat $exp/settings | grep "threads" | awk -F: '{ print $2 }')
-    localmem=$(cat $exp/settings | grep "localmem" | awk -F: '{ printf $2/1000000 }')
-    pgfaults=$(cat $exp/settings | grep "pgfaults" | awk -F: '{ print $2 }')
-    backend=$(cat $exp/settings | grep "backend" | awk -F: '{ print $2 }')
-    nkeys=$(cat $exp/settings | grep "keys" | awk -F: '{ print $2 }')
-    nblobs=$(cat $exp/settings | grep "blobs" | awk -F: '{ print $2 }')
-    zipfs=$(cat $exp/settings | grep "zipfs" | awk -F: '{ print $2 }')
-    desc=$(cat $exp/settings | grep "desc" | awk -F: '{ print $2 }')
+    cores=$(cat $exp/settings | grep "cores:" | awk -F: '{ print $2 }')
+    threads=$(cat $exp/settings | grep "threads:" | awk -F: '{ print $2 }')
+    localmem=$(cat $exp/settings | grep "localmem:" | awk -F: '{ printf $2/1000000 }')
+    pgfaults=$(cat $exp/settings | grep "pgfaults:" | awk -F: '{ print $2 }')
+    backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
+    nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
+    nblobs=$(cat $exp/settings | grep "blobs:" | awk -F: '{ print $2 }')
+    zipfs=$(cat $exp/settings | grep "zipfs:" | awk -F: '{ print $2 }')
+    desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
     backend=${backend:-none}
     pgfaults=${pgfaults:-none}
 

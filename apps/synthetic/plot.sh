@@ -482,7 +482,8 @@ if [ "$PLOTID" == "6" ]; then
     speedplots=
 
     ## data
-    pattern="05-1[89]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht"; ymax=300
+    # pattern="05-1[89]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-noht"; ymax=300
+    pattern="07-0[45]";   bkend=kona; zipfs=1;    tperc=100;  desc="zip5-morecores"; ymax=300
 
     cfg=be${bkend}_zs${zipfs}_tperc${tperc}_${desc}
     if [[ $desc ]]; then descopt="-d=$desc"; fi
@@ -516,7 +517,7 @@ if [ "$PLOTID" == "6" ]; then
                 tmpfile=${TMP_FILE_PFX}data
                 rm -f ${tmpfile}
                 thr=$((cores*tperc))
-                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$bkend -pf=$pgf -lm=${mem} \
                     -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
                 cat $tmpfile
                 xmean=$(csv_column_mean $tmpfile "Xput")
@@ -545,7 +546,7 @@ if [ "$PLOTID" == "6" ]; then
     plotname=${plotdir}/speedup_${cfg}.${PLOTEXT}
     echo $speedplots
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${speedplots}    \
+        python3 ${ROOTDIR}/scripts/plot.py ${speedplots} -z bar \
             -yc speedup -yl "Gain (%)" --ymin 0 --ymax 100  \
             -xc CPU -xl "CPU Cores"                         \
             --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname -lt "Local Memory"

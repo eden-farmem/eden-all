@@ -82,9 +82,9 @@ run_vary_lmem() {
 
     case $kind in
     "vanilla")          ;;
-    "kona")             OPTS="$OPTS --with-kona";;
-    "apf-sync")         OPTS="$OPTS --with-kona --pgfaults=SYNC";;
-    "apf-async")        OPTS="$OPTS --with-kona --pgfaults=ASYNC";;
+    "kona")             OPTS="$OPTS --shenango --with-kona";;
+    "apf-sync")         OPTS="$OPTS --shenango --with-kona --pgfaults=SYNC";;
+    "apf-async")        OPTS="$OPTS --shenango --with-kona --pgfaults=ASYNC";;
     *)                  echo "Unknown fault kind"; exit;;
     esac
 
@@ -105,8 +105,8 @@ run_vary_lmem() {
     # run
     # for s in `seq 1 1 10`; do 
     #     zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
-    for m in `seq 10 5 60`; do 
-    # for m in 60; do 
+    # for m in `seq 10 5 60`; do 
+    for m in 15 30; do 
         check_for_stop
         name=run-$(date '+%m-%d-%H-%M-%S')
         lmem=$(echo $m | awk '{ print $1 * 1000000000/10 }')
@@ -124,10 +124,10 @@ run_vary_lmem() {
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do 
         # for c in `seq 1 1 2`; do 
-        for c in 4 4 4 4 4 4 4 4 4 4; do 
-            desc="${op}-moreruns"
+        for c in 1 2 3 4 5 6 7 8 9 10; do 
+            desc="${op}-morecores"
             t=$((c*100))
-            # run_vary_lmem "kona"       $op $c $t $zs 
+            run_vary_lmem "kona"       $op $c $t $zs 
             run_vary_lmem "apf-async"  $op $c $t $zs 
         done
     done

@@ -36,6 +36,33 @@
 #define MAX_OPS_PER_CORE	10	
 #endif
 
+/* thread/sync primitives from various platforms */
+#ifdef SHENANGO
+#define THREAD_T						unsigned long
+#define THREAD_CREATE(id,routine,arg)	thread_spawn(routine,arg)
+#define THREAD_EXIT(ret)				thread_exit()
+#define BARRIER_T		 				barrier_t
+#define BARRIER_INIT(b,c)				barrier_init(b, c)
+#define BARRIER_WAIT 					barrier_wait
+#define BARRIER_DESTROY(b)				{}
+#define WAITGROUP_T						waitgroup_t
+#define WAITGROUP_INIT(wg)				waitgroup_init(&wg)
+#define WAITGROUP_ADD(wg,val)			waitgroup_add(&wg,val)
+#define WAITGROUP_WAIT(wg)				waitgroup_wait(&wg)
+#else 
+#define THREAD_T						pthread_t
+#define THREAD_CREATE(tid,routine,arg)	pthread_create(tid,NULL,routine,arg)
+#define THREAD_EXIT(ret)				pthread_exit(ret)
+#define BARRIER_T		 				pthread_barrier_t
+#define BARRIER_INIT(b,c)				pthread_barrier_init(b, NULL, c)
+#define BARRIER_WAIT 					pthread_barrier_wait
+#define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
+#define WAITGROUP_T						int
+#define WAITGROUP_INIT(wg)				{ wg = 0; 	}
+#define WAITGROUP_ADD(wg,val)			{ wg++; 	}
+#define WAITGROUP_WAIT(wg)				{ for(int z=0; z < nworkers; z++)	pthread_join(workers[z], NULL); }
+#endif
+
 struct thread_args {
     int tid;
 	unsigned long nkeys;
@@ -59,8 +86,8 @@ struct main_args {
 };
 
 uint64_t cycles_per_us;
-waitgroup_t workers;
-barrier_t ready, warmup, warmedup, start;
+WAITGROUP_T workers_wg;
+BARRIER_T ready, warmup, warmedup, start;
 int stop_button = 0;
 struct hopscotch_hash_table *ht;
 void* blobdata;
@@ -88,7 +115,12 @@ void save_checkpoint(char* name) {
 }
 
 /* prepare hash table */
-void setup_table(void* arg) {
+#ifdef SHENANGO
+void
+#else 
+void* 
+#endif
+setup_table(void* arg) {
 	int ret, i;
 	unsigned long key, val;
 	thread_args_t* targs = (thread_args_t*)arg;
@@ -113,11 +145,16 @@ void setup_table(void* arg) {
 		ASSERTZ(ret);
 	}
 	pr_info("worker %d added %d keys", targs->tid, i);
-	waitgroup_add(&workers, -1);	/* signal done */
+	WAITGROUP_ADD(workers_wg, -1);	/* signal done */
 }
 
 /* prepare blob array */
-void setup_blobs(void* arg) {
+#ifdef SHENANGO
+void
+#else 
+void* 
+#endif
+setup_blobs(void* arg) {
 	int i, j;
 	unsigned long key, offset;
 	uint64_t rand_num, repeat = 0;
@@ -141,7 +178,7 @@ void setup_blobs(void* arg) {
 		}
 	}
 	pr_info("worker %d added %d blobs", targs->tid, i);
-	waitgroup_add(&workers, -1);	/* signal done */
+	WAITGROUP_ADD(workers_wg, -1);	/* signal done */
 }
 
 /* Shenango doesn't have preemptions so threads may need to yield 
@@ -157,7 +194,12 @@ static inline void thread_yield_after(int time_us, unsigned long* state) {
 }
 
 /* prepare zipf workload */
-void prepare_workload(void* arg) {
+#ifdef SHENANGO
+void
+#else 
+void* 
+#endif
+prepare_workload(void* arg) {
 	int i;
 	unsigned long ret;
 	thread_args_t* targs = (thread_args_t*)arg;
@@ -176,7 +218,7 @@ void prepare_workload(void* arg) {
 
 	pr_info("worker %d generated %d requests", targs->tid, i);
 	destroy_zipfian(z);
-	waitgroup_add(&workers, -1);	/* signal done */
+	WAITGROUP_ADD(workers_wg, -1);	/* signal done */
 }
 
 /* the real work for each request */
@@ -225,7 +267,12 @@ static inline void process_request(int key, int nblobs,
 }
 
 /* process requests */
-void run(void* arg) {
+#ifdef SHENANGO
+void
+#else 
+void* 
+#endif
+run(void* arg) {
 	int ret, i, key;
 	void *data, *nextin;
 	unsigned long ystate = 0;
@@ -255,11 +302,11 @@ void run(void* arg) {
 	pr_info("worker %d starting at request %lu len %lu", 
 		targs->tid, targs->start, targs->len);
 
-	barrier_wait(&ready);
+	BARRIER_WAIT(&ready);
 
 #ifdef WARMUP
 	/* warm up */
-	barrier_wait(&warmup);
+	BARRIER_WAIT(&warmup);
 	while(!stop_button) {
 		/* pick a random key */
 		key = rand_next(&rand) % targs->nkeys;
@@ -267,11 +314,11 @@ void run(void* arg) {
 		thread_yield_after(1000 /* µs */, &ystate);
 	}
 	pr_info("worker %d warmedup", targs->tid);
-	barrier_wait(&warmedup);
+	BARRIER_WAIT(&warmedup);
 #endif
 
 	/* actual run */
-	barrier_wait(&start);
+	BARRIER_WAIT(&start);
 	for (i = 0; i < targs->len && !stop_button; i++) {
 		/* get the array index from hash table */
 		/* we just save the key as value which is ok for benchmarking purposes */
@@ -282,11 +329,16 @@ void run(void* arg) {
 	}
 
 	pr_debug("worker %d done at %ld ops", targs->tid, targs->xput);
-	waitgroup_add(&workers, -1);	/* signal done */
+	WAITGROUP_ADD(workers_wg, -1);	/* signal done */
 }
 
 /* issue stop signal on timeout */
-void timeout_thread(void* arg) {
+#ifdef SHENANGO
+void
+#else 
+void* 
+#endif
+timeout_thread(void* arg) {
 	unsigned long sleep_us = (unsigned long) arg;
 	timer_sleep(sleep_us);
 	stop_button = 1;
@@ -309,6 +361,8 @@ void main_thread(void* arg) {
 		0xff, 0xff, 0xff, 0xff };
 	uint64_t start_tsc, duration_tsc, now_tsc, xput = 0;
 	double duration_secs;
+	THREAD_T* workers;
+	THREAD_T timer1, timer2;
 
 	/* core data stuctures: these go in remote memory */
     ht = hopscotch_init(NULL, next_power_of_two(nkeys) + 1);
@@ -318,8 +372,9 @@ void main_thread(void* arg) {
 	ASSERT(blobdata);
 
 	/* setup hash table */
+	workers = malloc(sizeof(THREAD_T) * nworkers);
 	targs = aligned_alloc(CACHE_LINE_SIZE, nworkers * sizeof(thread_args_t));
-	waitgroup_init(&workers);
+	WAITGROUP_INIT(workers_wg);
 	shard_sz = ceil(nkeys * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
@@ -327,15 +382,15 @@ void main_thread(void* arg) {
 		targs[j].nblobs = nblobs;
 		targs[j].start = min(j * shard_sz, nkeys);
 		targs[j].len = min(shard_sz, nkeys - targs[j].start);
-		waitgroup_add(&workers, 1);
-		ret = thread_spawn(setup_table, &targs[j]);
+		WAITGROUP_ADD(workers_wg, 1);
+		ret = THREAD_CREATE(&workers[j], setup_table, &targs[j]);
 		ASSERTZ(ret);
 	}
-	waitgroup_wait(&workers);
+	WAITGROUP_WAIT(workers_wg);
 	pr_info("hash table setup done");
 
 	/* setup blob array */
-	waitgroup_init(&workers);
+	WAITGROUP_INIT(workers_wg);
 	shard_sz = ceil(nblobs * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
@@ -343,11 +398,11 @@ void main_thread(void* arg) {
 		targs[j].nblobs = nblobs;
 		targs[j].start = min(j * shard_sz, nblobs);
 		targs[j].len = min(shard_sz, nblobs - targs[j].start);
-		waitgroup_add(&workers, 1);
-		ret = thread_spawn(setup_blobs, &targs[j]);
+		WAITGROUP_ADD(workers_wg, 1);
+		ret = THREAD_CREATE(&workers[j], setup_blobs, &targs[j]);
 		ASSERTZ(ret);
 	}
-	waitgroup_wait(&workers);
+	WAITGROUP_WAIT(workers_wg);
 	pr_info("blob data setup done");
 
 #ifdef DEBUG
@@ -371,7 +426,7 @@ void main_thread(void* arg) {
 #ifdef DEBUG
 	zipf_counts = (uint32_t*)calloc(nkeys, sizeof(uint32_t));
 #endif
-	waitgroup_init(&workers);
+	WAITGROUP_INIT(workers_wg);
 	shard_sz = ceil(nreqs * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
@@ -380,11 +435,11 @@ void main_thread(void* arg) {
 		targs[j].nblobs = nblobs;
 		targs[j].start = min(j * shard_sz, nreqs);
 		targs[j].len = min(shard_sz, nreqs - targs[j].start);
-		waitgroup_add(&workers, 1);
-		ret = thread_spawn(prepare_workload, &targs[j]);
+		WAITGROUP_ADD(workers_wg, 1);
+		ret = THREAD_CREATE(&workers[j], prepare_workload, &targs[j]);
 		ASSERTZ(ret);
 	}
-	waitgroup_wait(&workers);
+	WAITGROUP_WAIT(workers_wg);
 	pr_info("generated zipf sequence of length: %lu", nreqs);
 #ifdef DEBUG
 	// printf("zipf seq: ");
@@ -395,11 +450,11 @@ void main_thread(void* arg) {
 #endif
 
 	/* run requests */
-	waitgroup_init(&workers);
-	barrier_init(&ready, nworkers+1);
-	barrier_init(&warmup, nworkers+1);
-	barrier_init(&warmedup, nworkers+1);
-	barrier_init(&start, nworkers+1);
+	WAITGROUP_INIT(workers_wg);
+	BARRIER_INIT(&ready, nworkers+1);
+	BARRIER_INIT(&warmup, nworkers+1);
+	BARRIER_INIT(&warmedup, nworkers+1);
+	BARRIER_INIT(&start, nworkers+1);
 	shard_sz = ceil(nreqs * 1.0 / nworkers);
 	for (j = 0; j < nworkers; j++) {
 		targs[j].tid = j;
@@ -409,24 +464,24 @@ void main_thread(void* arg) {
 		targs[j].start = min(j * shard_sz, nreqs);
 		targs[j].len = min(shard_sz, nreqs - targs[j].start);
 		targs[j].xput = 0;
-		waitgroup_add(&workers, 1);
-		ret = thread_spawn(run, &targs[j]);
+		WAITGROUP_ADD(workers_wg, 1);
+		ret = THREAD_CREATE(&workers[j], run, &targs[j]);
 		ASSERTZ(ret);
 	}
 	
 	/* wait for threads to be ready */
-	barrier_wait(&ready); 	
+	BARRIER_WAIT(&ready); 	
 
 #ifdef WARMUP
 	/* run warmup with a timeout and wait */	
 	stop_button = 0;
 	pr_info("starting warmup");
 	timeout_us = WARMUP_SECS * MILLION;
-	ret = thread_spawn(timeout_thread, (void*) timeout_us);
+	ret = THREAD_CREATE(&timer1, timeout_thread, (void*) timeout_us);
 	ASSERTZ(ret);
 	save_checkpoint("warmup_start");
-	barrier_wait(&warmup);		/* kick off */
-	barrier_wait(&warmedup);	/* and wait */
+	BARRIER_WAIT(&warmup);		/* kick off */
+	BARRIER_WAIT(&warmedup);	/* and wait */
 	save_checkpoint("warmup_end");
 #endif
 
@@ -436,10 +491,10 @@ void main_thread(void* arg) {
 	start_tsc = rdtsc();
 	stop_button = 0;
 	timeout_us = MAX_RUNTIME_SECS * MILLION;
-	ret = thread_spawn(timeout_thread, (void*) timeout_us);
+	ret = THREAD_CREATE(&timer2, timeout_thread, (void*) timeout_us);
 	ASSERTZ(ret);
-	barrier_wait(&start);		/* kick off */
-	waitgroup_wait(&workers);	/* and wait */
+	BARRIER_WAIT(&start);		/* kick off */
+	WAITGROUP_WAIT(workers_wg);	/* and wait */
 	duration_tsc = rdtscp(NULL) - start_tsc;
 	save_checkpoint("run_end");
 
@@ -474,7 +529,18 @@ int main(int argc, char *argv[]) {
 	margs.nblobs = (argc > 5) ? atof(argv[5]) : MILLION;
 	margs.zparams = (argc > 6) ? atof(argv[6]) : 0.1;
 	margs.nreqs = (margs.ncores * (unsigned long) MAX_OPS_PER_CORE * MIN_RUNTIME_SECS);
+
+#ifdef SHENANGO
+	/* initialize shenango */
 	ret = runtime_init(argv[1], main_thread, &margs);
 	ASSERTZ(ret);
+#else
+#ifdef WITH_KONA
+	/* initialize kona. in case of shenango, it is taken care of. */
+	rinit();
+#endif
+	main_thread(&margs);
+#endif
+
 	return 0;
 }
