@@ -8,6 +8,7 @@ set -e
 usage="Example: bash run.sh\n
 -n, --name \t\t optional exp name (becomes folder name)\n
 -d, --readme \t\t optional exp description\n
+--tag \t\t optional keyword to label a set of runs\n
 -f, --force \t\t force recompile everything\n
 -s, --shenango \t use shenango threads\n
 -k,--kona \t\t run with remote memory (kona)\n
@@ -73,6 +74,10 @@ case $i in
 
     -d=*|--readme=*)
     README="${i#*=}"
+    ;;
+
+    --tag=*)
+    TAG="${i#*=}"
     ;;
 
     -d|--debug)
@@ -183,7 +188,8 @@ done
 # NUMA node1 CPU(s):   14-27,42-55
 # RNIC NUMA node = 1
 NUMA_NODE=1
-KONA_POLLER_CORE=53
+BASECORE=14             # starting core on the node 
+KONA_POLLER_CORE=53     # limit auxiliary work towards the end cores
 KONA_EVICTION_CORE=54
 KONA_FAULT_HANDLER_CORE=55
 KONA_ACCOUNTING_CORE=52
@@ -193,6 +199,20 @@ ${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 NTHREADS=${NTHREADS:-$NCORES}
 
+# helpers
+start_sar() {
+    int=$1
+    outdir=$2
+    cpustr=${3:-ALL}
+    nohup sar -P ${cpustr} ${int} | ts %s > ${outdir}/cpu.sar   2>&1 &
+    # nohup sar -r ${int}     | ts %s > ${outdir}/memory.sar  2>&1 &
+    # nohup sar -b ${int}     | ts %s > ${outdir}/diskio.sar  2>&1 &
+    # nohup sar -n DEV ${int} | ts %s > ${outdir}/network.sar 2>&1 &
+    nohup sar -B ${int}     | ts %s > ${outdir}/pgfaults.sar 2>&1 &
+}
+stop_sar() {
+    pkill sar || true
+}
 kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
@@ -203,9 +223,12 @@ cleanup() {
         rm -f ${BINFILE}
     fi
     rm -f ${TMP_FILE_PFX}*
+    stop_sar
     kill_remnants
 }
-cleanup     #start clean
+
+#start clean
+cleanup
 if [[ $CLEANUP ]]; then
     exit 0
 fi
@@ -282,6 +305,7 @@ save_cfg "backend"  $BACKEND
 save_cfg "localmem" $LMEM
 save_cfg "pgfaults" $PAGE_FAULTS
 save_cfg "desc"     $README
+save_cfg "tag"      $TAG
 echo -e "$SETTINGS" > settings
 
 # prepare shenango config
@@ -292,7 +316,7 @@ host_netmask 255.255.255.0
 host_gateway 192.168.0.1
 runtime_kthreads ${NCORES}
 runtime_guaranteed_kthreads ${NCORES}
-runtime_spinning_kthreads 0
+runtime_spinning_kthreads ${NCORES}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true"""
     echo "$shenango_cfg" > $CFGFILE
@@ -322,7 +346,7 @@ for retry in 1; do
             echo "starting iokerneld"
             sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
             binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
-            sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > iokernel.log &
+            sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${expdir}/iokernel.log &
             echo "waiting on iokerneld"
             sleep 5    #for iokernel to be ready
         }
@@ -339,13 +363,23 @@ for retry in 1; do
         env="$env MEMORY_LIMIT=$LMEM"
         wrapper="$wrapper $env"
     fi
-    if ! [[ $SHENANGO ]]; then 
+
+    if [[ $SHENANGO ]]; then 
+        # shenango takes care of scheduling but we still want 
+        # to know what cores it runs to kick off sar
+        # currently, iokernel takes the first core on the node 
+        # and shenango provides the following cores to app
+        CPUSTR="$((BASECORE+1))-$((BASECORE+NCORES))"
+        start_sar 1 "." ${CPUSTR}
+    else 
+        # pin the app to required number of cores ourselves
         # use cores 14-27 for non-hyperthreaded setting
         if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
-        BASECORE=14
         CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
         wrapper="$wrapper taskset -a -c ${CPUSTR}"
-    fi
+        start_sar 1 "." ${CPUSTR}
+    fi 
+
     if [[ $GDB ]]; then 
         wrapper="gdbserver :1234 --wrapper $wrapper --";
     fi

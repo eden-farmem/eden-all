@@ -13,7 +13,10 @@ usage="\n
 -be, --backend \t results filter: == backend\n
 -pf, --pgfaults \t results filter: == pgfaults\n
 -d, --desc \t\t results filter: contains desc\n
+-tg, --tag \t\t results filter: == tag\n
 -f, --force \t\t remove any cached data and parse from scratch\n
+-s, --simple \t\t print basic info on the runs, no need to get all metrics (its faster)\n
+-v, --verbose \t\t print all columns available (when gathering to file)\n
 -rm, --remove \t\t (recoverably) delete runs that match these filters\n
 -of, --outfile \t output results to a file instead of stdout\n"
 
@@ -85,8 +88,20 @@ case $i in
     DESC="${i#*=}"
     ;;
 
+    -tg=*|--tag=*)
+    TAG="${i#*=}"
+    ;;
+
     -f|--force)
     FORCE=1
+    ;;
+
+    -s|--simple)
+    SIMPLE=1
+    ;;
+
+    -v|--verbose)
+    VERBOSE=1
     ;;
 
     -*|--*)     # unknown option
@@ -125,9 +140,11 @@ for exp in $LS_CMD; do
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
     nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
     desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
+    tag=$(cat $exp/settings | grep "tag:" | awk -F: '{ print $2 }')
     sched=${sched:-none}
     backend=${backend:-none}
     pgfaults=${pgfaults:-none}
+    tag=${tag:-none}
 
     # apply filters
     if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];      then    continue;   fi
@@ -138,10 +155,11 @@ for exp in $LS_CMD; do
     if [[ $BACKEND ]] && [ "$BACKEND" != "$backend" ];      then    continue;   fi
     if [[ $PGFAULTS ]] && [ "$PGFAULTS" != "$pgfaults" ];   then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
+    if [[ $TAG ]] && [[ "$tag" != "$TAG"  ]];               then    continue;   fi
     
-    # overall performance
+    ## PERFORMANCE BREAKDOWN
 
-    # time breakdown
+    # APPLICATION LOGS
     if [ -f ${exp}/start ] && [ -f ${exp}/end ]; then 
         start=`cat ${exp}/start`
         rtime=$((`cat ${exp}/end`-`cat ${exp}/phase1`))
@@ -164,74 +182,130 @@ for exp in $LS_CMD; do
         unaccounted=$((rtime-p1time-p2time-p3time-p4time-copyback))
     fi
 
-    sflag=
-    eflag=
-    # if [ -f ${exp}/phase1 ]; then   sflag="--start `cat ${exp}/phase1`";    fi
-    if [ -f ${exp}/copyback ]; then   sflag="--start `cat ${exp}/copyback`";    fi
-    if [ -f ${exp}/end ]; then      eflag="--end `cat ${exp}/end`";         fi
-
-    # KONA
-    konastatsout=${exp}/kona_counters_parsed
-    konastatsin=${exp}/kona_counters.out 
-    if [[ $FORCE ]] || ([ ! -f $konastatsout ] && [ -f $konastatsin ]); then 
-        python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py -i ${konastatsin}     \
-            -o ${konastatsout} ${sflag} ${eflag}
-    fi
-    faultsr=$(csv_column_sum "$konastatsout" "n_faults_r")
-    faultsw=$(csv_column_sum "$konastatsout" "n_faults_w")
-    faultswp=$(csv_column_sum "$konastatsout" "n_faults_wp")
-    afaultsr=$(csv_column_sum "$konastatsout" "n_afaults_r")
-    afaultsw=$(csv_column_sum "$konastatsout" "n_afaults_w")
-    faults=$((faultsr+faultsw+faultswp))
-    afaults=$((afaultsr+afaultsw))
-
-    # SHENANGO
-    shenangoout=${exp}/runtime_parsed
-    shenangoin=${exp}/runtime.out 
-    if [[ $FORCE ]] || ([ ! -f $shenangoout ] && [ -f $shenangoin ]); then 
-        python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
-            -o ${shenangoout} ${sflag} ${eflag}
-    fi
-    schedtimepct=$(csv_column_mean "$shenangoout" "schedtimepct")
-    pf_posted=$(csv_column_sum "$shenangoout" "pf_posted")
-    pf_returned=$(csv_column_sum "$shenangoout" "pf_returned")
-    pf_time_total_mus=$(csv_column_sum "$shenangoout" "pf_time_spent_mus")
-    pf_time_each_mus=$(echo $pf_time_total_mus $pf_posted | awk '{ if ($2 != 0) print $1/$2 }')
-
-    # WRITE
+    # SETTINGS
     HEADER=;                        LINE=;
     HEADER="$HEADER,Exp";           LINE="$LINE,$name";
-    # HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
-    HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
+    HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
+    # HEADER="$HEADER,Backend";     LINE="$LINE,${backend}";
     HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
-    HEADER="$HEADER,Keys";          LINE="$LINE,$((nkeys/1000000))M";
+    HEADER="$HEADER,Tag";           LINE="$LINE,${tag}";
+    # HEADER="$HEADER,Keys";        LINE="$LINE,$((nkeys/1000000))M";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Thr";           LINE="$LINE,${threads}";
-    HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime))";
-    # HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
-    HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1time))";
-    HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
-    HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3time))";
-    HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4time))";
-    HEADER="$HEADER,Copyback";      LINE="$LINE,$((copyback))";
-    # HEADER="$HEADER,Unacc";         LINE="$LINE,$((unaccounted))"; 
+    # HEADER="$HEADER,LocalMem";    LINE="$LINE,${localmem}M";
 
-    # KONA
-    # HEADER="$HEADER,LocalMem";      LINE="$LINE,${localmem}M";
-    HEADER="$HEADER,PF";            LINE="$LINE,${faults}";
-    HEADER="$HEADER,AsyncPF";       LINE="$LINE,${afaults}";
-    HEADER="$HEADER,ReadPF";       LINE="$LINE,${faultsr}";
-    HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
-    # HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
+    # OVERALL PERF
+    if [[ $SIMPLE ]]; then
+        HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime))";
+        HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
+        HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1time))";
+        HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
+        HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3time))";
+        HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4time))";
+        HEADER="$HEADER,Copyback";      LINE="$LINE,$((copyback))";
+        HEADER="$HEADER,Unacc";         LINE="$LINE,$((unaccounted))"; 
+    fi
 
-    # SHENANGO
-    # HEADER="$HEADER,PF(P)";         LINE="$LINE,${pf_posted}";
-    # HEADER="$HEADER,PF(R)";         LINE="$LINE,${pf_returned}";
-    HEADER="$HEADER,PFTime(s)";      LINE="$LINE,$((pf_time_total_mus/1000000))";
-    # HEADER="$HEADER,PFTime(µs)";    LINE="$LINE,${pf_time_each_mus}";
-    HEADER="$HEADER,SchedCPU%";     LINE="$LINE,${schedtimepct}";
+    # PERFORMANCE BREAKDOWN
+    if ! [[ $SIMPLE ]]; then 
+        # for kind in "total" "phase1" "phase2" "phase3" "phase4" "copyback"; do 
+        for kind in "T" "p1" "p2" "p3" "p4" "cb"; do 
+            case $kind in
+            "T")        start=`cat ${exp}/phase1`;      end=`cat ${exp}/end`;       v=  ;;
+            "p1")       start=`cat ${exp}/phase1`;      end=`cat ${exp}/phase2`;    v=  ;;
+            "p2")       start=`cat ${exp}/phase2`;      end=`cat ${exp}/phase3`;    v=  ;;
+            "p3")       start=`cat ${exp}/phase3`;      end=`cat ${exp}/phase4`;    v=  ;;
+            "p4")       start=`cat ${exp}/phase4`;      end=`cat ${exp}/copyback`;  v=  ;;
+            "cb")       start=`cat ${exp}/copyback`;    end=`cat ${exp}/end`;       v=  ;;
+            *)              echo "Unknown kind"; exit;;
+            esac
 
-    # HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";
+            time=$((end-start))
+            sflag_py="--start ${start}"
+            sflag_sh="--start=${start}"    
+            eflag_py="--end ${end}"        
+            eflag_sh="--end=${end}"
+
+            # KONA
+            konastatsout=${exp}/kona_counters_parsed_${kind}
+            konastatsin=${exp}/kona_counters.out 
+            if ([[ $FORCE ]] || [ ! -f $konastatsout ]) && [ -f $konastatsin ]; then 
+                python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py -i ${konastatsin}     \
+                    -o ${konastatsout} ${sflag_py} ${eflag_py}
+            fi
+            faultsr=$(csv_column_sum "$konastatsout" "n_faults_r")
+            faultsw=$(csv_column_sum "$konastatsout" "n_faults_w")
+            faultswp=$(csv_column_sum "$konastatsout" "n_faults_wp")
+            afaultsr=$(csv_column_sum "$konastatsout" "n_afaults_r")
+            afaultsw=$(csv_column_sum "$konastatsout" "n_afaults_w")
+            faults=$((faultsr+faultsw+faultswp))
+            afaults=$((afaultsr+afaultsw))
+
+            # SHENANGO
+            shenangoout=${exp}/runtime_parsed_${kind}
+            shenangoin=${exp}/runtime.out 
+            if ([[ $FORCE ]] || [ ! -f $shenangoout ]) && [ -f $shenangoin ]; then 
+                python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
+                    -o ${shenangoout} ${sflag_py} ${eflag_py}
+            fi
+            pf_annot_hits=$(csv_column_sum "$shenangoout" "pf_annot_hits")
+            pf_posted=$(csv_column_sum "$shenangoout" "pf_posted")
+            pf_annot_hitr=
+            pf_annot_hitpm=
+            if [[ $pf_annot_hits ]] && [[ $pf_posted ]] && [ $pf_posted -gt 0 ]; then 
+                pf_annot_hitr=$(echo $pf_annot_hits $pf_posted | awk '{ printf "%.2f", $1*1.0/($1+$2) }')
+                pf_annot_hitpm=$(echo $pf_annot_hits $pf_posted | awk '{ printf "%d", $1/$2 }')
+            fi
+            # pf_returned=$(csv_column_sum "$shenangoout" "pf_returned")
+            # sched_time_us=$(csv_column_sum "$shenangoout" "sched_time_us")
+            # pf_time_us=$(csv_column_sum "$shenangoout" "pf_time_us")
+            user_idle_us=$(csv_column_sum "$shenangoout" "sched_idle_us")
+
+            # KERNEL
+            cpusarout=${exp}/cpu_sar_parsed_${kind}
+            cpusarin=${exp}/cpu.sar
+            if ([[ $FORCE ]] || [ ! -f $cpusarout ]) && [ -f $cpusarin ]; then 
+                bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%idle" \
+                    ${sflag_sh} ${eflag_sh} -of=${cpusarout}
+            fi
+            kernel_idle_per=$(csv_column_sum "$cpusarout" "%idle")
+            kernel_idle_us=$((kernel_idle_per*10000))
+            total_idle_us=$((user_idle_us+kernel_idle_us))
+
+            # Verbose
+            if [[ $v ]] && [[ $VERBOSE ]]; then 
+                HEADER="$HEADER,PF";                LINE="$LINE,${faults}";
+                HEADER="$HEADER,AsyncPF";           LINE="$LINE,${afaults}";
+                # HEADER="$HEADER,ReadPF";          LINE="$LINE,${faultsr}";
+                # HEADER="$HEADER,WritePF";         LINE="$LINE,${faultsw}";
+                # HEADER="$HEADER,WPFaults";        LINE="$LINE,${faultswp}";
+                # HEADER="$HEADER,PF(P)";           LINE="$LINE,${pf_posted}";
+                # HEADER="$HEADER,PF(R)";           LINE="$LINE,${pf_returned}";
+            fi
+
+            # Condensed columns
+            hitr=${pf_annot_hitr}
+            uidle=$((user_idle_us/1000000))
+            kidle=$((kernel_idle_us/1000000))
+            tidle=$((total_idle_us/1000000))
+            if [[ $VERBOSE ]]; then 
+                HEADER="$HEADER,Time($kind)";         LINE="$LINE,${time}";
+                HEADER="$HEADER,Idle($kind)";         LINE="$LINE,${tidle}";
+                HEADER="$HEADER,HitR($kind)";         LINE="$LINE,${hitr}";
+                HEADER="$HEADER,Htpm($kind)";         LINE="$LINE,${pf_annot_hitpm}";
+                HEADER="$HEADER,Flts($kind)";         LINE="$LINE,${faults}";
+            fi
+
+            # HEADER="$HEADER,Idle($kind)";         LINE="$LINE,${uidle}|${kidle}";
+            # faultsf=$(echo $faults | awk '{
+            #     if ($0>=1000000)    printf "%.1fM", $0*1.0/1000000;
+            #     else                printf "%.1fK", $0*1.0/1000; }') 
+            # HEADER="$HEADER,Flts($kind)";       LINE="$LINE,${faultsf}";
+        done
+    fi
+
+    # OTHER
+    HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";
     OUT=`echo -e "${OUT}\n${LINE}"`
 
     if [[ $DELETE ]]; then 

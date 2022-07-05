@@ -10,7 +10,9 @@ ROOTDIR="${SCRIPT_DIR}/../../"
 ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 PLOTDIR=${SCRIPT_DIR}/plots
 DATADIR=${SCRIPT_DIR}/data
-TMP_FILE_PFX='tmp_psrs_'
+TMP_FILE_PFX='tmp_plot_psrs_'
+
+source ${ROOT_SCRIPTS_DIR}/utils.sh
 
 usage="\n
 -f, --force \t\t force re-summarize data and re-generate plots\n
@@ -87,7 +89,7 @@ if [ "$PLOTID" == "1" ]; then
     # parse kona log
     konastatsout=${exp}/kona_counters_parsed
     konastatsin=${exp}/kona_counters.out 
-    if [ ! -f $konastatsout ] && [ -f $konastatsin ]; then 
+    if ([[ $FORCE ]] || [ ! -f $konastatsout ]) && [ -f $konastatsin ]; then 
         python3 ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py   \
             -i ${konastatsin} -o ${konastatsout}            \
             -st=${start} -et=${end}
@@ -187,6 +189,77 @@ if [ "$PLOTID" == "2" ]; then
     # montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
     # rm -f ${files}
     # display ${plotname} &
+fi
+
+# bar chart
+if [ "$PLOTID" == "3" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+
+    # DATA
+    # pattern="07-05"; cores=1; tperc=1; desc="paper";
+    # pattern="07-05"; cores=1; tperc=5; desc="paper";
+    # pattern="07-05"; cores=2; tperc=1; desc="paper";
+    pattern="07-05"; cores=2; tperc=5; desc="paper";
+
+    # PARSE
+    cfg=${cores}cores_tperc${tperc}_${desc}
+    if [[ $desc ]]; then descopt="-d=$desc"; fi
+    thr=$((cores*tperc))
+    datafile=$plotdir/data_${cfg}
+    if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+        bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -c=$cores \
+            -t=${thr} ${descopt} -of=$datafile --tag=${tag} --verbose
+        cat $datafile
+    fi
+
+    # FORMAT
+    for metric in "time" "idle" "faults"; do 
+        colname=
+        ylabel=
+        ymax=
+        ymul=
+        case $metric in
+        "time")         colname=Time;   ylabel="Time (s)";              ymax=500;   ymul=;;
+        "idle")         colname=Idle;   ylabel="Idle Time (s)";         ymax=500;   ymul=;;
+        "faults")       colname=Flts;   ylabel="Total Faults (1e6)";    ymax=15;    ymul=1e-6;;
+        *)              echo "Unknown kind"; exit;;
+        esac
+
+        tmpfile=${TMP_FILE_PFX}${metric}
+        echo "Phase",$(csv_column_as_str "$datafile" "Tag") > $tmpfile
+        echo "Total",$(csv_column_as_str "$datafile" "${colname}(T)") >> $tmpfile
+        echo "LocalSort",$(csv_column_as_str "$datafile" "${colname}(p1)") >> $tmpfile
+        echo "Merge",$(csv_column_as_str "$datafile" "${colname}(p4)") >> $tmpfile
+        echo "Copyback",$(csv_column_as_str "$datafile" "${colname}(cb)") >> $tmpfile
+        cat $tmpfile
+
+        # bar chart
+        YSCALE=
+        if [[ $ymax ]]; then YSCALE="--ymin 0 --ymax ${ymax}";  fi
+        if [[ $ymul ]]; then YSCALE="${YSCALE} --ymul ${ymul}"; fi
+        plotname=${plotdir}/bar_${metric}_${cfg}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  \
+                -d ${tmpfile} -xc "Phase"           \
+                -yc "pthreads"  -l "Pthr"           \
+                -yc "uthreads"  -l "Uthr"           \
+                -yc "sync"      -l "SYNC"           \
+                -yc "async"     -l "ASYNC"          \
+                -yc "async+"    -l "ASYNC+"         \
+                -yl "${ylabel}" ${YSCALE} -xl " "   \
+                --size 8 2.5 -fs 11 --barwidth 1 -of $PLOTEXT -o $plotname
+        fi
+        files="${files} ${plotname}"
+    done
+
+    # Combine
+    plotname=${plotdir}/bar_all_${cfg}.$PLOTEXT
+    montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
+    rm -f ${files}
+    display ${plotname} &
 fi
 
 # cleanup

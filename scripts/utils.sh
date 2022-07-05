@@ -71,6 +71,16 @@ csv_column() {
     echo "$values"
 }
 
+csv_column_as_str() {
+    FILE=$1
+    COLNAME=$2
+    values=$(csv_column "$FILE" "$COLNAME")
+    if [[ $values ]]; then 
+        # return as comma-separated string
+        echo "$values" | paste -s -d, -
+    fi
+}
+
 csv_column_mean() {
     FILE=$1
     COLNAME=$2

@@ -123,7 +123,8 @@ void phase3(struct thread_data* data) {
 	partitions[id*(t+1)+0] = start;
 	partitions[id*(t+1)+t] = end;
 	for (size_t i = start; i < end && pi != t-1; i++) {
-		POSSIBLE_READ_FAULT_AT(&input[i]);
+		if (((unsigned long)&input[i] & _PAGE_OFFSET_MASK) == 0)
+			POSSIBLE_READ_FAULT_AT(&input[i]);
 		if (pivots[pi] < input[i]) {
 			partitions[id*(t+1) + pc] = i;
 			pc++;
@@ -137,13 +138,12 @@ void phase3(struct thread_data* data) {
  */
 void copyback(element_t* data, size_t start_pos, size_t len) {
 	for (size_t i = start_pos; i < start_pos + len; i++) {
-		// if (((unsigned long)&data[i] & _PAGE_OFFSET_MASK) == 0)
-		// 	POSSIBLE_READ_FAULT_AT(&data[i]);
-		// if (((unsigned long)&input[i] & _PAGE_OFFSET_MASK) == 0)
-		// 	POSSIBLE_WRITE_FAULT_AT(&input[i]);
+		if (((unsigned long)&data[i] & _PAGE_OFFSET_MASK) == 0)
+			POSSIBLE_READ_FAULT_AT(&data[i]);
+		if (((unsigned long)&input[i] & _PAGE_OFFSET_MASK) == 0)
+			POSSIBLE_WRITE_FAULT_AT(&input[i]);
 		input[i] = data[i];
 	}
-	pr_info("copying back range [%lu, %lu]", start_pos, i);
 }
 
 /*
@@ -227,6 +227,8 @@ void phase4(struct thread_data* data) {
 		RFREE(partitions);
 		checkpoint("copyback"); 
 	}
+	BARRIER;
+
 	copyback(merged_values, start_pos, total_merge_length);
 }
 

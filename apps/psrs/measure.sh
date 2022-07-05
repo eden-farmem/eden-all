@@ -58,24 +58,27 @@ check_for_stop() {
     fi
 }
 
-desc="copyback"
-# for tpc in 1 5 10 20 50; do
-for tpc in 1 10; do
-    # for cfg in "pthr" "uthr" "kona-pthr" "kona-uthr" "apf-sync" "apf-async"; do
-    for cfg in "kona-uthr"; do
+desc="paper"
+CFLAGS_BEFORE=$CFLAGS
+for cores in 1 2 4 8; do
+    # for cfg in "pthr" "uthr" "kona-uthr" "apf-sync" "apf-async" "kona-pthr"; do
+    for cfg in "kona-pthr" "kona-uthr" "apf-sync" "apf-async" "apf-async+"; do
         OPTS=
+        CFLAGS="$CFLAGS_BEFORE"
         # OPTS="$OPTS --nopie"    #no ASLR
+
         case $cfg in
         "pthr")             ;;
         "uthr")             OPTS="$OPTS --shenango";;
-        "kona-pthr")        OPTS="$OPTS --kona";;
-        "kona-uthr")        OPTS="$OPTS --shenango --kona";;
-        "apf-sync")         OPTS="$OPTS --shenango --kona -pf=SYNC";;
-        "apf-async")        OPTS="$OPTS --shenango --kona -pf=ASYNC";;
+        "kona-pthr")        OPTS="$OPTS --kona --tag=pthreads";;
+        "kona-uthr")        OPTS="$OPTS --shenango --kona --tag=uthreads";;
+        "apf-sync")         OPTS="$OPTS --shenango --kona -pf=SYNC --tag=sync";;
+        "apf-async")        OPTS="$OPTS --shenango --kona -pf=ASYNC --tag=async";;
+        "apf-async+")       OPTS="$OPTS --shenango --kona -pf=ASYNC --tag=async+"; CFLAGS="$CFLAGS -DNO_QSORT_ANNOTS";;
         *)                  echo "Unknown fault kind"; exit;;
         esac
-        bash run.sh ${OPTS} -fl="""${CFLAGS}""" --force --buildonly #rebuild
-        for cores in 1; do
+        bash run.sh ${OPTS} -fl="""${CFLAGS}""" --force --buildonly     #rebuild
+        for tpc in 1 2 3 4 5 6; do
             # for nkeys_ in 16 32 64 128 256 512; do
             for nkeys_ in 1024; do
                 check_for_stop
