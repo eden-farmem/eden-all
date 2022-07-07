@@ -32,7 +32,7 @@ import scipy.stats as scstats
 import statistics
 
 
-colors = ['r', 'g', 'b', 'brown', 'c', 'k', 'orange', 'm','orangered','y']
+colors = ['r', 'b', 'g', 'brown', 'c', 'k', 'orange', 'm','orangered','y']
 linetypes = ['g-','g--','g-+']
 markers = ['o','x','+','s','+', '|', '^']
 
@@ -113,6 +113,8 @@ def gen_cdf(npArray):
    y = 1. * np.arange(len(npArray)) / (len(npArray) - 1)
    return x, y
 
+def gen_cdf_from_pdf(xc, yc):
+   return xc, np.cumsum(yc)/sum(yc)
 
 # # PLOT ARGUMENTS
 def parse_args():
@@ -303,6 +305,11 @@ def parse_args():
         help='Set custom width for bars in a bar plot. Default: .5 in',
         type=float, 
         default=0.5)
+    
+    parser.add_argument('-pd', '--pdfdata', 
+        action='store_true', 
+        help='Treat the provided data as PDF when generating and plotting CDF',
+        default=False)
 
     # PLOT SCOPING (move around on the cartesian plane)
     parser.add_argument('--xmin', 
@@ -532,7 +539,8 @@ def main():
             if plot_num == num_plots - 1:
                 xticks = xstart + (num_plots - 1) * args.barwidth / 2
                 ax.set_xticks(xticks)
-                ax.set_xticklabels(xcol, rotation='15' if args.xstr else 0) 
+                ax.set_xticklabels(xcol) 
+                # ax.set_xticklabels(xcol, rotation='15' if args.xstr else 0) 
 
         elif args.ptype == PlotType.barstacked:
             xc = xcol
@@ -550,7 +558,7 @@ def main():
             raise NotImplementedError("hist")
 
         elif args.ptype == PlotType.cdf:
-            xc, yc = gen_cdf(df[ycol])
+            xc, yc = gen_cdf_from_pdf(xcol, df[ycol]) if args.pdfdata else gen_cdf(df[ycol])
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is essentially 
@@ -573,7 +581,7 @@ def main():
             
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
-            lns += ax.plot(xc, yc, label=label, color=colors[cidx],
+            lns += ax.step(xc, yc, label=label, color=colors[cidx], where="post",
                 marker=(None if args.nomarker else markers[midx]))
                 # markerfacecolor=(None if args.nomarker else colors[cidx]))
 

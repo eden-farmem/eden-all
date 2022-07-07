@@ -192,7 +192,7 @@ for exp in $LS_CMD; do
     # HEADER="$HEADER,Keys";        LINE="$LINE,$((nkeys/1000000))M";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Thr";           LINE="$LINE,${threads}";
-    # HEADER="$HEADER,LocalMem";    LINE="$LINE,${localmem}M";
+    HEADER="$HEADER,LocalMem";    LINE="$LINE,${localmem}M";
 
     # OVERALL PERF
     if [[ $SIMPLE ]]; then
@@ -291,6 +291,8 @@ for exp in $LS_CMD; do
             if [[ $VERBOSE ]]; then 
                 HEADER="$HEADER,Time($kind)";         LINE="$LINE,${time}";
                 HEADER="$HEADER,Idle($kind)";         LINE="$LINE,${tidle}";
+                HEADER="$HEADER,UIdle($kind)";        LINE="$LINE,${uidle}";
+                HEADER="$HEADER,KIdle($kind)";        LINE="$LINE,${kidle}";
                 HEADER="$HEADER,HitR($kind)";         LINE="$LINE,${hitr}";
                 HEADER="$HEADER,Htpm($kind)";         LINE="$LINE,${pf_annot_hitpm}";
                 HEADER="$HEADER,Flts($kind)";         LINE="$LINE,${faults}";

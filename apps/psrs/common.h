@@ -27,7 +27,6 @@
 #endif
 
 /* for custom qsort */
-#define CUSTOM_QSORT
 #ifdef CUSTOM_QSORT
 #include "qsort.h"
 #define QUICKSORT _qsort

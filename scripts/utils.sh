@@ -106,6 +106,20 @@ csv_column_sum() {
     sum "$values"
 }
 
+csv_column_max() {
+    FILE=$1
+    COLNAME=$2
+    values=$(csv_column "$FILE" "$COLNAME")
+    max "$values"
+}
+
+csv_column_min() {
+    FILE=$1
+    COLNAME=$2
+    values=$(csv_column "$FILE" "$COLNAME")
+    min "$values"
+}
+
 # tests
 test_utils() {
 

@@ -1,0 +1,5 @@
+CPU,Time,Backend,Tag,Local_MB
+1,286,kona,pthreads,1000
+2,179,kona,pthreads,1000
+4,128,kona,pthreads,1000
+8,110,kona,pthreads,1000
