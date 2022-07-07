@@ -394,7 +394,7 @@ if [ "$PLOTID" == "5" ]; then
     pgf=none    #baseline
     basefile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
     if [[ $FORCE ]] || [ ! -f "$basefile" ]; then
-        echo "lmemfr,Xput,Faults,Backend,PFType,CPU,Threads,Zipfs" > $basefile
+        echo "lmemfr,Xput,XputErr,Faults,FaultsErr,Backend,PFType,CPU,Threads,Zipfs" > $basefile
         for mem in `seq 1000 500 6000`; do 
             tmpfile=${TMP_FILE_PFX}data
             rm -f ${tmpfile}
@@ -403,9 +403,11 @@ if [ "$PLOTID" == "5" ]; then
             cat $tmpfile
             memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
             xmean=$(csv_column_mean $tmpfile "Xput")
+            xstd=$(csv_column_stdev $tmpfile "Xput")
             fmean=$(csv_column_mean $tmpfile "Faults")
+            fstd=$(csv_column_stdev $tmpfile "Faults")
             # NOTE: changing this ordering may require updating LMEMCOL, XPUTCOL, etc. 
-            echo ${memf},${xmean},${fmean},${bkend},${pgf},${cores},${thr},${zipfs} >> ${basefile}
+            echo ${memf},${xmean},${xstd},${fmean},${fstd},${bkend},${pgf},${cores},${thr},${zipfs} >> ${basefile}
         done
     fi
     cat $basefile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_baseline_xput
@@ -414,7 +416,7 @@ if [ "$PLOTID" == "5" ]; then
     pgf=ASYNC    #upcalls
     upcallfile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
     if [[ $FORCE ]] || [ ! -f "$upcallfile" ]; then
-        echo "lmemfr,Xput,Faults,Backend,PFType,CPU,Threads,Zipfs" > $upcallfile
+        echo "lmemfr,Xput,XputErr,Faults,FaultsErr,Backend,PFType,CPU,Threads,Zipfs" > $upcallfile
         for mem in `seq 1000 500 6000`; do 
             tmpfile=${TMP_FILE_PFX}data
             rm -f ${tmpfile}
@@ -423,9 +425,11 @@ if [ "$PLOTID" == "5" ]; then
             cat $tmpfile
             memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
             xmean=$(csv_column_mean $tmpfile "Xput")
+            xstd=$(csv_column_stdev $tmpfile "Xput")
             fmean=$(csv_column_mean $tmpfile "Faults")
+            fstd=$(csv_column_stdev $tmpfile "Faults")
             # NOTE: changing this ordering may require updating LMEMCOL, XPUTCOL, etc. 
-            echo ${memf},${xmean},${fmean},${bkend},${pgf},${cores},${thr},${zipfs} >> ${upcallfile}
+            echo ${memf},${xmean},${xstd},${fmean},${fstd},${bkend},${pgf},${cores},${thr},${zipfs} >> ${upcallfile}
         done
     fi
     cat $upcallfile | awk -F, '{ print $'$XPUTCOL' }' > ${TMP_FILE_PFX}_upcall_xput
@@ -447,13 +451,13 @@ if [ "$PLOTID" == "5" ]; then
     plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${ROOTDIR}/scripts/plot.py ${plots}         \
-            -dyc ${basefile} Xput -ls dashed -l "No Annot"  \
-            -dyc ${upcallfile} Xput -ls solid -l "With Annot"   \
-            -dyc ${speedup} speedup -ls dashdot -l "Speedup"    \
+            -dyce ${basefile} Xput XputErr -ls dashed -l "Original"     \
+            -dyce ${upcallfile} Xput XputErr -ls solid -l "Annotated"   \
+            -dyce ${speedup} speedup "" -ls dashdot -l "Speedup"    \
             -yl "KOPS" --ymul 1e-3 ${YLIMS}                 \
             --twin 3 -tyl "Gain (%)"                        \
             -xc lmemfr -xl "Local Memory Fraction"          \
-            --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname
+            --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
     fi
     display ${plotname} &
 
@@ -462,11 +466,11 @@ if [ "$PLOTID" == "5" ]; then
     plotname=${plotdir}/faults_$cfg.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${ROOTDIR}/scripts/plot.py ${plots}             \
-            -dyc ${basefile} Faults -ls dashed -l "No Annot"    \
-            -dyc ${upcallfile} Faults -ls solid -l "With Annot" \
+            -dyce ${basefile} Faults FaultsErr -ls dashed -l "Original"     \
+            -dyce ${upcallfile} Faults FaultsErr -ls solid -l "Annotated"   \
             -yl "KFPS" --ymul 1e-3 ${YLIMS}                     \
             -xc lmemfr -xl "Local Memory Fraction"              \
-            --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname
+            --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
     fi   
     display ${plotname} &
 fi
@@ -549,7 +553,7 @@ if [ "$PLOTID" == "6" ]; then
         python3 ${ROOTDIR}/scripts/plot.py ${speedplots} -z bar \
             -yc speedup -yl "Gain (%)" --ymin 0 --ymax 100  \
             -xc CPU -xl "CPU Cores"                         \
-            --size 5 3.5 -fs 13 -of $PLOTEXT -o $plotname -lt "Local Memory"
+            --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname -lt "Local Memory"
     fi
     display ${plotname} &
 

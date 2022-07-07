@@ -6,6 +6,6 @@ CPU,Xput,Faults,Backend,PFType,Threads,Zipfs,Local_MB
 5,295912,97712,kona,none,500,1,3000
 6,280603,117277,kona,none,600,1,3000
 7,321946,115850,kona,none,700,1,3000
-8,,,kona,none,800,1,3000
+8,273880,119619,kona,none,800,1,3000
 9,290419,119393,kona,none,900,1,3000
 10,297277,119467,kona,none,1000,1,3000

@@ -143,6 +143,12 @@ def parse_args():
         action='append',
         metavar=('datafile', 'ycol'),
         help='Y column from a specific file that is included with this argument')
+    
+    parser.add_argument('-dyce', '--dfileycolyerr',      # (recommended way to specify data)
+        nargs=3,
+        action='append',
+        metavar=('datafile', 'ycol', 'yerr'),
+        help='Y column and Y error for error bars')
 
     # PLOT STYLE
     parser.add_argument('-z', '--ptype', 
@@ -392,10 +398,11 @@ def main():
     # 1. One datafile with multiple ycolumns plotted against single xcolumn
     # 2. Single ycolumn from multiple datafiles plotted against an xcolumn
     # 3. If ycols from multiple datafiles must be plotted, use -dyc argument style
+    dyce=(args.dfileycolyerr is not None)
     dyc=(args.dfileycol is not None)
     dandyc=(args.datafile is not None or args.ycol is not None)
-    if (dyc and dandyc) or not (dyc or dandyc):
-        parser.error("Use either the (-dyc) or the (-d and -yc) approach exclusively, not both!")
+    if not (dyc or dandyc or dyce):
+        parser.error("Provide inputs using either -d/-yc or -dyc or -dyce!")
 
     if (args.datafile or args.ycol) and \
         (args.datafile and len(args.datafile) > 1) and \
@@ -407,15 +414,19 @@ def main():
 
     # Infer data files, xcols and ycols from args
     num_plots = 0
-    dfile_ycol_map = []     #Maintain the input order
-    if args.dfileycol:
+    dfile_ycol_yerr_map = []     #Maintain the input order
+    if args.dfileycolyerr:
+        for (dfile, ycol, yerr) in args.dfileycolyerr:
+            dfile_ycol_yerr_map.append((dfile, ycol, yerr if yerr else None))
+            num_plots += 1
+    elif args.dfileycol:
         for (dfile, ycol) in args.dfileycol:
-            dfile_ycol_map.append((dfile, ycol))
+            dfile_ycol_yerr_map.append((dfile, ycol, None))
             num_plots += 1
     else:
         for dfile in args.datafile:
             for ycol in args.ycol:
-                dfile_ycol_map.append((dfile, ycol))
+                dfile_ycol_yerr_map.append((dfile, ycol, None))
                 num_plots += 1  
 
     if not args.labelincr and args.plabel and len(args.plabel) != num_plots:
@@ -431,7 +442,7 @@ def main():
         parser.error("head and tail trimming is only supported for CDF plots (-z/--ptype: cdf)")
 
     xlabel = args.xlabel if args.xlabel else args.xcol
-    ylabel = args.ylabel if args.ylabel else dfile_ycol_map[0][1]
+    ylabel = args.ylabel if args.ylabel else dfile_ycol_yerr_map[0][1]
 
     cidx = 0
     midx = 0
@@ -470,15 +481,24 @@ def main():
     ymin = args.ymin
     ymax = args.ymax
     base_dataset = None
-    for (datafile, ycol) in dfile_ycol_map:
+    for (datafile, ycol, yerr) in dfile_ycol_yerr_map:
 
         if (plot_num + 1) == args.twin:
             # Switch to twin axis, reset Y-axis settings
+            # save plotted objects before switching
+            lns_, labels_ = ax.get_legend_handles_labels()
+            lns += lns_
+            labels += labels_
+
             ax = axmain.twinx()
             ylabel = args.tylabel if args.tylabel else ycol
             ymul = args.tymul
             ymin = args.tymin
             ymax = args.tymax
+            # Set the twin axis to the same color as the first twin plot
+            ax.spines['right'].set_color(colors[cidx])
+            ax.tick_params(axis='y', colors=colors[cidx])
+            ax.yaxis.label.set_color(colors[cidx])
 
         if not os.path.exists(datafile):
             print("Datafile {0} does not exist".format(datafile))
@@ -493,7 +513,6 @@ def main():
         if args.plabel:                 label = args.plabel[labelidx] if args.labelincr else args.plabel[plot_num]
         elif len(args.datafile) == 1:   label = ycol
         else:                           label = datafile
-        labels.append(label)
 
         if not args.dfilexcol:
             xcol = df[args.xcol] if args.xcol else df.index
@@ -501,8 +520,11 @@ def main():
         if args.ptype == PlotType.line:
             xc = xcol
             yc = df[ycol]
+            ye = df[yerr] if yerr else None
+
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
+            ye = [y * ymul for y in ye] if ye is not None else None
 
             if args.ynorm:
                 if plot_num == 0:   
@@ -512,9 +534,10 @@ def main():
                     yc = [i/j for i,j in zip(yc,base_dataset)]
 
             if args.xstr:   xc = [str(x) for x in xc]
-            lns += ax.plot(xc, yc, label=label, color=colors[cidx],
+            ax.errorbar(xc, yc, yerr=ye, label=label, color=colors[cidx],
                 marker=(None if args.nomarker else markers[midx]),
-                markerfacecolor=(None if args.nomarker else colors[cidx]))
+                markerfacecolor=(None if args.nomarker else colors[cidx]),
+                ls=args.linestyle[plot_num] if args.linestyle is not None else None)
             # if args.xstr:   ax.set_xticks(xc)
             # if args.xstr:   ax.set_xticklabels(xc, rotation='45')     
 
@@ -617,9 +640,10 @@ def main():
     # axmain.set_ylabel(ylabel)
     # ax.ticklabel_format(useOffset=False, style='plain')
 
-    if args.linestyle:
-        for idx, ls in enumerate(args.linestyle):
-            lns[idx].set_linestyle(ls)
+    # collect plotted objects
+    lns_, labels_ = ax.get_legend_handles_labels()
+    lns += lns_
+    labels += labels_
     
     if args.lloc != LegendLoc.none and \
             args.ptype in [PlotType.scatter, PlotType.bar, PlotType.barstacked, PlotType.hist]:
@@ -629,6 +653,7 @@ def main():
         set_plot_legend_loc(plt, args.lloc, args.ltitle)
     else:
         # Skip a label if an empty string is provided
+        print(labels)
         labels_adjusted = [l for l in labels if l != ""]
         lns_adjusted = [l for i,l in enumerate(lns) if labels[i] != ""]
         set_axes_legend_loc(axmain, lns_adjusted, labels_adjusted, args.lloc, args.ltitle)

@@ -106,7 +106,7 @@ run_vary_lmem() {
     # for s in `seq 1 1 10`; do 
     #     zparams=$(echo $s | awk '{ printf("%.1lf", $1/10.0); }')
     # for m in `seq 10 5 60`; do 
-    for m in 15 30; do 
+    for m in 30; do 
         check_for_stop
         name=run-$(date '+%m-%d-%H-%M-%S')
         lmem=$(echo $m | awk '{ print $1 * 1000000000/10 }')
@@ -132,6 +132,15 @@ for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
         done
     done
 done
+
+# # vanilla runs
+# for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
+#     for zs in 1; do 
+#         desc="${op}-vanilla"
+#         # run_vary_cores "pthr"   $op $c $t $zs 
+#         run_vary_cores "uthr"   $op $c $t $zs 
+#     done
+# done
 
 # cleanup
 rm -f ${TEMP_PFX}*
