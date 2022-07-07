@@ -26,7 +26,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "runtime/sync.h"
+#include "common.h"
 
 /* NOTE: only dataplane operations are thread-safe i.e., 
  * insert/lookup/remove. Anything that affects the table 
@@ -56,10 +56,10 @@ struct hopscotch_bucket {
 #ifdef THREAD_SAFE
     /* coarse-grained lock to synchronize read-write and write-writes
      * used rarely by readers. yields to other threads if not available */
-    mutex_t rw_lock;    
+    MUTEX_T rw_lock;    
     /* very fine-grained lock to make reading/writing kv-data atomic 
      * as they're bigger than what built-in atomics can handle */
-    spinlock_t kv_lock;    
+    SPINLOCK_T kv_lock;    
     uint64_t timestamp;
     atomic_t marked;
 #endif
@@ -72,7 +72,7 @@ struct hopscotch_hash_table {
     size_t exponent;
     struct hopscotch_bucket *buckets;
     int _allocated;
-    spinlock_t* kv_locks;
+    SPINLOCK_T* kv_locks;
 };
 
 #ifdef __cplusplus
