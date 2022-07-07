@@ -28,3 +28,9 @@ test 'UncontendedMutex' took 0.0279107 us.
 test 'Yield' took 0.045793 us.
 test 'CondvarPingPong' took 0.0951025 us.
 ```
+
+## LOC
+Shenango Before: 8680 (runtime) + 3128 (iokernel)
+Our changes: 1281 (mostly in runtime for page fault support)
+Kona Before: 14584
+Our changes: 2604
