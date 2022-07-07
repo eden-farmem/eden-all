@@ -62,6 +62,10 @@ case $i in
     LOCALMEM="${i#*=}"
     ;;
 
+    -sc=*|--scheduler=*)
+    SCHEDULER="${i#*=}"
+    ;;
+
     -be=*|--backend=*)
     BACKEND="${i#*=}"
     ;;
@@ -114,11 +118,13 @@ for exp in $LS_CMD; do
     threads=$(cat $exp/settings | grep "threads:" | awk -F: '{ print $2 }')
     localmem=$(cat $exp/settings | grep "localmem:" | awk -F: '{ printf $2/1000000 }')
     pgfaults=$(cat $exp/settings | grep "pgfaults:" | awk -F: '{ print $2 }')
+    sched=$(cat $exp/settings | grep "scheduler:" | awk -F: '{ print $2 }')
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
     nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
     nblobs=$(cat $exp/settings | grep "blobs:" | awk -F: '{ print $2 }')
     zipfs=$(cat $exp/settings | grep "zipfs:" | awk -F: '{ print $2 }')
     desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
+    sched=${sched:-none}
     backend=${backend:-none}
     pgfaults=${pgfaults:-none}
 
@@ -128,6 +134,7 @@ for exp in $LS_CMD; do
     if [[ $LOCALMEM ]] && [ "$LOCALMEM" != "$localmem" ]; then  continue;   fi
     if [[ $BACKEND ]] && [ "$BACKEND" != "$backend" ];  then    continue;   fi
     if [[ $PGFAULTS ]] && [ "$PGFAULTS" != "$pgfaults" ]; then  continue;   fi
+    if [[ $SCHEDULER ]] && [ "$SCHEDULER" != "$sched" ];    then    continue;   fi
     if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];        then    continue;   fi
     # if [[ $DESC ]] && [[ "$desc" != *"$DESC"*  ]];      then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];      then    continue;   fi
@@ -161,6 +168,7 @@ for exp in $LS_CMD; do
 
     # write
     HEADER="Exp";                   LINE="$name";
+    HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
     HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
     HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";

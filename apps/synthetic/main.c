@@ -4,15 +4,12 @@
 #include <math.h>
 
 #include "logging.h"
-#include "runtime/thread.h"
-#include "runtime/sync.h"
-#include "runtime/pgfault.h"
-#include "runtime/timer.h"
 #include "utils.h"
 #include "hopscotch.h"
 #include "snappy.h"
 #include "zipf.h"
 #include "aes.h"
+#include "common.h"
 
 #define MEM_REGION_SIZE 	((1ull<<30) * 32)	// 32 GB
 #define NUM_LAT_SAMPLES 	5000
@@ -34,33 +31,6 @@
 #ifdef DEBUG
 #undef MAX_OPS_PER_CORE
 #define MAX_OPS_PER_CORE	10	
-#endif
-
-/* thread/sync primitives from various platforms */
-#ifdef SHENANGO
-#define THREAD_T						unsigned long
-#define THREAD_CREATE(id,routine,arg)	thread_spawn(routine,arg)
-#define THREAD_EXIT(ret)				thread_exit()
-#define BARRIER_T		 				barrier_t
-#define BARRIER_INIT(b,c)				barrier_init(b, c)
-#define BARRIER_WAIT 					barrier_wait
-#define BARRIER_DESTROY(b)				{}
-#define WAITGROUP_T						waitgroup_t
-#define WAITGROUP_INIT(wg)				waitgroup_init(&wg)
-#define WAITGROUP_ADD(wg,val)			waitgroup_add(&wg,val)
-#define WAITGROUP_WAIT(wg)				waitgroup_wait(&wg)
-#else 
-#define THREAD_T						pthread_t
-#define THREAD_CREATE(tid,routine,arg)	pthread_create(tid,NULL,routine,arg)
-#define THREAD_EXIT(ret)				pthread_exit(ret)
-#define BARRIER_T		 				pthread_barrier_t
-#define BARRIER_INIT(b,c)				pthread_barrier_init(b, NULL, c)
-#define BARRIER_WAIT 					pthread_barrier_wait
-#define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
-#define WAITGROUP_T						int
-#define WAITGROUP_INIT(wg)				{ wg = 0; 	}
-#define WAITGROUP_ADD(wg,val)			{ wg++; 	}
-#define WAITGROUP_WAIT(wg)				{ for(int z=0; z < nworkers; z++)	pthread_join(workers[z], NULL); }
 #endif
 
 struct thread_args {
@@ -186,11 +156,13 @@ setup_blobs(void* arg) {
  * loops whose termination is controlled by other threads.
  * state: saves last yield time, init with 0 */
 static inline void thread_yield_after(int time_us, unsigned long* state) {
+#ifdef SHENANGO
 	unsigned long duration_tsc = rdtsc() - *state;
 	if (duration_tsc / cycles_per_us >= time_us) {
 		thread_yield();
 		*state = rdtsc();
 	}
+#endif
 }
 
 /* prepare zipf workload */
@@ -340,7 +312,7 @@ void*
 #endif
 timeout_thread(void* arg) {
 	unsigned long sleep_us = (unsigned long) arg;
-	timer_sleep(sleep_us);
+	USLEEP(sleep_us);
 	stop_button = 1;
 }
 
@@ -367,7 +339,7 @@ void main_thread(void* arg) {
 	/* core data stuctures: these go in remote memory */
     ht = hopscotch_init(NULL, next_power_of_two(nkeys) + 1);
     ASSERT(ht);
-	blobdata = remoteable_alloc(nblobs*BLOB_SIZE);
+	blobdata = RMALLOC(nblobs*BLOB_SIZE);
     pr_info("memory for blob array: %lu MB", nblobs*BLOB_SIZE / (1<<20));
 	ASSERT(blobdata);
 
@@ -532,6 +504,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef SHENANGO
 	/* initialize shenango */
+	pr_info("running with shenango");
 	ret = runtime_init(argv[1], main_thread, &margs);
 	ASSERTZ(ret);
 #else
@@ -539,6 +512,7 @@ int main(int argc, char *argv[]) {
 	/* initialize kona. in case of shenango, it is taken care of. */
 	rinit();
 #endif
+	pr_info("running with pthreads");
 	main_thread(&margs);
 #endif
 
