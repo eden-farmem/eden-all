@@ -44,6 +44,14 @@ sum() {
     fi
 }
 
+count() {
+    VALUES="$1"
+    if [[ $VALUES ]]; then 
+        echo "$VALUES" | awk '{ n++ } 
+            END { if (n > 0) printf "%d", n }'
+    fi
+}
+
 percentof(){
     NUMERATOR=$1
     DENOMINATOR=$2
@@ -118,6 +126,13 @@ csv_column_min() {
     COLNAME=$2
     values=$(csv_column "$FILE" "$COLNAME")
     min "$values"
+}
+
+csv_column_count() {
+    FILE=$1
+    COLNAME=$2
+    values=$(csv_column "$FILE" "$COLNAME")
+    count "$values"
 }
 
 # tests

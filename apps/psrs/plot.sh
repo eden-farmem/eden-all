@@ -200,8 +200,8 @@ if [ "$PLOTID" == "3" ]; then
     PLOTEXT=pdf
 
     # DATA
-    pattern="07-05"; cores=1; tperc=1; lmem=1000; desc="paper";
-    # pattern="07-05"; cores=1; tperc=5; lmem=1000; desc="paper";
+    # pattern="07-05"; cores=1; tperc=1; lmem=1000; desc="paper";
+    pattern="07-05"; cores=1; tperc=5; lmem=1000; desc="paper";
     # pattern="07-05"; cores=2; tperc=1; lmem=1000; desc="paper";
     # pattern="07-05"; cores=2; tperc=5; lmem=1000; desc="paper";
     # pattern="07-05"; cores=2; tperc=5; lmem=250; desc="paper";
@@ -220,15 +220,16 @@ if [ "$PLOTID" == "3" ]; then
     fi
 
     # FORMAT
-    for metric in "time" "idle" "faults"; do 
+    # for metric in "time" "idle" "faults"; do 
+    for metric in "time"; do 
         colname=
         ylabel=
         ymax=
         ymul=
         case $metric in
         "time")         colname=Time;   ylabel="Time (s)";              ymax=400;   ymul=;;
-        "idle")         colname=Idle;   ylabel="Idle Time (s)";         ymax=400;   ymul=;;
-        "faults")       colname=Flts;   ylabel="Total Faults (1e6)";    ymax=12.5;  ymul=1e-6;;
+        "idle")         colname=Idle;   ylabel="Idle Time (s)";         ymax=100;   ymul=;;
+        "faults")       colname=Flts;   ylabel="Faults (millions)";     ymax=12.5;  ymul=1e-6;;
         *)              echo "Unknown kind"; exit;;
         esac
 
@@ -237,7 +238,7 @@ if [ "$PLOTID" == "3" ]; then
         echo "Total",$(csv_column_as_str "$datafile" "${colname}(T)") >> $tmpfile
         echo "LocalSort",$(csv_column_as_str "$datafile" "${colname}(p1)") >> $tmpfile
         echo "Merge",$(csv_column_as_str "$datafile" "${colname}(p4)") >> $tmpfile
-        echo "Copyback",$(csv_column_as_str "$datafile" "${colname}(cb)") >> $tmpfile
+        echo "Copy-back",$(csv_column_as_str "$datafile" "${colname}(cb)") >> $tmpfile
         cat $tmpfile
 
         # bar chart

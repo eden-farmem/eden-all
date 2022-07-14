@@ -604,8 +604,9 @@ def main():
             
             xc = [x * args.xmul for x in xc]
             yc = [y * ymul for y in yc]
-            lns += ax.step(xc, yc, label=label, color=colors[cidx], where="post",
-                marker=(None if args.nomarker else markers[midx]))
+            ax.step(xc, yc, label=label, color=colors[cidx], where="post",
+                marker=(None if args.nomarker else markers[midx]),
+                ls=args.linestyle[plot_num] if args.linestyle is not None else None)
                 # markerfacecolor=(None if args.nomarker else colors[cidx]))
 
             # # Add a line at median (TODO: make this a command line option)
@@ -653,7 +654,6 @@ def main():
         set_plot_legend_loc(plt, args.lloc, args.ltitle)
     else:
         # Skip a label if an empty string is provided
-        print(labels)
         labels_adjusted = [l for l in labels if l != ""]
         lns_adjusted = [l for i,l in enumerate(lns) if labels[i] != ""]
         set_axes_legend_loc(axmain, lns_adjusted, labels_adjusted, args.lloc, args.ltitle)

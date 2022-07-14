@@ -298,9 +298,9 @@ if [ "$PLOTID" == "5" ]; then
 
     plotname=${PLOTDIR}/kona_xput.${PLOTEXT}
     python3 ${PLOTSRC} -xc cores -xl "CPU Cores"                                \
-        -d ${DATADIR}/xput-kernel-read  -l "Kernel" -ls dashed                  \
-        -d ${DATADIR}/xput-user-read    -l "User"   -ls solid                   \
-        -yc xput -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax .20                     \
+        -d ${DATADIR}/xput-kernel-read  -l "Kernel-mediated" -ls dashed         \
+        -d ${DATADIR}/xput-user-read    -l "User-notified"   -ls solid          \
+        -yc xput -yl "KFPS" --ymul 1e-3 --ymin 0 --ymax 200                     \
         --size 4 3.5 -fs 15 -of ${PLOTEXT} -o $plotname 
     display $plotname & 
 fi
@@ -314,11 +314,11 @@ if [ "$PLOTID" == "6" ]; then
     # cp ${SRCDIR}/xput-kona-read         ${DATADIR}/
 
     plotname=${PLOTDIR}/sched_xput.${PLOTEXT}
-    python3 ${PLOTSRC} -xc cores -xl "CPU Cores"                            \
-        -d ${DATADIR}/xput-kona-read        -l "None"   -ls dashed  -cmi 2  \
-        -d ${DATADIR}/xput-apf-sync-read    -l "Poll"   -ls dashdot -cmi 1  \
-        -d ${DATADIR}/xput-apf-async-read   -l "Yield"  -ls solid   -cmi 1  \
-        -yc xput -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax .20                 \
+    python3 ${PLOTSRC} -xc cores -xl "CPU Cores"                                        \
+        -d ${DATADIR}/xput-kona-read        -l "None (Kernel)"   -ls dashed  -cmi 1     \
+        -d ${DATADIR}/xput-apf-sync-read    -l "Sync"   -ls dashdot -cmi 2              \
+        -d ${DATADIR}/xput-apf-async-read   -l "Async (Eden)"  -ls solid   -cmi 1       \
+        -yc xput -yl "KFPS" --ymul 1e-3 --ymin 0 --ymax 200                             \
         --size 4 3.5 -fs 15 -of ${PLOTEXT} -o $plotname 
     display $plotname & 
 fi
@@ -336,10 +336,9 @@ if [ "$PLOTID" == "7" ]; then
 
     plotname=${PLOTDIR}/latencies.${PLOTEXT}
     python3 ${PLOTSRC} -z cdf                                                       \
-        -d ${DATADIR}/lat-faults-read       -l "Kernel"         -ls dashed  -cmi 1  \
-        -d ${DATADIR}/lat-appfaults-read    -l "User"           -ls dashdot -cmi 1  \
-        -d ${DATADIR}/lat-apf-sync-read     -l "Annot (Poll)"   -ls solid   -cmi 1  \
-        -d ${DATADIR}/lat-apf-async-read    -l "Annot (Yield"   -ls solid   -cmi 1  \
+        -d ${DATADIR}/lat-faults-read       -l "Kernel-mdted" -ls dashed  -cmi 1    \
+        -d ${DATADIR}/lat-appfaults-read    -l "User-notified"   -ls dashdot -cmi 1 \
+        -d ${DATADIR}/lat-apf-async-read    -l "Annot (Eden)"   -ls solid   -cmi 1  \
         -yc latency -xl "Latency (µs)" --xmin 0 --xmax 20 -nm                       \
         --size 5 3.5 -fs 15 -of ${PLOTEXT} -o $plotname
     display $plotname & 

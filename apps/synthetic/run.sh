@@ -196,6 +196,7 @@ done
 # NUMA node1 CPU(s):   14-27,42-55
 # RNIC NUMA node = 1
 NUMA_NODE=1
+BASECORE=14
 KONA_POLLER_CORE=53
 KONA_EVICTION_CORE=54
 KONA_FAULT_HANDLER_CORE=55
@@ -206,6 +207,20 @@ ${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 NTHREADS=${NTHREADS:-$NCORES}
 
+# helpers
+start_sar() {
+    int=$1
+    outdir=$2
+    cpustr=${3:-ALL}
+    nohup sar -P ${cpustr} ${int} | ts %s > ${outdir}/cpu.sar   2>&1 &
+    # nohup sar -r ${int}     | ts %s > ${outdir}/memory.sar  2>&1 &
+    # nohup sar -b ${int}     | ts %s > ${outdir}/diskio.sar  2>&1 &
+    # nohup sar -n DEV ${int} | ts %s > ${outdir}/network.sar 2>&1 &
+    nohup sar -B ${int}     | ts %s > ${outdir}/pgfaults.sar 2>&1 &
+}
+stop_sar() {
+    pkill sar || true
+}
 kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
@@ -286,6 +301,7 @@ INC="${INC} -I${SNAPPY_DIR}/"
 LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
 
 # compile
+LIBS="${LIBS} -lpthread -lm"
 gcc main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
     ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
@@ -368,19 +384,28 @@ for retry in 1; do
         wrapper="$wrapper $env"
     fi
 
-    if ! [[ $SHENANGO ]]; then 
+    if [[ $SHENANGO ]]; then 
+        # shenango takes care of scheduling but we still want 
+        # to know what cores it runs to kick off sar
+        # currently, iokernel takes the first core on the node 
+        # and shenango provides the following cores to app
+        CPUSTR="$((BASECORE+1))-$((BASECORE+NCORES))"
+        start_sar 1 "." ${CPUSTR}
+    else 
         # pin the app to required number of cores ourselves
         # use cores 14-27 for non-hyperthreaded setting
         if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
         CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
         wrapper="$wrapper taskset -a -c ${CPUSTR}"
+        echo "sar ${CPUSTR}"
+        start_sar 1 "." ${CPUSTR}
     fi 
 
     if [[ $GDB ]]; then 
         wrapper="gdbserver :1234 --wrapper $wrapper --";
     fi
     args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
-    echo sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args}
+    echo sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 
     sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
     popd
 

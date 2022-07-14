@@ -115,6 +115,8 @@ def main():
         data['schedtimepct'].append((ts, sched_cycles * 100.0 / (sched_cycles + program_cycles) 
             if (sched_cycles + program_cycles) else 0))
         data['sched_idle_us'].append((ts, sched_cycles_idle / cycles_per_us if cycles_per_us else 0))
+        data['sched_idle_per'].append((ts, sched_cycles_idle * 100.0 / (sched_cycles + program_cycles)
+            if (sched_cycles + program_cycles) else 0))
         data['localschedpct'].append((ts, (1 - threads_stolen / reschedules) * 100 if reschedules else 0))
         data['softirqs'].append((ts, softirqs_local + softirqs_stolen))
         data['stolenirqpct'].append((ts, (softirqs_stolen / (softirqs_local + softirqs_stolen)) * 100 

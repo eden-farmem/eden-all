@@ -14,6 +14,7 @@ usage="\n
 -be, --backend \t results filter: == backend\n
 -pf, --pgfaults \t results filter: == pgfaults\n
 -zs, --zipfs \t\t results filter: == zipfs\n
+-f, --force \t\t remove any cached data and parse from scratch\n
 -g, --good \t\t show just the 'good' runs; definition of good depends on the metrics\n
 -rm, --remove \t\t (recoverably) delete runs that match these filters\n
 -of, --outfile \t output results to a file instead of stdout\n"
@@ -27,7 +28,7 @@ HOST="sc2-hs2-b1630"
 CLIENT="sc2-hs2-b1632"
 TRASH="${DATADIR}/trash"
 
-source ${SCRIPT_DIR}/shared.sh
+source ${ROOT_SCRIPTS_DIR}/utils.sh
 
 # Read parameters
 for i in "$@"
@@ -62,6 +63,10 @@ case $i in
     LOCALMEM="${i#*=}"
     ;;
 
+    -sc=*|--scheduler=*)
+    SCHEDULER="${i#*=}"
+    ;;
+
     -be=*|--backend=*)
     BACKEND="${i#*=}"
     ;;
@@ -76,6 +81,10 @@ case $i in
 
     -d=*|--desc=*)
     DESC="${i#*=}"
+    ;;
+
+    -f|--force)
+    FORCE=1
     ;;
 
     -g|--good)
@@ -114,11 +123,13 @@ for exp in $LS_CMD; do
     threads=$(cat $exp/settings | grep "threads:" | awk -F: '{ print $2 }')
     localmem=$(cat $exp/settings | grep "localmem:" | awk -F: '{ printf $2/1000000 }')
     pgfaults=$(cat $exp/settings | grep "pgfaults:" | awk -F: '{ print $2 }')
+    sched=$(cat $exp/settings | grep "scheduler:" | awk -F: '{ print $2 }')
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
     nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
     nblobs=$(cat $exp/settings | grep "blobs:" | awk -F: '{ print $2 }')
     zipfs=$(cat $exp/settings | grep "zipfs:" | awk -F: '{ print $2 }')
     desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
+    sched=${sched:-none}
     backend=${backend:-none}
     pgfaults=${pgfaults:-none}
 
@@ -128,6 +139,7 @@ for exp in $LS_CMD; do
     if [[ $LOCALMEM ]] && [ "$LOCALMEM" != "$localmem" ]; then  continue;   fi
     if [[ $BACKEND ]] && [ "$BACKEND" != "$backend" ];  then    continue;   fi
     if [[ $PGFAULTS ]] && [ "$PGFAULTS" != "$pgfaults" ]; then  continue;   fi
+    if [[ $SCHEDULER ]] && [ "$SCHEDULER" != "$sched" ];    then    continue;   fi
     if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];        then    continue;   fi
     # if [[ $DESC ]] && [[ "$desc" != *"$DESC"*  ]];      then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];      then    continue;   fi
@@ -147,6 +159,13 @@ for exp in $LS_CMD; do
     # if runtime is zero, exclude  
     if [[ $FILTER_GOOD ]] && (! [[ $rtime ]] || [ $rtime -le 0 ]); then continue; fi
 
+    if [[ $FORCE ]]; then
+        rm -f ${exp}/kona_counters_parsed
+        rm -f ${exp}/runtime_parsed
+        rm -f ${exp}/cpu_sar_parsed
+    fi
+
+    # KONA
     konastatsout=${exp}/kona_counters_parsed
     konastatsin=${exp}/kona_counters.out 
     if [ ! -f $konastatsout ] && [ -f $konastatsin ] && [[ $rstart ]] && [[ $rend ]]; then 
@@ -159,8 +178,27 @@ for exp in $LS_CMD; do
     afaultsr=$(csv_column_mean "$konastatsout" "n_afaults_r")
     faults=$((faultsr+faultsw+faultswp))
 
+    # SHENANGO
+    shenangoout=${exp}/runtime_parsed
+    shenangoin=${exp}/runtime.out 
+    if [ ! -f $shenangoout ] && [ -f $shenangoin ] && [[ $rstart ]] && [[ $rend ]]; then 
+        python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
+            -o ${shenangoout} -st=${rstart} -et ${rend}
+    fi
+    user_idle_per=$(csv_column_sum "$shenangoout" "sched_idle_per")
+
+    # KERNEL
+    cpusarout=${exp}/cpu_sar_parsed
+    cpusarin=${exp}/cpu.sar
+    if [ ! -f $cpusarout ] && [ -f $cpusarin ] && [[ $rstart ]] && [[ $rend ]]; then 
+        bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%idle" \
+             -st=${rstart} -et=${rend} -of=${cpusarout}
+    fi
+    kernel_idle_per=$(csv_column_mean "$cpusarout" "%idle")
+
     # write
     HEADER="Exp";                   LINE="$name";
+    HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
     HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
     HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
@@ -172,10 +210,13 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Xput";          LINE="$LINE,${xput:-}";
     HEADER="$HEADER,XputPerCore";   LINE="$LINE,${xputpercore}";
     HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
-    HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
-    HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";
+    # HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
+    # HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";
     # HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
     # HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
+    HEADER="$HEADER,UIdle%";        LINE="$LINE,${user_idle_per}";
+    HEADER="$HEADER,KIdle%";        LINE="$LINE,${kernel_idle_per}";
+    
     HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    
     OUT=`echo -e "${OUT}\n${LINE}"`
 

@@ -21,14 +21,12 @@
  * SOFTWARE.
  */
 
-#include "hopscotch.h"
 #include <stdlib.h>
 #include <string.h>
 
+#include "hopscotch.h"
 #include "utils.h"
-#include "asm/atomic.h"
-#include "base/atomic.h"
-#include "runtime/pgfault.h"
+#include "common.h"
 
 /*
  * Jenkins Hash Function
@@ -61,14 +59,14 @@ bucket_data_lock(struct hopscotch_hash_table *ht,
         int prev_bucket_id) {
 #ifdef LOCK_INSIDE_BUCKET
     struct hopscotch_bucket* b = &(ht->buckets[bucket_id]);
-    spin_lock(&b->kv_lock);
+    SPIN_LOCK(&b->kv_lock);
 #else
     int lock_id = bucket_id / BUCKETS_PER_LOCK;
     if (prev_bucket_id > 0 && 
         lock_id == prev_bucket_id / BUCKETS_PER_LOCK)
         /* already have the lock */
         return;
-    spin_lock(&ht->kv_locks[lock_id]);
+    SPIN_LOCK(&ht->kv_locks[lock_id]);
 #endif
 }
 
@@ -78,7 +76,7 @@ bucket_data_unlock(struct hopscotch_hash_table *ht,
         int prev_bucket_id) {
 #ifdef LOCK_INSIDE_BUCKET
     struct hopscotch_bucket* b = &(ht->buckets[bucket_id]);
-    spin_unlock(&b->kv_lock);
+    SPIN_UNLOCK(&b->kv_lock);
 #else
     /* shared locks */
     int lock_id = bucket_id / BUCKETS_PER_LOCK;
@@ -86,7 +84,7 @@ bucket_data_unlock(struct hopscotch_hash_table *ht,
         lock_id == prev_bucket_id / BUCKETS_PER_LOCK)
         /* already have the lock */
         return;
-    spin_unlock(&ht->kv_locks[lock_id]);
+    SPIN_UNLOCK(&ht->kv_locks[lock_id]);
 #endif
 }
 
@@ -102,26 +100,26 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
     size_t nbuckets = (1 << exponent);
     pr_info("memory for hash table: %lu MB", 
         sizeof(struct hopscotch_bucket) * nbuckets / (1<<20));
-    buckets = remoteable_alloc(sizeof(struct hopscotch_bucket) * nbuckets);
+    buckets = RMALLOC(sizeof(struct hopscotch_bucket) * nbuckets);
     if ( NULL == buckets ) {
         return NULL;
     }
     memset(buckets, 0, sizeof(struct hopscotch_bucket) * nbuckets);
 #ifdef THREAD_SAFE
     for (i = nbuckets; i >= 0; i--) {
-        mutex_init(&buckets[i].rw_lock);
-        spin_lock_init(&buckets[i].kv_lock);
+        MUTEX_INIT(&buckets[i].rw_lock);
+        SPIN_LOCK_INIT(&buckets[i].kv_lock);
         buckets[i].marked = (atomic_t) ATOMIC_INIT(0);
     }
 
     size_t nlocks = (nbuckets / BUCKETS_PER_LOCK) + 1;
-    spinlock_t* spinlocks = remoteable_alloc(sizeof(spinlock_t) * nlocks);
+   SPINLOCK_T* spinlocks = RMALLOC(sizeof(SPINLOCK_T) * nlocks);
     for (i = 0; i < nlocks; i++)
-        spin_lock_init(&spinlocks[i]);
+        SPIN_LOCK_INIT(&spinlocks[i]);
 #ifndef LOCK_INSIDE_BUCKET
     pr_info("number of hash table locks: %lu", nlocks);
     pr_info("memory for hash table locks: %lu KB", 
-        sizeof(spinlock_t) * nlocks / (1<<10));
+        sizeof(SPINLOCK_T) * nlocks / (1<<10));
 #endif
 #endif
 
@@ -147,7 +145,7 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
 void
 hopscotch_release(struct hopscotch_hash_table *ht)
 {
-    remoteable_free(ht->buckets);
+    RFREE(ht->buckets);
     if ( ht->_allocated ) {
         free(ht);
     }
@@ -320,7 +318,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int *found)
     value = NULL;
     do {
         if (lock) {
-            mutex_lock(&bucket->rw_lock);
+            MUTEX_LOCK(&bucket->rw_lock);
             locked = true;
         }
 
@@ -367,7 +365,7 @@ hopscotch_lookup(struct hopscotch_hash_table *ht, void *key, int *found)
 
 out:
     if (locked) 
-        mutex_unlock(&bucket->rw_lock);
+        MUTEX_UNLOCK(&bucket->rw_lock);
     return value;
 }
 
@@ -391,7 +389,7 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
     bucket = &(ht->buckets[idx]);
 
     /* must lock */
-    mutex_lock(&bucket->rw_lock);
+    MUTEX_LOCK(&bucket->rw_lock);
     hopinfo = load_acquire(&(bucket->hopinfo)); 
 
     /* check if key already exists and if so, update */
@@ -439,10 +437,10 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
                     }
 
                     /* lock and recheck hopinfo */
-                    mutex_lock(&anchor->rw_lock);
+                    MUTEX_LOCK(&anchor->rw_lock);
                     hopinfo = load_acquire(&(anchor->hopinfo)); 
                     if (unlikely(!hopinfo)) {
-                        mutex_unlock(&anchor->rw_lock);
+                        MUTEX_UNLOCK(&anchor->rw_lock);
                         continue;
                     }
 
@@ -450,7 +448,7 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
                      * our empty item and hence is not a candidate */
                     off = __builtin_ctz(hopinfo);
                     if ( off >= j ) {
-                        mutex_unlock(&anchor->rw_lock);
+                        MUTEX_UNLOCK(&anchor->rw_lock);
                         continue;
                     }
 
@@ -478,7 +476,7 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
                     anchor->hopinfo |= (1ULL << j);
                     anchor->timestamp++;
                     anchor->hopinfo &= ~(1ULL << off);
-                    mutex_unlock(&anchor->rw_lock);
+                    MUTEX_UNLOCK(&anchor->rw_lock);
 
                     /* jump backwards */
                     i = i - j + off;
@@ -512,7 +510,7 @@ hopscotch_insert(struct hopscotch_hash_table *ht, void *key, void *data)
 
 out:
     pr_debug("done inserting key %lu", (uint64_t)data);
-    mutex_unlock(&bucket->rw_lock);
+    MUTEX_UNLOCK(&bucket->rw_lock);
     pr_debug("done inserting key %lu", (uint64_t)data);
     return retval;
 }
@@ -536,7 +534,7 @@ hopscotch_remove(struct hopscotch_hash_table *ht, void *key)
     bucket = &(ht->buckets[idx]);
 
     /* must lock */
-    mutex_lock(&bucket->rw_lock);
+    MUTEX_LOCK(&bucket->rw_lock);
     hopinfo = load_acquire(&(bucket->hopinfo)); 
 
     /* check if key exists and if so, clear the bucket */
@@ -565,7 +563,7 @@ hopscotch_remove(struct hopscotch_hash_table *ht, void *key)
     }
 
 out:
-    mutex_unlock(&bucket->rw_lock);
+    MUTEX_UNLOCK(&bucket->rw_lock);
     return value;
 }
 

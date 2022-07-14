@@ -15,18 +15,13 @@
 #include <math.h>
 
 #include "logging.h"
+#ifdef SHENANGO
 #include "asm/ops.h"
+#else 
+#include "ops.h"
+#endif
 
 // #define DEBUG
-
-#ifdef WITH_KONA
-#include "klib.h"
-#define remoteable_alloc rmalloc
-#define remoteable_free rfree
-#else 
-#define remoteable_alloc malloc
-#define remoteable_free free
-#endif
 
 #define ASSERT(x) assert((x))
 #define ASSERTZ(x) ASSERT(!(x))
