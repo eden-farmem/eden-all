@@ -179,6 +179,7 @@ run_vary_cores() {
     done
 }
 
+<<<<<<< HEAD
 # kona runs
 c=4
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
@@ -190,6 +191,27 @@ for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
             run_vary_lmem "kona-pthr"       $op $c $t $zs 
             # run_vary_lmem "apf-async"  $op $c $t $zs 
         done
+=======
+# # kona runs
+# for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
+#     for zs in 1; do 
+#         # for c in `seq 1 1 2`; do 
+#         for c in 1 2 3 4 5 6 7 8 9 10; do 
+#             desc="${op}-morecores"
+#             t=$((c*100))
+#             run_vary_lmem "kona"       $op $c $t $zs 
+#             run_vary_lmem "apf-async"  $op $c $t $zs 
+#         done
+#     done
+# done
+
+# vanilla runs
+for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
+    for zs in 1; do 
+        desc="${op}-vanilla"
+        # run_vary_cores "pthr"   $op $c $t $zs 
+        run_vary_cores "uthr"   $op $c $t $zs 
+>>>>>>> 347bb76b8eef41a2a6669ce44d9dc7868ede5ed4
     done
 done
 
