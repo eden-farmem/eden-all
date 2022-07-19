@@ -294,9 +294,11 @@ if [ "$PLOTID" == "4" ]; then
     # FORMAT
     ylabel="Idle Time (s)"
     ymax=500
-    for metric in "kdile" "uidle"; do 
+    # for metric in "kidle" "uidle"; do 
+    for metric in "time"; do
         colname=
         case $metric in
+        "time")         colname=Time;;
         "uidle")        colname=UIdle;;
         "kidle")        colname=KIdle;;
         *)              echo "Unknown kind"; exit;;
@@ -317,14 +319,14 @@ if [ "$PLOTID" == "4" ]; then
     if [[ $ymul ]]; then YSCALE="${YSCALE} --ymul ${ymul}"; fi
     plotname=${plotdir}/bar_${metric}_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  \
-            -d ${tmpfile} -xc "Phase"           \
-            -yc "pthreads"  -l "pthreads"       \
-            -yc "uthreads"  -l "uthreads"       \
-            -yc "sync"      -l "sync"           \
-            -yc "async"     -l "async"          \
-            -yc "async+"    -l "async+"         \
-            -yl "${ylabel}" ${YSCALE} -xl " "   \
+        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar              \
+            -d ${tmpfile} -xc "Phase"                           \
+            -yc "pthreads"  -l "pthreads"   -bs 1   -bhs "/"    \
+            -yc "uthreads"  -l "uthreads"   -bs 1   -bhs "\\"   \
+            -yc "sync"      -l "sync"       -bs 1   -bhs "o"    \
+            -yc "async"     -l "async"      -bs 1   -bhs "O"    \
+            -yc "async+"    -l "async+"     -bs 1   -bhs "."    \
+            -yl "${ylabel}" ${YSCALE} -xl " "                   \
             --size 4 3 -fs 11 -of $PLOTEXT -o $plotname
     fi
     files="${files} ${plotname}"
@@ -511,6 +513,121 @@ if [ "$PLOTID" == "7" ]; then
             -xc CPU -xl "CPU Cores"                         \
             --size 4 3 -fs 13 -of $PLOTEXT -o $plotname -lt "Local Memory"
     fi
+    display ${plotname} &
+fi
+
+
+# bar charts with idle time split
+if [ "$PLOTID" == "8" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    PLOTEXT=png
+
+    # DATA
+    # pattern="07-05"; cores=1; tperc=1; lmem=1000; desc="paper";
+    pattern="07-05"; cores=1; tperc=5; lmem=1000; desc="paper";
+    # pattern="07-05"; cores=2; tperc=1; lmem=1000; desc="paper";
+    # pattern="07-05"; cores=2; tperc=5; lmem=1000; desc="paper";
+    # pattern="07-05"; cores=2; tperc=5; lmem=250; desc="paper";
+    # pattern="07-05"; cores=2; tperc=10; lmem=250; desc="paper";
+    # pattern="07-05"; cores=2; tperc=15; lmem=250; desc="paper";
+
+    # PARSE
+    cfg=${cores}cores_tperc${tperc}_lmem${lmem}_${desc}
+    if [[ $desc ]]; then descopt="-d=$desc"; fi
+    thr=$((cores*tperc))
+    datafile=$plotdir/data_${cfg}
+    if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+        bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -c=$cores -lm=${lmem} \
+            -t=${thr} ${descopt} -of=$datafile --tag=${tag} --verbose
+        cat $datafile
+    fi
+
+    # FORMAT
+    datapfx=${TMP_FILE_PFX}
+    for metric in  "time" "faults" "kidle" "uidle"; do 
+        colname=
+        case $metric in
+        "time")         colname=Time;;
+        "uidle")        colname=UIdle;;
+        "kidle")        colname=KIdle;;
+        "faults")       colname=Flts;;
+        *)              echo "Unknown kind"; exit;;
+        esac
+
+        tmpfile=${datapfx}${metric}
+        echo "Phase",$(csv_column_as_str "$datafile" "Tag") > $tmpfile
+        echo "Total",$(csv_column_as_str "$datafile" "${colname}(T)") >> $tmpfile
+        echo "LocalSort",$(csv_column_as_str "$datafile" "${colname}(p1)") >> $tmpfile
+        echo "Merge",$(csv_column_as_str "$datafile" "${colname}(p4)") >> $tmpfile
+        echo "Copyback",$(csv_column_as_str "$datafile" "${colname}(cb)") >> $tmpfile
+        cat $tmpfile
+    done
+
+    # time bar chart
+    metric=time
+    YSCALE="--ymin 0 --ymax 400"
+    plotname=${plotdir}/bar_${metric}_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  \
+            -d ${datapfx}${metric} -xc "Phase"  \
+            -yc "nofaults"  -l "nofaults"       \
+            -yc "pthreads"  -l "pthreads"       \
+            -yc "uthreads"  -l "uthreads"       \
+            -yc "sync"      -l "sync"           \
+            -yc "async"     -l "async"          \
+            -yc "async+"    -l "async+"         \
+            -yl "${ylabel}" ${YSCALE} -xl " "   \
+            --size 4 3 -fs 11 -of $PLOTEXT -o $plotname
+    fi
+    files="${files} ${plotname}"
+    
+    # idle time bar chart
+    metric=idle
+    YSCALE="--ymin 0 --ymax 100"
+    plotname=${plotdir}/bar_${metric}_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  \
+            -d ${tmpfile} -xc "Phase"               \
+            -dyc ${datapfx}kidle "nofaults" -l "nofaults"   -bs 1   -bhs "/"    -cmi 0  \
+            -dyc ${datapfx}uidle "nofaults" -l " "          -bs 0   -bhs "."    -cmi 1  \
+            -dyc ${datapfx}kidle "pthreads" -l "pthreads"   -bs 1   -bhs "/"    -cmi 0  \
+            -dyc ${datapfx}uidle "pthreads" -l " "          -bs 0   -bhs "."    -cmi 1  \
+            -dyc ${datapfx}kidle "uthreads" -l "uthreads"   -bs 1   -bhs "/"    -cmi 0  \
+            -dyc ${datapfx}uidle "uthreads" -l " "          -bs 0   -bhs "."    -cmi 1  \
+            -dyc ${datapfx}kidle "sync"     -l "sync"       -bs 1   -bhs "/"    -cmi 0  \
+            -dyc ${datapfx}uidle "sync"     -l " "          -bs 0   -bhs "."    -cmi 1  \
+            -dyc ${datapfx}kidle "async"    -l "async"      -bs 1   -bhs "/"    -cmi 0  \
+            -dyc ${datapfx}uidle "async"    -l " "          -bs 0   -bhs "."    -cmi 1  \
+            -dyc ${datapfx}kidle "async+"   -l "async+"     -bs 1   -bhs "/"    -cmi 0  \
+            -dyc ${datapfx}uidle "async+"   -l " "          -bs 0   -bhs "."    -cmi 1  \
+            -yl "Idle Time (s)" -xl " " ${YSCALE} --size 4 3 -fs 11 -of $PLOTEXT -o $plotname
+    fi
+    files="${files} ${plotname}"
+
+    # faults bar chart
+    metric=faults
+    YSCALE="--ymin 0 --ymax 13 --ymul 1e-6"
+    plotname=${plotdir}/bar_${metric}_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  \
+            -d ${datapfx}${metric} -xc "Phase"      \
+            -yc "nofaults"  -l "nofaults"           \
+            -yc "pthreads"  -l "pthreads"           \
+            -yc "uthreads"  -l "uthreads"           \
+            -yc "sync"      -l "sync"               \
+            -yc "async"     -l "async"              \
+            -yc "async+"    -l "async+"             \
+            -yl "Faults (millions)" ${YSCALE} -xl " "   \
+            --size 4 3 -fs 11 -of $PLOTEXT -o $plotname
+    fi
+    files="${files} ${plotname}"
+
+    # Combine
+    plotname=${plotdir}/bar_charts_${cfg}.$PLOTEXT
+    montage -tile 3x0 -geometry +5+5 -border 5 $files ${plotname}
     display ${plotname} &
 fi
 
