@@ -589,8 +589,7 @@ if [ "$PLOTID" == "8" ]; then
     YSCALE="--ymin 0 --ymax 100"
     plotname=${plotdir}/bar_${metric}_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  \
-            -d ${tmpfile} -xc "Phase"               \
+        python3 ${ROOT_SCRIPTS_DIR}/plot.py -z bar  -xc "Phase"                         \
             -dyc ${datapfx}kidle "nofaults" -l "nofaults"   -bs 1   -bhs "/"    -cmi 0  \
             -dyc ${datapfx}uidle "nofaults" -l " "          -bs 0   -bhs "."    -cmi 1  \
             -dyc ${datapfx}kidle "pthreads" -l "pthreads"   -bs 1   -bhs "/"    -cmi 0  \

@@ -31,9 +31,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-colors = ['r', 'b', 'g', 'brown', 'c', 'k', 'orange', 'm','orangered','y']
-linetypes = ['g-','g--','g-+']
-markers = ['o','x','+','s','+', '|', '^']
+COLORS = ['r', 'b', 'g', 'brown', 'c', 'k', 'orange', 'm','orangered','y']
+MARKERS = ['o','x','+','s','+', '|', '^']
 
 class PlotType(Enum):
     """ Available charts """
@@ -156,8 +155,9 @@ class Plot:
     def read_xcolumn(self):
         "read and return x-column data for this plot"
         if not self.xcolumn: return None
-        assert os.path.exists(self.xdatafile), "x-column datafile not found"
-        dframe = pd.read_csv(self.xdatafile, skipinitialspace=True)
+        xdatafile = self.xdatafile if self.xdatafile else self.ydatafile
+        assert os.path.exists(xdatafile), "x-column datafile not found"
+        dframe = pd.read_csv(xdatafile, skipinitialspace=True)
         return dframe[self.xcolumn]
     def read_ycolumn(self):
         "read and return y-column data for this plot"
@@ -186,8 +186,9 @@ def parser_definition():
 
     parser.add_argument('-xc', '--xcolumn',
         action='store',
-        help='CSV column name for X-coordinate. Defaults to the row index '
-            'if not provided.')
+        help='CSV column name for X-coordinate. Looks up the column in the same'
+            ' file as corresponding Y-column. Defaults to the row index '
+            ' if not provided.')
 
     parser.add_argument('-yc', '--ycolumn',
         action='append',
@@ -199,7 +200,7 @@ def parser_definition():
         nargs=2,
         action='store',
         metavar=('XDATAFILE', 'XCOLUMN'),
-        help='Like -xcol but also specify a CSV file for the X-column')
+        help='Like -xcol but also specify a CSV file for the X-column for all plots')
 
     parser.add_argument('-dyc', '--dfileycol',
         nargs=2,
@@ -242,6 +243,11 @@ def parser_definition():
     parser.add_argument('-lt', '--ltitle',
         action='store',
         help='Title on the plot legend',
+        default=None)
+
+    parser.add_argument('-twlt', '--twinltitle',
+        action='store',
+        help='Title on the twin plot legend',
         default=None)
 
     parser.add_argument('-xl', '--xlabel',
@@ -480,7 +486,7 @@ def parser_get_plots(parser, args):
     formats += 1 if (args.dfileycol is not None) else 0
     formats += 1 if (args.datafile is not None or args.ycolumn is not None) else 0
     if formats != 1:
-        parser.error('One (and only one) of the (-d/-yc) or (-dyc) or (-dyce)'
+        parser.error('One (and only one) of the (-d/-yc) or (-dyc) or (-dyce) '
             'formats should be used to provide input data!')
 
     if (args.datafile or args.ycolumn) and \
@@ -504,16 +510,13 @@ def parser_get_plots(parser, args):
     plots = []
     if args.dfileycolyerr is not None:
         for (dfile, ycol, yerr) in args.dfileycolyerr:
-            if not xdatafile:   xdatafile = dfile
             plots.append(Plot(dfile, ycol, yerr, xdatafile, xcolumn))
     elif args.dfileycol is not None:
         for (dfile, ycol) in args.dfileycol:
-            if not xdatafile:   xdatafile = dfile
             plots.append(Plot(dfile, ycol, None, xdatafile, xcolumn))
     else:
         for dfile in args.datafile:
-            for ycol in args.ycol:
-                if not xdatafile:   xdatafile = dfile
+            for ycol in args.ycolumn:
                 plots.append(Plot(dfile, ycol, None, xdatafile, xcolumn))
 
     # Infer twin plots
@@ -528,8 +531,9 @@ def parser_get_plots(parser, args):
         if args.plabel and len(args.plabel) != len(plots):
             parser.error("If plot labels are provided and --labelincr is not, "
                 "labels must be provided for each plot and in the same order")
-        for i, label in enumerate(args.plabel):
-            plots[i].label = label
+        if args.plabel:
+            for i, label in enumerate(args.plabel):
+                plots[i].label = label
     else:
         if not args.plabel:
             parser.error("If --labelincr is specified, plot labels must be "
@@ -556,7 +560,7 @@ def parser_get_plots(parser, args):
     return plots
 
 def main():
-    """ Main workflow. Super messy! """
+    """ Main workflow """
     parser = parser_definition()
     args = parser.parse_args()
     plots = parser_get_plots(parser, args)
@@ -576,15 +580,15 @@ def main():
     if args.twin:
         axtwin = axmain.twinx()
         # TODO: set the twin axis to the same color as the first twin plot
-        # axes.spines['right'].set_color(colors[cidx])
-        # axes.tick_params(axis='y', colors=colors[cidx])
-        # axes.yaxis.label.set_color(colors[cidx])
+        # axes.spines['right'].set_color(COLORS[cidx])
+        # axes.tick_params(axis='y', COLORS=COLORS[cidx])
+        # axes.yaxis.label.set_color(COLORS[cidx])
 
     # Loop params init
     cidx = 0
     midx = 0
     base_dataset = None
-    xcol = None
+    temp_xcol = None
     total_width = 0
 
     # Add plots one by one
@@ -595,7 +599,7 @@ def main():
         # Get data
         xcol = plot.read_xcolumn()
         ycol = plot.read_ycolumn()
-        if not xcol:    xcol = ycol.index
+        if xcol is None:    xcol = ycol.index
         yerr = plot.read_yerror()
         ymul = args.tymul if plot.is_twin else args.ymul
 
@@ -613,11 +617,11 @@ def main():
                     ycol = [i/j for i,j in zip(ycol, base_dataset)]
 
             if args.xstr:   xcol = [str(x) for x in xcol]
-            axes.errorbar(xcol, ycol, yerr=yerr, label=plot.label, 
-                color=colors[cidx],
-                marker=(None if args.nomarker else markers[midx]),
-                markerfacecolor=(None if args.nomarker else colors[cidx]),
-                ls=args.linestyle[plot_num] if args.linestyle is not None else None)
+            axes.errorbar(xcol, ycol, yerr=yerr, label=plot.label,
+                color=COLORS[cidx],
+                marker=(None if args.nomarker else MARKERS[midx]),
+                markerfacecolor=(None if args.nomarker else COLORS[cidx]),
+                ls=args.linestyle[plot_num].as_tuple() if args.linestyle else None)
             # if args.xstr:   ax.set_xticks(xc)
             # if args.xstr:   ax.set_xticklabels(xc, rotation='45')
 
@@ -625,30 +629,30 @@ def main():
             xcol = [x * args.xmul for x in xcol]
             ycol = [y * ymul for y in ycol]
             marker_size = 2*(72./fig.dpi)**2 if len(ycol) > 1000 else None
-            axes.scatter(xcol, ycol, label=plot.label, color=colors[cidx],
-                marker=(None if args.nomarker else markers[midx]), s=marker_size)
+            axes.scatter(xcol, ycol, label=plot.label, color=COLORS[cidx],
+                marker=(None if args.nomarker else MARKERS[midx]), s=marker_size)
             if args.xstr:   axes.set_xticks(xcol)
             if args.xstr:   axes.set_xticklabels(xcol, rotation='45')
 
         elif args.ptype == PlotType.BAR:
             xstart = np.arange(len(xcol)) * (len(plots) + 1) * args.barwidth
-            if xcol is None:  xcol = xstart
+            if temp_xcol is None:  temp_xcol = xstart
             xcol = [x * args.xmul for x in xcol]
             ycol = [y * ymul for y in ycol]
             yerr = [y * ymul for y in yerr] if yerr is not None else None
 
-            axes.bar(xcol, ycol, yerr=yerr, width=args.barwidth,
-                bottom=base_dataset, label=plot.label, color=colors[cidx],
+            axes.bar(temp_xcol, ycol, yerr=yerr, width=args.barwidth,
+                bottom=base_dataset, label=plot.label, color=COLORS[cidx],
                 hatch=str(args.barhatchstyle[plot_num]) \
                     if args.barhatchstyle is not None else None)
-
             # ax.set_xticklabels(xcol, rotation='15' if args.xstr else 0)
-            if args.barstack and args.barstack[plot_num] == 1:
+
+            if args.stacknextbar and args.stacknextbar[plot_num] == 1:
                 if base_dataset is None:    base_dataset = ycol
                 else:   base_dataset = [a + b for a, b in zip(base_dataset, ycol)]
             else:
                 base_dataset = None
-                xcol = xcol + args.barwidth
+                temp_xcol = temp_xcol + args.barwidth
                 total_width += args.barwidth
 
             if plot_num == len(plots) - 1:
@@ -663,10 +667,12 @@ def main():
             else:
                 xcol = np.sort(ycol)
                 ycol = 1. * np.arange(len(ycol)) / (len(ycol) - 1)
+            print(xcol)
+            print(ycol)
 
             # See if head and/or tail needs trimming
-            # NOTE: We don't remove values, instead we limit the axes. This is essentially 
-            # zooming in on a CDF when the head or tail is too long
+            # NOTE: We don't remove values, instead we limit the axes. This is
+            # essentially zooming in on a CDF when the head or tail is too long
             head = None
             tail = None
             if args.nohead:
@@ -685,39 +691,36 @@ def main():
 
             xcol = [x * args.xmul for x in xcol]
             ycol = [y * ymul for y in ycol]
-            axes.step(xcol, ycol, label=plot.label, color=colors[cidx], 
-                where="post", marker=(None if args.nomarker else markers[midx]),
+            axes.step(xcol, ycol, label=plot.label, color=COLORS[cidx],
+                where="post", marker=(None if args.nomarker else MARKERS[midx]),
                 ls=args.linestyle[plot_num] if args.linestyle is not None else None)
-                # markerfacecolor=(None if args.nomarker else colors[cidx]))
+                # markerfacecolor=(None if args.nomarker else COLORS[cidx]))
 
         else:
             raise Exception("chart type not supported")
 
+        # Decide color and marker for the next plot
         if args.colormarkerincr:
-            cidx = (cidx + args.colormarkerincr[plot_num]) % len(colors)
-            midx = (midx + args.colormarkerincr[plot_num]) % len(markers)
+            cidx = (cidx + args.colormarkerincr[plot_num]) % len(COLORS)
+            midx = (midx + args.colormarkerincr[plot_num]) % len(MARKERS)
         else:
-            cidx = (cidx + 1) % len(colors)
-            midx = (midx + 1) % len(markers)
+            cidx = (cidx + 1) % len(COLORS)
+            midx = (midx + 1) % len(MARKERS)
 
-        if args.labelincr is None or args.labelincr[plot_num] == 1:
-            labelidx += 1
-
-        plot_num += 1
 
     # Set x-axis params
     xlabel = args.xlabel if args.xlabel else plots[0].xcolumn
     axmain.set_xlabel(xlabel)
     if args.xmin is not None:   axmain.set_xlim(xmin=args.xmin)
     if args.xmax is not None:   axmain.set_xlim(xmax=args.xmax)
-    if args.xlog is not None:   axmain.set_xscale('log', basex=10)
+    if args.xlog:               axmain.set_xscale('log', basex=10)
 
     # Set y-axis params
     ylabel = args.ylabel if args.ylabel else plots[0].ycolumn
     axmain.set_ylabel(ylabel)
     if args.ymin is not None:   axmain.set_ylim(ymin=args.ymin)
     if args.ymax is not None:   axmain.set_ylim(ymax=args.ymax)
-    if args.ylog is not None:   axmain.set_yscale('log')
+    if args.ylog:               axmain.set_yscale('log')
 
     # Set twin y-axis params
     if axtwin:
@@ -726,14 +729,18 @@ def main():
         if args.tymin is not None:   axtwin.set_ylim(ymin=args.tymin)
         if args.tymax is not None:   axtwin.set_ylim(ymax=args.tymax)
 
-    # Set legends
-    for axes in [axmain, axtwin]:
-        if axes:
-            lns, labels = axmain.get_legend_handles_labels()
-            # (skip a label if an empty/whitespace string is provided)
-            labels_new = [l for l in labels if not l.isspace()]
-            lns_new = [l for i,l in enumerate(lns) if not labels[i].isspace()]
-            args.lloc.set_legened (axes, lns_new, labels_new, args.ltitle)
+    # Set main legend (skip a label if empty/whitespace text)
+    lns, labels = axmain.get_legend_handles_labels()
+    labels_new = [l for l in labels if not l.isspace()]
+    lns_new = [l for i,l in enumerate(lns) if not labels[i].isspace()]
+    args.legendloc.add_legend(axes, lns_new, labels_new, args.ltitle)
+
+    # Set twin legend (skip a label if empty/whitespace text)
+    if axtwin:
+        lns, labels = axtwin.get_legend_handles_labels()
+        labels_new = [l for l in labels if not l.isspace()]
+        lns_new = [l for i,l in enumerate(lns) if not labels[i].isspace()]
+        args.twinlegendloc.add_legend(axes, lns_new, labels_new, args.twinltitle)
 
     # Add any horizontal lines (only supported for main axes now)
     hlines = []
@@ -750,7 +757,7 @@ def main():
         plt.text(0.5, intercept, label, color='black', fontsize='small',
             transform=axmain.get_yaxis_transform(), rotation='horizontal')
 
-    # Add any vertical lines (only supported for main axes now)
+    # Add any vertical lines
     vlines = []
     if args.vlines:
         vlines += [(v, str(v)) for v in args.vlines]
@@ -761,6 +768,7 @@ def main():
                 intercept = int(line.split(",")[1])
                 vlines.append((intercept, label))
     for (intercept, label) in vlines:
+        plt.axvline(x=intercept, ls='dashed')
         plt.text(intercept, 0.3, label, color='black', fontsize='small',
             transform=axmain.get_xaxis_transform(), rotation='vertical')
 
