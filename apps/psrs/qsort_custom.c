@@ -23,6 +23,7 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
             addr = &base[i];
             if (((unsigned long)addr & _PAGE_OFFSET_MASK) == (_PAGE_SIZE - sizeof(qelement_t))) {
 #ifndef NO_QSORT_ANNOTS
+                POSSIBLE_READ_FAULT_AT(addr);   /* redundant */
                 POSSIBLE_WRITE_FAULT_AT(addr);
 #endif
             }
@@ -34,6 +35,7 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
             addr = &base[j];
             if (((unsigned long)addr & _PAGE_OFFSET_MASK) == (_PAGE_SIZE - sizeof(qelement_t))) {
 #ifndef NO_QSORT_ANNOTS
+                POSSIBLE_READ_FAULT_AT(addr);   /* redundant */
                 POSSIBLE_WRITE_FAULT_AT(addr);
 #endif
             }
