@@ -59,13 +59,13 @@ check_for_stop() {
     fi
 }
 
-desc="paper-cores"
+desc="qsort-wpfaults"
 CFLAGS_BEFORE=$CFLAGS
-for cores in 8 4; do
-    for lmem in 500000000; do 
-        for tpc in 6 8 10 12 14; do 
+for cores in 1; do
+    for lmem in $LMEM; do 
+        for tpc in 5; do 
             # for cfg in "pthr" "uthr" "kona-uthr" "apf-sync" "apf-async" "kona-pthr"; do
-            for cfg in "kona-pthr" "apf-async+"; do
+            for cfg in "kona-uthr" "apf-sync" "apf-async"; do
             # for cfg in "kona_pthr"; do
                 OPTS=
                 CFLAGS="$CFLAGS_BEFORE"

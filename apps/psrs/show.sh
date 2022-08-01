@@ -211,7 +211,7 @@ for exp in $LS_CMD; do
         # for kind in "total" "phase1" "phase2" "phase3" "phase4" "copyback"; do 
         for kind in "T" "p1" "p2" "p3" "p4" "cb"; do 
             case $kind in
-            "T")        start=`cat ${exp}/phase1`;      end=`cat ${exp}/end`;       v=  ;;
+            "T")        start=`cat ${exp}/phase1`;      end=`cat ${exp}/end`;       v=1 ;;
             "p1")       start=`cat ${exp}/phase1`;      end=`cat ${exp}/phase2`;    v=  ;;
             "p2")       start=`cat ${exp}/phase2`;      end=`cat ${exp}/phase3`;    v=  ;;
             "p3")       start=`cat ${exp}/phase3`;      end=`cat ${exp}/phase4`;    v=  ;;
@@ -273,14 +273,14 @@ for exp in $LS_CMD; do
             total_idle_us=$((user_idle_us+kernel_idle_us))
 
             # Verbose
-            if [[ $v ]] && [[ $VERBOSE ]]; then 
+            if [[ $v ]]; then 
                 HEADER="$HEADER,PF";                LINE="$LINE,${faults}";
                 HEADER="$HEADER,AsyncPF";           LINE="$LINE,${afaults}";
-                # HEADER="$HEADER,ReadPF";          LINE="$LINE,${faultsr}";
-                # HEADER="$HEADER,WritePF";         LINE="$LINE,${faultsw}";
-                # HEADER="$HEADER,WPFaults";        LINE="$LINE,${faultswp}";
-                # HEADER="$HEADER,PF(P)";           LINE="$LINE,${pf_posted}";
-                # HEADER="$HEADER,PF(R)";           LINE="$LINE,${pf_returned}";
+                HEADER="$HEADER,ReadPF";          LINE="$LINE,${faultsr}";
+                HEADER="$HEADER,WritePF";         LINE="$LINE,${faultsw}";
+                HEADER="$HEADER,WPFaults";        LINE="$LINE,${faultswp}";
+                HEADER="$HEADER,PF(P)";           LINE="$LINE,${pf_posted}";
+                HEADER="$HEADER,PF(R)";           LINE="$LINE,${pf_returned}";
             fi
 
             # Condensed columns
