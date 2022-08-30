@@ -1,14 +1,15 @@
 import os
 import argparse
-import pandas as pd
 import sys
+import pandas as pd
 
 TIMECOL = "time"
 KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in",
     "n_net_page_out", "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty",
-    "n_faults_wp", "n_flush_fail", "n_evictions", "n_afaults_r", "n_afaults_w", 
-    "n_afaults"]                            
-KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure"]
+    "n_faults_wp", "n_flush_fail", "n_evictions", "n_afaults_r", "n_afaults_w",
+    "n_afaults"]
+KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure",
+    "madvise_size"]
 
 def main():
     parser = argparse.ArgumentParser("Process input and write csv-formatted data to stdout/output file")
@@ -34,11 +35,12 @@ def main():
     if not 'n_evictions' in df:
         df['n_evictions'] = df['n_net_page_out']
 
-    df[TIMECOL] = df[TIMECOL] - df[TIMECOL].iloc[0]
-    for k in KONA_FIELDS_ACCUMULATED:
-        if k in df:
-            df[k] = df[k].diff()
-    df = df.iloc[1:]    #drop first row
+    if not df.empty:
+        df[TIMECOL] = df[TIMECOL] - df[TIMECOL].iloc[0]
+        for k in KONA_FIELDS_ACCUMULATED:
+            if k in df:
+                df[k] = df[k].diff()
+        df = df.iloc[1:]    #drop first row
 
     # write out
     out = args.out if args.out else sys.stdout
