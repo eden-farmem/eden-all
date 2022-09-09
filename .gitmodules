@@ -13,3 +13,6 @@
 [submodule "apps/parsec-benchmark"]
 	path = apps/parsec
 	url = git@gitlab.eng.vmware.com:kona/parsec-kona.git
+[submodule "fastswap"]
+	path = other-systems/fastswap
+	url = git@gitlab.eng.vmware.com:kona/fastswap.git
