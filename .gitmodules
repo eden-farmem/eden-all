@@ -16,3 +16,6 @@
 [submodule "fastswap"]
 	path = other-systems/fastswap
 	url = git@gitlab.eng.vmware.com:kona/fastswap.git
+[submodule "aifm"]
+	path = other-systems/aifm
+	url = git@gitlab.eng.vmware.com:kona/aifm.git
