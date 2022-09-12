@@ -381,7 +381,7 @@ for retry in 1; do
     fi 
 
     if [[ $GDB ]]; then 
-        wrapper="gdbserver :1234 --wrapper $wrapper --";
+        wrapper="gdbserver --wrapper env $wrapper --  :1234 ";
     fi
     # args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS}"	#shenango args
     args="${NKEYS} ${NTHREADS}"

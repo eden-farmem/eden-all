@@ -579,7 +579,7 @@ if [ "$PLOTID" == "8" ]; then
             -yc "sync"      -l "sync"           \
             -yc "async"     -l "async"          \
             -yc "async+"    -l "async+"         \
-            -yl "${ylabel}" ${YSCALE} -xl " "   \
+            -yl "Time (s)" ${YSCALE} -xl " "    \
             --size 4 3 -fs 11 -of $PLOTEXT -o $plotname
     fi
     files="${files} ${plotname}"
