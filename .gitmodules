@@ -18,3 +18,6 @@
 	url = git@gitlab.eng.vmware.com:kona/fastswap.git
 [submodule "other-systems/aifm"]
 	url = git@gitlab.eng.vmware.com:kona/aifm.git
+[submodule "apps/dataframe"]
+	path = apps/dataframe
+	url = git@gitlab.eng.vmware.com:kona/dataframe.git
