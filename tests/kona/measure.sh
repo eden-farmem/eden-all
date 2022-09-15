@@ -58,7 +58,7 @@ mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 
 # for kind in "faults" "appfaults" "mixed"; do
-for kind in "faults" "appfaults"; do
+for kind in "faults"; do
     for op in "read"; do        # "r+w" "write"
         cfg=${kind}-${op}
         KC=CONFIG_WP

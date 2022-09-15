@@ -130,11 +130,11 @@ void* thread_main(void* args) {
 	app_fault_packet_t fault;
 	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
-	bool concurrent = false;
+	bool concurrent = false, dirtied = false;
 
 	struct rand_state rand;
 	double sampling_rate = (NUM_LAT_SAMPLES * 1.0 / (RUNTIME_SECS * 1e6 * cycles_per_us));
-	unsigned long start_tsc, now_tsc, next_tsc;
+	unsigned long start_tsc, now_tsc, next_tsc, duration_tsc;
 	bool sample;
 
 	ASSERTZ(rand_seed(&rand, time(NULL)));
@@ -169,7 +169,6 @@ void* thread_main(void* args) {
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
 
-
 	while(!start_button)
 		cpu_relax();
 	while(!stop) {
@@ -184,6 +183,9 @@ void* thread_main(void* args) {
 			next_tsc = (now_tsc - start_tsc) + poisson_event(sampling_rate, rand_next(&rand));
 		}
 #endif
+
+		ASSERT(!kapi_is_page_mapped((unsigned long)p));
+
 		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
 #ifdef USE_APP_FAULTS
 			pr_debug("posting app fault on thread %d, channel %d", tdata->tid, chanid);
@@ -203,14 +205,17 @@ void* thread_main(void* args) {
 					break;
 				case FO_WRITE:
 					post_app_fault_sync(chanid, (unsigned long)p, FO_WRITE);
+					dirtied = true;
 					break;
 				case FO_READ_WRITE:
 					post_app_fault_sync(chanid, (unsigned long)p, FO_READ);
 					post_app_fault_sync(chanid, (unsigned long)p, FO_WRITE);
+					dirtied = true;
 					break;
 				case FO_RANDOM:
 					op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
 					post_app_fault_sync(chanid, (unsigned long)p, op);
+					dirtied = (op == FO_WRITE);
 					break;
 				default:
 					pr_err("unknown fault op %d", op);
@@ -235,12 +240,28 @@ void* thread_main(void* args) {
 
 			if (op == FO_READ || op == FO_READ_WRITE)
 				tmp = *(int*)p;
-			if (op == FO_WRITE || op == FO_READ_WRITE)
-				*(int*)p = tmp;			
+			if (op == FO_WRITE || op == FO_READ_WRITE) {
+				*(int*)p = tmp;
+				dirtied = true;
+			}
 		}
+		duration_tsc = rdtscp(NULL) - now_tsc;
+
+#ifdef MEASURE_KONA_CHECKS
+		/* test the page checks and measure them
+		 * (but measure them first to avoid the caching effects) */
+		now_tsc = rdtsc();
+		kapi_is_page_mapped((unsigned long)p);
+		duration_tsc = rdtscp(NULL) - now_tsc;
+		ASSERT(kapi_is_page_mapped((unsigned long)p));
+		if (!dirtied) {
+			ASSERT(kapi_is_page_mapped_and_readonly((unsigned long)p));
+		}
+#endif
+
 
 		if (sample && latcount < NUM_LAT_SAMPLES) {
-			latencies[latcount] = rdtscp(NULL) - now_tsc;
+			latencies[latcount] = duration_tsc;
 			latcount++;
 		}
 
@@ -250,7 +271,7 @@ void* thread_main(void* args) {
 		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 #ifdef DEBUG
 		i++;
-		if (i == 1000)
+		if (i == 10)
 			break;
 #endif
 
@@ -378,7 +399,7 @@ int main(int argc, char **argv)
 		else {
 			fprintf(outfile, "latency\n");
 			for (i = 0; i < latcount; i++)
-				fprintf(outfile, "%.3lf\n", latencies[i] * 1.0 / cycles_per_us);
+				fprintf(outfile, "%.0lf\n", latencies[i] * 1000.0 / cycles_per_us);
 			fclose(outfile);
 			pr_info("Wrote %d sampled latencies", latcount);
 		}
