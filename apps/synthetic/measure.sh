@@ -113,11 +113,6 @@ run_vary_lmem() {
         name=run-$(date '+%m-%d-%H-%M-%S')
         lmem=$(echo $m | awk '{ print $1 * 1000000000/10 }')
         lmem_mb=$(echo $lmem | awk '{ print $1 /1000000 }')
-
-        tpc=10
-        # if [ $m -lt 3000 ]; then   tpc=5;   fi
-        threads=$((c*tpc))
-
         bash run.sh ${OPTS} -n=${name} -fl="""$CFLAGS""" ${WFLAG} ${KFLAG}                          \
                 -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS} -lm=${lmem} -zs=${zparams}     \
                 -d="""${desc}"""
@@ -179,39 +174,18 @@ run_vary_cores() {
     done
 }
 
-<<<<<<< HEAD
 # kona runs
 c=4
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do 
         # for c in `seq 1 1 2`; do 
-        for c in 4; do
-            desc="${op}-moreruns"
+        for tpc in 10; do
+            desc="debug"
             t=$((c*tpc))
             run_vary_lmem "kona-pthr"       $op $c $t $zs 
-            # run_vary_lmem "apf-async"  $op $c $t $zs 
+            run_vary_lmem "kona-uthr"       $op $c $t $zs 
+            run_vary_lmem "async"           $op $c $t $zs 
         done
-=======
-# # kona runs
-# for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
-#     for zs in 1; do 
-#         # for c in `seq 1 1 2`; do 
-#         for c in 1 2 3 4 5 6 7 8 9 10; do 
-#             desc="${op}-morecores"
-#             t=$((c*100))
-#             run_vary_lmem "kona"       $op $c $t $zs 
-#             run_vary_lmem "apf-async"  $op $c $t $zs 
-#         done
-#     done
-# done
-
-# vanilla runs
-for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
-    for zs in 1; do 
-        desc="${op}-vanilla"
-        # run_vary_cores "pthr"   $op $c $t $zs 
-        run_vary_cores "uthr"   $op $c $t $zs 
->>>>>>> 347bb76b8eef41a2a6669ce44d9dc7868ede5ed4
     done
 done
 

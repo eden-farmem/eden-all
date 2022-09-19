@@ -667,8 +667,6 @@ def main():
             else:
                 xcol = np.sort(ycol)
                 ycol = 1. * np.arange(len(ycol)) / (len(ycol) - 1)
-            print(xcol)
-            print(ycol)
 
             # See if head and/or tail needs trimming
             # NOTE: We don't remove values, instead we limit the axes. This is

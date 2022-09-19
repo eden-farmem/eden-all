@@ -1,5 +1,5 @@
 /*
- * Kona Benchmarks w/ appfaults
+ * Fastswap microbenchmarks
  */
 
 #define _GNU_SOURCE
@@ -26,9 +26,10 @@
 #include "utils.h"
 #include "logging.h"
 #include "ops.h"
-#include "klib.h"
-#include "klib_sfaults.h"
 
+#ifndef FASTSWAP_RECLAIM_CPU
+#define FASTSWAP_RECLAIM_CPU
+#endif
 
 #define GIGA (1ULL << 30)
 
@@ -42,24 +43,19 @@ const int NODE1_CORES[] = {
     21, 22, 23, 24, 25, 26, 27, 
     42, 43, 44, 45, 46, 47, 48, 
     49, 50, 51, 52, 53, 54, 55 };
-const int KONA_CORES[] = { 
-	PIN_EVICTION_HANDLER_CORE, PIN_FAULT_HANDLER_CORE, 
-	PIN_POLLER_CORE, PIN_ACCOUNTING_CORE };
+const int FASTSWAP_CORES[] = { FASTSWAP_RECLAIM_CPU };
 #define CORELIST NODE1_CORES		/*RNIC on node 1*/
-#define EXCLUDED KONA_CORES
+#define EXCLUDED FASTSWAP_CORES
 #define NUM_CORES (sizeof(CORELIST)/sizeof(CORELIST[0]))
 #define NUM_EXCLUDED (sizeof(EXCLUDED)/sizeof(EXCLUDED[0]))
 #define MAX_APP_CORES (NUM_CORES - NUM_EXCLUDED)
 #define MAX_THREADS (MAX_APP_CORES-1)
-#define RUNTIME_SECS 10
-#define NUM_LAT_SAMPLES 5000
+#define RUNTIME_SECS 5
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready, lockstep_start, lockstep_end;
 int start_button = 0, stop_button = 0;
 int stop_button_seen = 0;
-uint64_t latencies[NUM_LAT_SAMPLES];
-int latcount = 0;
 
 struct thread_data {
     int tid;
@@ -86,11 +82,11 @@ enum fault_op {
 
 int next_available_core(int coreidx) {
 	int i;
-	ASSERT(coreidx >= 0 && coreidx < NUM_CORES);
+	ASSERT(coreidx < NUM_CORES);
 	coreidx++;
 	while (coreidx < NUM_CORES) {
 		for(i = 0; i < NUM_EXCLUDED; i++) {
-			if (EXCLUDED[i] == CORELIST[coreidx])
+			if (EXCLUDED[i] == CORELIST[i])
 				break;
 		}
 		if (i == NUM_EXCLUDED)
@@ -101,55 +97,18 @@ int next_available_core(int coreidx) {
 	return coreidx;
 }
 
-/*post app fault and wait for response*/
-static inline void post_app_fault_sync(int channel, unsigned long fault_addr, int is_write){
-	int r;
-	app_fault_packet_t fault;
-	fault.channel = channel; 
-	fault.fault_addr = fault_addr;
-	fault.flags =  is_write ? APP_FAULT_FLAG_WRITE : APP_FAULT_FLAG_READ;
-	fault.tag = (void*) fault_addr;		/*testing*/
-	r = app_post_fault_async(channel, &fault);
-	ASSERTZ(r);		/*can't fail as long as we send one fault at a time*/
-
-	app_fault_packet_t resp;
-	while(app_read_fault_resp_async(channel, &resp))
-		cpu_relax();
-
-	ASSERT(resp.tag == (void*) fault_addr);	/*sanity check*/
-}
-
 void* thread_main(void* args) {
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
-	pr_info("thread %d pinned to core %d", tdata->tid, tdata->core);
+	pr_debug("thread %d pinned to core %d", tdata->tid, tdata->core);
 
-    int self = tdata->tid, chanid;
+    int self = tdata->tid;
 	int r, retries, tmp, i = 0, stop = 0;
 	void *p, *page_buf = malloc(PAGE_SIZE);
-	app_fault_packet_t fault;
 	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
-	bool concurrent = false, dirtied = false;
+	bool concurrent = false;
 
-	struct rand_state rand;
-	double sampling_rate = (NUM_LAT_SAMPLES * 1.0 / (RUNTIME_SECS * 1e6 * cycles_per_us));
-	unsigned long start_tsc, now_tsc, next_tsc, duration_tsc;
-	bool sample;
-
-	ASSERTZ(rand_seed(&rand, time(NULL)));
-	start_tsc = rdtsc();
-
-/*fault kind*/
-#ifdef USE_APP_FAULTS
-	kind = FK_APPFAULT;
-#endif
-#ifdef MIX_FAULTS
-#ifndef USE_APP_FAULTS
-#error MIX_FAULTS needs USE_APP_FAULTS as well
-#endif
-	kind = FK_MIXED;
-#endif
 /*fault operation*/
 #ifdef FAULT_OP
 	op = (enum fault_op) FAULT_OP;
@@ -158,73 +117,24 @@ void* thread_main(void* args) {
 	concurrent = true;
 #endif
 
-	ASSERT(is_appfaults_initialized());
-	chanid = app_faults_get_next_channel();
-
 	p = (void*)(tdata->range_start);
 	p = (void*) page_align(p);
-	pr_info("thread %d with channel %d, memory start %lu, size %lu, kind %d, op %d, concurrent %d", 
-		self, chanid, tdata->range_start, tdata->range_len, kind, op, concurrent);
+	printf("thread %d with memory start %lu, size %lu, kind %d, op %d\n", 
+		self, tdata->range_start, tdata->range_len, kind, op);
 
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
 
-	while(!start_button)
+	while(!start_button)	
 		cpu_relax();
+
 	while(!stop) {
 		if (op == FO_RANDOM)
 			op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
 
-#ifdef LATENCY
-		sample = false;
-		now_tsc = rdtsc();
-		if (now_tsc - start_tsc >= next_tsc) {
-			sample = true;
-			next_tsc = (now_tsc - start_tsc) + poisson_event(sampling_rate, rand_next(&rand));
-		}
-#endif
-
-		ASSERT(!kapi_is_page_mapped((unsigned long)p));
-
 		if (kind == FK_APPFAULT || (kind == FK_MIXED && (rand_next(&tdata->rs) & 1))) {
-#ifdef USE_APP_FAULTS
-			pr_debug("posting app fault on thread %d, channel %d", tdata->tid, chanid);
-
-			if (concurrent) {
-				/*sync with other threads before each fault*/
-				r = pthread_barrier_wait(&lockstep_start);
-				ASSERT(r != EINVAL);
-			}
-
-			if (sample)
-				now_tsc = rdtsc();
-
-			switch(op) {
-				case FO_READ:
-					post_app_fault_sync(chanid, (unsigned long)p, FO_READ);
-					break;
-				case FO_WRITE:
-					post_app_fault_sync(chanid, (unsigned long)p, FO_WRITE);
-					dirtied = true;
-					break;
-				case FO_READ_WRITE:
-					post_app_fault_sync(chanid, (unsigned long)p, FO_READ);
-					post_app_fault_sync(chanid, (unsigned long)p, FO_WRITE);
-					dirtied = true;
-					break;
-				case FO_RANDOM:
-					op = (rand_next(&tdata->rs) & 1) ? FO_READ : FO_WRITE;
-					post_app_fault_sync(chanid, (unsigned long)p, op);
-					dirtied = (op == FO_WRITE);
-					break;
-				default:
-					pr_err("unknown fault op %d", op);
-					ASSERT(0);
-			}
-			pr_debug("page fault served!");
-#else
-			BUG(1);	/*cannot be here without USE_APP_FAULTS*/
-#endif
+			/*no support app faults in fastswap yet*/
+			BUG(1);	
 		}
 		else {
 			/*normal accesses*/
@@ -234,44 +144,17 @@ void* thread_main(void* args) {
 				ASSERT(r != EINVAL);
 			}
 			pr_debug("posting regular fault on thread %d\n", tdata->tid);
-
-			if (sample)
-				now_tsc = rdtsc();
-
 			if (op == FO_READ || op == FO_READ_WRITE)
 				tmp = *(int*)p;
-			if (op == FO_WRITE || op == FO_READ_WRITE) {
+			if (op == FO_WRITE || op == FO_READ_WRITE)
 				*(int*)p = tmp;
-				dirtied = true;
-			}
 		}
-		duration_tsc = rdtscp(NULL) - now_tsc;
-
-#ifdef MEASURE_KONA_CHECKS
-		/* test the page checks and measure them
-		 * (but measure them first to avoid the caching effects) */
-		now_tsc = rdtsc();
-		kapi_is_page_mapped((unsigned long)p);
-		duration_tsc = rdtscp(NULL) - now_tsc;
-		ASSERT(kapi_is_page_mapped((unsigned long)p));
-		if (!dirtied) {
-			ASSERT(kapi_is_page_mapped_and_readonly((unsigned long)p));
-		}
-#endif
-
-
-		if (sample && latcount < NUM_LAT_SAMPLES) {
-			latencies[latcount] = duration_tsc;
-			latcount++;
-		}
-
+		// ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 		tdata->xput_ops++;
 		p += PAGE_SIZE;
-		ASSERT(((unsigned long) p) > tdata->range_start); 
-		ASSERT(((unsigned long) p) < (tdata->range_start + tdata->range_len)); 
 #ifdef DEBUG
 		i++;
-		if (i == 10)
+		if (i == 1000) 	
 			break;
 #endif
 
@@ -288,17 +171,19 @@ void* thread_main(void* args) {
 		else	
 			stop = stop_button;
 	}
-	pr_info("thread %d done with %d faults", tdata->tid, i);
+	pr_debug("thread %d done with %d faults", tdata->tid, i);
 }
 
 int main(int argc, char **argv)
 {
 	unsigned long sysinfo_ehdr;
 	char *p;
+	bool page_mapped;
 	int i, j, r, num_threads, max_threads;
 	uint64_t start, duration;
 	double duration_secs;
 	size_t size;
+	FILE* fp;
 
 	/* parse & validate args */
     if (argc > 2) {
@@ -320,26 +205,15 @@ int main(int argc, char **argv)
 	cycles_per_us = time_calibrate_tsc();
 	printf("time calibration - cycles per µs: %lu\n", cycles_per_us);
 	ASSERT(cycles_per_us);
-#ifdef LATENCY
-	/* no lat support for multiple threads yet */
-	ASSERT(num_threads == 1);
-#endif
 
-	/*kona init*/
-	char value[50];
-	size = 34359738368;	/*32 gb*/
-	sprintf(value, "%lu", size);	
-	setenv("MEMORY_LIMIT", value, 1);		/*32gb, BIG to avoid eviction*/
-	setenv("EVICTION_THRESHOLD", "1", 1);		
-	setenv("EVICTION_DONE_THRESHOLD", "1", 1);
-#ifdef USE_APP_FAULTS
-	sprintf(value, "%d", num_threads);	
-	setenv("APP_FAULT_CHANNELS", value, 1);
-#endif
-	rinit();
-	sleep(1);
+	/* write pid */
+	fp = fopen("main_pid", "w");
+	fprintf(fp, "%d", getpid());
+	fclose(fp);
 
-	p = rmalloc(size);
+	/* alloc mem */
+	size = 10ULL * (1 << 30);
+	p = malloc(size);
 	ASSERT(p != NULL);
 
     struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
@@ -355,7 +229,7 @@ int main(int argc, char **argv)
 		ASSERTZ(rand_seed(&tdata[i].rs, time(NULL) ^ i));
         ASSERT(coreidx < NUM_CORES);
 		coreidx = next_available_core(coreidx);
-        tdata[i].core = CORELIST[coreidx];
+        tdata[i].core = coreidx;
 #ifndef CONCURRENT
 		tdata[i].range_start = ((unsigned long) p) + i * (size / num_threads);
 		tdata[i].range_len = (size / num_threads);
@@ -365,6 +239,9 @@ int main(int argc, char **argv)
 #endif
         pthread_create(&threads[i], NULL, thread_main, (void*)&tdata[i]);
 	}
+
+	/* wait for this proces to be added to fastswap cgroup */
+	sleep(1);
 
 	r = pthread_barrier_wait(&ready);	/*until all threads ready*/
     ASSERT(r != EINVAL);
@@ -377,32 +254,20 @@ int main(int argc, char **argv)
 	} while(duration_secs <= RUNTIME_SECS);
 	stop_button = 1;
 
-	/* wait for threads to finish */
-	for(i = 0; i < num_threads; i++) {
+	/*wait for threads to finish*/
+	for(i = 0; i < num_threads; i++)
 		pthread_join(threads[i], NULL);
-	}
 
-	/* collect xput numbers */
 	uint64_t xput = 0, errors = 0;
 	for (i = 0; i < num_threads; i++) {
 		xput += tdata[i].xput_ops;
 		errors += tdata[i].errors;
 	}
+	
 	printf("ran for %.1lf secs; total xput %lu\n", duration_secs, xput);
-	printf("result:%d,%.0lf\n", num_threads, xput / duration_secs);
+	printf("result:%d,%.0lf,%.1lf\n", num_threads, 
+		xput / duration_secs, 								//total xput
+		duration * 1.0/(cycles_per_us*tdata[0].xput_ops));	//per-op latency
 
-	/* dump latencies to file */
-	if (latcount > 0) {
-		FILE* outfile = fopen("latencies", "w");
-		if (outfile == NULL)
-			pr_warn("could not write to latencies file");
-		else {
-			fprintf(outfile, "latency\n");
-			for (i = 0; i < latcount; i++)
-				fprintf(outfile, "%.0lf\n", latencies[i] * 1000.0 / cycles_per_us);
-			fclose(outfile);
-			pr_info("Wrote %d sampled latencies", latcount);
-		}
-	}
 	return 0;
 }

@@ -3,13 +3,13 @@
 #include <unistd.h>
 #include <math.h>
 
+#include "aes.h"
+#include "common.h"
 #include "logging.h"
 #include "utils.h"
 #include "hopscotch.h"
 #include "snappy.h"
 #include "zipf.h"
-#include "aes.h"
-#include "common.h"
 
 #define MEM_REGION_SIZE 	((1ull<<30) * 32)	// 32 GB
 #define NUM_LAT_SAMPLES 	5000

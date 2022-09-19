@@ -232,6 +232,7 @@ cleanup() {
     fi
     rm -f ${TMP_FILE_PFX}*
     kill_remnants
+    stop_sar
 }
 cleanup     #start clean
 if [[ $CLEANUP ]]; then
