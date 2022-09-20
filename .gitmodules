@@ -19,5 +19,5 @@
 [submodule "other-systems/aifm"]
 	url = git@gitlab.eng.vmware.com:kona/aifm.git
 [submodule "apps/dataframe"]
-	path = apps/dataframe
+	path = apps/dataframe/dataframe
 	url = git@gitlab.eng.vmware.com:kona/dataframe.git
