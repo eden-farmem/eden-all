@@ -1,0 +1,15 @@
+ip              kind       count  percent  code
+0x405dec        read       29008  33       /home/ayelam/rmem-scheduler/apps/synthetic/hopscotch.c:326
+0x7ffff7fc2651  read       15951  18       ??:0
+0x7ffff7fc2806  read       13999  16       ??:0
+0x7ffff7d7cb41  write      13630  15       ??:0
+0x40326f        write      11753  13       /home/ayelam/rmem-scheduler/apps/synthetic/main.c:146 (discriminator 2)
+0x7ffff7f7efc4  read       930    1        ??:0
+0x405e00        read       369    0        /home/ayelam/rmem-scheduler/apps/synthetic/hopscotch.c:327
+0x7ffff7f7efef  wrprotect  111    0        ??:0
+0x7ffff7d75e8e  read       71     0        ??:0
+0x4057c6        write      13     0        /home/ayelam/rmem-scheduler/apps/synthetic/common.h:175
+0x7ffff7f7e784  write      13     0        ??:0
+0x40600b        read       5      0        /home/ayelam/rmem-scheduler/apps/synthetic/hopscotch.c:393
+0x7ffff7d7c76f  wrprotect  2      0        ??:0
+0x7ffff7f7e78e  write      2      0        ??:0
