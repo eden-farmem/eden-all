@@ -23,5 +23,5 @@
 	path = apps/dataframe/dataframe
 	url = git@gitlab.eng.vmware.com:kona/dataframe.git
 [submodule "silodb"]
-	path = apps/silo/silodb
+	path = apps/silo/silo
 	url = git@gitlab.eng.vmware.com:kona/silodb.git
