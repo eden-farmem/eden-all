@@ -14,12 +14,14 @@ usage="bash run.sh
 -ko,--kopts \t C flags passed to gcc when compiling kona\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
 -pf,--pgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
+-kpc,--kona-page-checks \t use kona-provided page status checks instead of the VDSO calls\n
 -t, --threads \t number of shenango worker threads (defaults to --cores)\n
 -c, --cores \t number of CPU cores (defaults to 1)\n
 -zs, --zipfs \t S param of zipf workload\n
 -nk, --nkeys \t number of keys in the hash table\n
 -nb, --nblobs \t number of items in the blob array\n
 -lm, --localmem \t local memory with kona (in bytes)\n
+-lmp, --lmemper \t local memory percentage compared to max rss (only for logging)\n
 -w, --warmup \t run warmup for a few seconds before taking measurement\n
 -o, --out \t output file for any results\n
 -s, --safemode \t build kona with safe mode on\n
@@ -57,6 +59,7 @@ NKEYS=1000
 NBLOBS=1000
 LMEM=1000000000    # 1GB
 NO_HYPERTHREADING="-noht"
+PAGE_CHECKS=vdso
 
 # save settings
 CFGSTORE=
@@ -111,6 +114,11 @@ case $i in
     CFLAGS="$CFLAGS -DWITH_KONA -DANNOTATE_FAULTS"
     ;;
 
+    -kpc|--kona-page-checks)
+    WITH_KONA_PAGE_CHECKS=1
+    PAGE_CHECKS=kona
+    ;;
+
     -sc=*|--shencfg=*)
     CFGFILE="${i#*=}"
     ;;
@@ -145,6 +153,10 @@ case $i in
 
     -lm=*|--localmem=*)
     LMEM=${i#*=}
+    ;;
+
+    -lmp=*|--lmemper=*)
+    LMEMPER=${i#*=}
     ;;
 
     -w|--warmup)
@@ -260,14 +272,17 @@ fi
 # rebuild shenango
 if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     pushd ${SHENANGO_DIR}
-    make clean    
+    make clean
+    OPTS=
     if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
-    if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
-    STATS_CORE_OPT="STATS_CORE=${SHENANGO_STATS_CORE}"    # for runtime stats
-    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}       \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}    \
-        ${STATS_CORE_OPT}
+    if [[ $WITH_KONA ]]; then               OPTS="$OPTS WITH_KONA=1";               fi
+    if [[ $WITH_KONA_PAGE_CHECKS ]]; then   OPTS="$OPTS WITH_KONA_PAGE_CHECKS=1";   fi
+    if [[ $PAGE_FAULTS ]]; then             OPTS="$OPTS PAGE_FAULTS=$PAGE_FAULTS";  fi
+    OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"    # for runtime stats
+    echo make all-but-tests -j ${DEBUG} ${OPTS} NUMA_NODE=${NUMA_NODE} \
+        EXCLUDE_CORES=${SHENANGO_EXCLUDE}
+    make all-but-tests -j ${DEBUG} ${OPTS} NUMA_NODE=${NUMA_NODE} \
+        EXCLUDE_CORES=${SHENANGO_EXCLUDE}
     popd 
 fi
 
@@ -325,7 +340,9 @@ save_cfg "warmup"   $WARMUP
 save_cfg "scheduler" $SCHEDULER
 save_cfg "backend"  $BACKEND
 save_cfg "localmem" $LMEM
+save_cfg "lmemper"  $LMEMPER
 save_cfg "pgfaults" $PAGE_FAULTS
+save_cfg "pgchecks" $PAGE_CHECKS
 save_cfg "desc"     $README
 echo -e "$CFGSTORE" > settings
 

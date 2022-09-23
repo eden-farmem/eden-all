@@ -25,3 +25,6 @@
 [submodule "silodb"]
 	path = apps/silo/silo
 	url = git@gitlab.eng.vmware.com:kona/silodb.git
+[submodule "kona2"]
+	path = backends/kona2
+	url = git@gitlab.eng.vmware.com:kona/kona.git
