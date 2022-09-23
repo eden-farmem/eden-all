@@ -126,8 +126,8 @@ case $i in
     ;;
 
     -np|--nopie)
-    CFLAGS="$CFLAGS -g"                 #for symbols
-    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE
+    CFLAGS="$CFLAGS -g -no-pie -fno-pie"   #no PIE
+    CXXFLAGS="$CXXFLAGS -g -no-pie -fno-pie"
     echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
     KONA_OPTS="${KONA_OPTS} -DSAMPLE_KERNEL_FAULTS"  #turn on logging in kona
     ;;
