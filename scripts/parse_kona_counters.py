@@ -7,7 +7,7 @@ TIMECOL = "time"
 KONA_FIELDS_ACCUMULATED = ["n_faults", "n_faults_r", "n_faults_w", "n_net_page_in",
     "n_net_page_out", "n_madvise", "n_madvise_fail", "n_rw_fault_q", "n_page_dirty",
     "n_faults_wp", "n_flush_fail", "n_evictions", "n_afaults_r", "n_afaults_w",
-    "n_afaults"]
+    "n_afaults", "n_af_waitq"]
 KONA_DISPLAY_FIELDS = KONA_FIELDS_ACCUMULATED + ["malloc_size", "mem_pressure",
     "madvise_size"]
 
