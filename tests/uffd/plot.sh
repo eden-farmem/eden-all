@@ -68,7 +68,7 @@ mkdir -p $DATADIR
 add_data_to_plot() {
     group=$1
     label=$2
-    cflag=$3
+    cflags=$3
     share_uffd=$4
     hthr=$5
 
@@ -81,7 +81,7 @@ add_data_to_plot() {
         echo "cores,xput,errors,latns" > $datafile
         for cores in 1 2 4 8 16; do 
             bash ${SCRIPT_DIR}/run.sh -t=$cores ${sflag} ${hflag} \
-                -o="$cflag" -of=${datafile}
+                -o="$cflags" -of=${datafile}
         done
     fi
     # cat $datafile
@@ -126,8 +126,10 @@ rm -f $latfile
 
 ## benchmark UFFD copy
 if [ "$PLOTID" == "1" ]; then
-    add_data_to_plot "uffd_copy" "one_fd"       "-DMAP_PAGE" 1
-    add_data_to_plot "uffd_copy" "fd_per_core"  "-DMAP_PAGE" 0
+    add_data_to_plot "uffd_copy" "one_fd"            "-DMAP_PAGE"                           1
+    add_data_to_plot "uffd_copy" "one_fd_reg"        "-DMAP_PAGE -DSHARE_REGION"            1
+    add_data_to_plot "uffd_copy" "one_fd_reg_nowake" "-DMAP_PAGE -DSHARE_REGION -DNOWAKE"   1
+    add_data_to_plot "uffd_copy" "fd_per_core"       "-DMAP_PAGE"                           0
     generate_plots "uffd_copy"
 fi
 
@@ -136,8 +138,9 @@ if [ "$PLOTID" == "2" ]; then
     plots=
     latfile=${TMP_FILE_PFX}latency
     rm -f $latfile
-    add_data_to_plot "madv_dneed" "one_fd"      "-DUNMAP_PAGE" 1
-    add_data_to_plot "madv_dneed" "fd_per_core" "-DUNMAP_PAGE" 0
+    add_data_to_plot "madv_dneed" "one_fd"          "-DUNMAP_PAGE"              1
+    add_data_to_plot "madv_dneed" "one_fd_one_reg"  "-DMAP_PAGE -DSHARE_REGION" 1
+    add_data_to_plot "madv_dneed" "fd_per_core"     "-DUNMAP_PAGE"              0
     generate_plots   "madv_dneed"
 fi
 

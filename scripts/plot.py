@@ -155,7 +155,6 @@ class Plot:
         if not self.xcolumn: return None
         xdatafile = self.xdatafile if self.xdatafile else self.ydatafile
         assert os.path.exists(xdatafile), "x-column datafile not found"
-        print(xdatafile, self.xcolumn)
         dframe = pd.read_csv(xdatafile, skipinitialspace=True)
         return dframe[self.xcolumn]
     def read_ycolumn(self):
