@@ -74,12 +74,15 @@ add_data_to_plot() {
 
     if [ "$share_uffd" == "1" ]; then  sflag="";            fi
     if [ "$share_uffd" == "0" ]; then  sflag="--nosharefd"; fi
-    if [[ $hthr ]]; then               hflag="-th=${hthr}"; fi
 
     datafile=${DATADIR}/${group}_${label}_xput.dat
     if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
         echo "cores,xput,errors,latns" > $datafile
-        for cores in 1 2 4 8 16; do 
+        for cores in 1 2 4 8; do
+            if [[ $hthr ]]; then
+                if [ "$hthr" == "EQUAL" ]; then     hflag="-th=${cores}";
+                else    hflag="-th=${hthr}";    fi
+            fi
             bash ${SCRIPT_DIR}/run.sh -t=$cores ${sflag} ${hflag} \
                 -o="$cflags" -of=${datafile}
         done
@@ -149,7 +152,7 @@ if [ "$PLOTID" == "3" ]; then
     plots=
     sharefd=1
     YMAX=1.5
-    for hthr in 1 2 4 8 11; do 
+    for hthr in 1 2 4 8 12; do 
         add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_plots "fault_path_one_fd"     ${YMAX}
@@ -160,6 +163,16 @@ if [ "$PLOTID" == "3" ]; then
         add_data_to_plot "fault_path_fd_per_core" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_plots "fault_path_fd_per_core" ${YMAX}
+fi
+
+## benchmark entire fault path with/without hyperthreading handlers
+if [ "$PLOTID" == "4" ]; then
+    plots=
+    sharefd=0
+    YMAX=1.5
+    add_data_to_plot "fault_path_ht_effect" "noht"  "-DACCESS_PAGE"                 $sharefd "EQUAL"
+    add_data_to_plot "fault_path_ht_effect" "ht"    "-DACCESS_PAGE -DHT_HANDLERS"   $sharefd "EQUAL"
+    generate_plots "fault_path_ht_effect" ${YMAX}
 fi
 
 # cleanup

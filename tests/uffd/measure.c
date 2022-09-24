@@ -51,6 +51,7 @@ const int NODE1_CORES[MAX_CORES] = {
     42, 43, 44, 45, 46, 47, 48, 
     49, 50, 51, 52, 53, 54, 55 };
 #define CORELIST NODE0_CORES
+#define HYPERTHREAD_OFFSET 14
 int start_button = 0, stop_button = 0;
 
 enum app_op {
@@ -240,7 +241,7 @@ int main(int argc, char **argv)
 	char *p;
 	bool page_mapped;
 	int i, j, r, nthreads;
-	int handlers_per_fd, nhandlers, nuffd;
+	int handlers_per_fd, nhandlers, nuffd, handler_start_core;
 	uint64_t start, duration;
 	double duration_secs;
 	size_t size;
@@ -292,6 +293,7 @@ int main(int argc, char **argv)
 #if defined(ACCESS_PAGE)
 	/* start fault handler threads. don't access pages without enabling handlers */
     struct handler_data hdata[MAX_THREADS] CACHE_ALIGN = {0};
+	handler_start_core = coreidx;
 	for(i = 0; i < nhandlers; i++) {
 		hdata[i].tid = i;
         ASSERT(coreidx < MAX_CORES);
@@ -361,8 +363,20 @@ int main(int argc, char **argv)
 	do_app_work(OP_MAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
 	xput = do_app_work(OP_UNMAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
 #elif defined(ACCESS_PAGE)
-	xput = do_app_work(OP_ACCESS_PAGE, nthreads, tdata, coreidx, &errors, &latns);
-#else 
+	int app_start_core;
+	#if HT_HANDLERS
+	ASSERT(nthreads == nhandlers);	/* only supported for this case */
+	ASSERT(coreidx < HYPERTHREAD_OFFSET);	/* handlers should not spill over into hyperthreads */
+	app_start_core = handler_start_core + HYPERTHREAD_OFFSET;
+	/* check that there are enough threads left for app threads */
+	ASSERT(nthreads <= (MAX_CORES - app_start_core));
+	#else
+	app_start_core = coreidx;
+	/* guard against inadvertently hyperthreading handlers */
+	ASSERT(app_start_core != handler_start_core + HYPERTHREAD_OFFSET);
+	#endif
+	xput = do_app_work(OP_ACCESS_PAGE, nthreads, tdata, app_start_core, &errors, &latns);
+#else
 	printf("Pick an operation: MAP_PAGE, UNMAP_PAGE, ACCESS_PAGE\n");
 	return 1;
 #endif
