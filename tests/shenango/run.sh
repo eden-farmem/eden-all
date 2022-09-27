@@ -24,18 +24,14 @@ usage="Example: bash run.sh -f\n
 SCRIPT_DIR=`dirname "$0"`
 ROOT_DIR="${SCRIPT_DIR}/../.."
 BINFILE="main.out"
-KONA_CFG="PBMEM_CONFIG=CONFIG_WP"
-KONA_OPTS="-DNO_ZEROPAGE_OPT"
-KONA_DIR="${ROOT_DIR}/backends/kona"
-KONA_BIN="${KONA_DIR}/pbmem"
-KONA_RCNTRL_SSH="sc07"
-KONA_RCNTRL_IP="192.168.0.7"
-KONA_RCNTRL_PORT="9202"
-KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
-KONA_MEMSERVER_IP=$KONA_RCNTRL_IP
-KONA_MEMSERVER_PORT="9200"
+RCNTRL_SSH="sc07"
+RCNTRL_IP="192.168.0.7"
+RCNTRL_PORT="9202"
+MEMSERVER_SSH=$RCNTRL_SSH
+MEMSERVER_IP=$RCNTRL_IP
+MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/scheduler"
-TMP_FILE_PFX="tmp_pgf_"
+TMP_FILE_PFX="tmp_shen_"
 CFGFILE="default.config"
 NUM_THREADS=1
 
@@ -50,25 +46,6 @@ case $i in
 
     -fl=*|--cflags=*)
     CFLAGS="$CFLAGS ${i#*=}"
-    ;;
-
-    -wk|--with-kona)
-    WITH_KONA=1
-    CFLAGS="$CFLAGS -DWITH_KONA"
-    ;;
-
-    -kc=*|--kconfig=*)
-    KONA_CFG="PBMEM_CONFIG=${i#*=}"
-    ;;
-
-    -ko=*|--kopts=*)
-    KONA_OPTS="$KONA_OPTS ${i#*=}"
-    ;;
-        
-    -pf=*|--pgfaults=*)
-    PAGE_FAULTS="${i#*=}"
-    WITH_KONA=1
-    CFLAGS="$CFLAGS -DWITH_KONA"
     ;;
 
     -sc=*|--shencfg=*)
@@ -89,10 +66,6 @@ case $i in
 
     -o=*|--out=*)
     OUTFILE=${i#*=}
-    ;;
-
-    -s|--safemode)
-    kona_cflags="$kona_cflags -DSAFE_MODE"
     ;;
 
     -g|--gdb)
@@ -123,12 +96,6 @@ done
 # NUMA node1 CPU(s):   14-27,42-55
 # RNIC NUMA node = 1
 NUMA_NODE=1
-KONA_POLLER_CORE=53
-KONA_EVICTION_CORE=54
-KONA_FAULT_HANDLER_CORE=55
-KONA_ACCOUNTING_CORE=52
-SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},\
-${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
 
 cleanup() {
@@ -136,8 +103,8 @@ cleanup() {
     rm -f ${TMP_FILE_PFX}*
     rm -f ${CFGFILE}
     sudo pkill iokerneld
-    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
-    ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
+    ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
+    ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
 cleanup     #start clean
 if [[ $CLEANUP ]]; then
@@ -145,43 +112,15 @@ if [[ $CLEANUP ]]; then
 fi
 
 set -e
-# build kona
-if [[ $FORCE ]] && [[ $WITH_KONA ]]; then 
-    pushd ${KONA_BIN}
-    # make je_clean
-    make clean
-    make je_jemalloc
-    KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS"
-    OPTS=
-    OPTS="$OPTS POLLER_CORE=$KONA_POLLER_CORE"
-    OPTS="$OPTS FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE"
-    OPTS="$OPTS EVICTION_CORE=$KONA_EVICTION_CORE"
-    OPTS="$OPTS ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE}"
-    make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
-    sudo sysctl -w vm.unprivileged_userfaultfd=1   
-    echo 0 | sudo tee /proc/sys/kernel/numa_balancing   # to avoid numa hint faults 
-    popd
-fi
 
 # build shenango
-if [[ $FORCE ]]; then 
-    pushd ${SHENANGO_DIR} 
-    make clean    
-    if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    if [[ $WITH_KONA ]]; then KONA_OPT="WITH_KONA=1";    fi
-    if [[ $PAGE_FAULTS ]]; then PGFAULT_OPT="PAGE_FAULTS=$PAGE_FAULTS"; fi
-    make all-but-tests -j ${DEBUG} ${KONA_OPT} ${PGFAULT_OPT}   \
-        NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE} 
-    popd 
-fi
+pushd ${SHENANGO_DIR} 
+if [[ $FORCE ]]; then make clean; fi
+if [[ $DPDK ]]; then ./dpdk.sh;  fi
+make all-but-tests -j ${DEBUG} ${OPT} ${PGFAULT_OPT} NUMA_NODE=${NUMA_NODE}
+popd 
 
-# compile 
-if [[ $WITH_KONA ]]; then 
-    INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
-    LIBS="${LIBS} -L${KONA_BIN}"
-    LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
-fi
-LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
+LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
 INC="${INC} -I${SHENANGO_DIR}/inc"
 LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
 gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
@@ -193,17 +132,16 @@ fi
 set +e    #to continue to cleanup even on failuer
 
 # prepare for run
-if [[ $WITH_KONA ]]; then 
-    echo "starting kona servers"
-    # starting kona controller
-    scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
-    ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
-    sleep 2
-    # starting mem server
-    scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
-    ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
-    sleep 30
-fi
+echo "starting rmem servers"
+# starting controller
+scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
+ssh ${RCNTRL_SSH} "~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" &
+sleep 2
+# starting mem server
+scp ${SHENANGO_DIR}/memserver ${MEMSERVER_SSH}:~/scratch
+ssh ${MEMSERVER_SSH} "~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" &
+ssh ${MEMSERVER_SSH} "ls ~/scratch"
+sleep 60
 
 start_iokernel() {
     set +e
@@ -230,9 +168,10 @@ echo "$shenango_cfg" > $CFGFILE
 
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
-env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
+env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
 echo "running test"
-sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
+sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1
+# sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
 
 # cleanup
 cleanup
