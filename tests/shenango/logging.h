@@ -87,17 +87,4 @@
     printf(RESET);                                    \
   } while (0)
 
-#define BUG(c)                                             \
-  do {                                                     \
-    __builtin_unreachable();                               \
-    pr_err("FATAL BUG on %s line %d", __func__, __LINE__); \
-    dump_stack();                                          \
-    abort();                                               \
-  } while (0)
-
-#define BUG_ON(c)  \
-  do {             \
-    if (c) BUG(0); \
-  } while (0)
-
 #endif  // __LOGGING_H__

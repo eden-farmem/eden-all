@@ -4,32 +4,28 @@
 #include <math.h>
 
 #include "logging.h"
+#include "base/time.h"
 #include "runtime/thread.h"
 #include "runtime/sync.h"
 #include "runtime/pgfault.h"
 #include "runtime/timer.h"
+#include "runtime/rmem.h"
+#include "rmem/common.h"
 #include "utils.h"
 
-#define MEM_REGION_SIZE ((1ull<<30) * 32)	//32 GB
 #define RUNTIME_SECS 10
 #define NUM_LAT_SAMPLES 5000
 #ifdef LATENCY
 #define BATCH_SIZE 1
 #else 
-#define BATCH_SIZE 100
+#define BATCH_SIZE 10
 #endif
 
-#ifdef WITH_KONA
+#ifdef REMOTE_MEMORY
 #define heap_alloc rmalloc
 #else 
 #define heap_alloc malloc
 #endif
-
-enum fault_kind {
-	FK_NORMAL = 0,
-	FK_APPFAULT,
-	FK_MIXED
-};
 
 enum fault_op {
 	FO_READ = 0,
@@ -48,7 +44,6 @@ struct thread_data {
 typedef struct thread_data thread_data_t;
 BUILD_ASSERT((sizeof(thread_data_t) % CACHE_LINE_SIZE == 0));
 
-uint64_t cycles_per_us;
 waitgroup_t workers;
 
 int global_pre_init(void) 	{ return 0; }
@@ -63,7 +58,6 @@ double next_poisson_time(double rate, unsigned long randomness)
 /* work for each user thread */
 void thread_main(void* arg) {
 	thread_data_t* args = (thread_data_t*)arg;
-	enum fault_kind kind = FK_NORMAL;
 	enum fault_op op = FO_READ;
 	char tmp;
 	unsigned long addr;
@@ -71,14 +65,9 @@ void thread_main(void* arg) {
 		args->start_tsc = rdtsc();
 
 	/* figure out fault kind and operation */
-#ifdef FAULT_KIND
-	kind = (enum fault_kind) FAULT_KIND;
-#endif
 #ifdef FAULT_OP
 	op = (enum fault_op) FAULT_OP;
 #endif
-	if (kind == FK_MIXED)	
-		kind = (args->rand_num & 1) ? FK_APPFAULT : FK_NORMAL;
 	if (op == FO_RANDOM)
 		op = (args->rand_num & (1<<16)) ? FO_READ : FO_WRITE;
 
@@ -89,18 +78,15 @@ void thread_main(void* arg) {
 	/* perform access/trigger fault */
 	switch (op) {
 		case FO_READ:
-			if (kind == FK_APPFAULT)
-				possible_read_fault_on((void*)addr);
+			hint_read_fault((void*)addr);
 			tmp = *(char*)(void*)addr;
 			break;
 		case FO_WRITE:
-			if (kind == FK_APPFAULT)
-				possible_write_fault_on((void*)addr);
+			hint_write_fault((void*)addr);
 			*(char*)(void*)addr = tmp;
 			break;
 		case FO_READ_WRITE:
-			if (kind == FK_APPFAULT)
-				possible_write_fault_on((void*)addr);
+			hint_write_fault((void*)addr);
 			tmp = *(char*)(void*)addr;
 			*(char*)(void*)addr = tmp;
 			break;
@@ -116,10 +102,11 @@ void thread_main(void* arg) {
 /* main thread called into by shenango runtime */
 void main_handler(void* arg) {
 	void* region;
-	region = heap_alloc(MEM_REGION_SIZE);
+	region = heap_alloc(local_memory);
 	ASSERT(region != NULL);
-	pr_info("region start at %p, size %llu", region, MEM_REGION_SIZE);
+	pr_info("region start at %p, size %lu", region, local_memory);
 	waitgroup_init(&workers);
+	ASSERT(cycles_per_us);
 
 	int ret, i, j, samples = 0;
 	int sample_in_batch = -1;
@@ -135,7 +122,7 @@ void main_handler(void* arg) {
 
 	ASSERTZ(rand_seed(&rand, time(NULL)));
 	start_tsc = rdtsc();
-	while(start < (region + MEM_REGION_SIZE)) {
+	while(start < (region + local_memory)) {
 		now_tsc = rdtsc();
 #ifdef LATENCY
 		sample_in_batch = -1;
@@ -148,13 +135,13 @@ void main_handler(void* arg) {
 #endif
 		for (i = 0; i < BATCH_SIZE; i++) {
 			/* init batch */
-			targs[i].addr = (void*) start;
+			if (start >= (region + local_memory))
+				break;
+			targs[i].addr = start;
 			targs[i].rand_num = rand_next(&rand);
 			targs[i].start_tsc = sample_in_batch == i ? now_tsc : 0;
 			targs[i].end_tsc = 0;
 			start += _PAGE_SIZE;
-			if (start >= (region + MEM_REGION_SIZE))
-				break;
 		}
 
 		/* start batch */
@@ -179,9 +166,13 @@ void main_handler(void* arg) {
 #endif
 
 #ifdef DEBUG
-		if (count >= 2 * BATCH_SIZE)
+		// if (count >= 2 * BATCH_SIZE)
+		if (count >= 10)
 			break;	/*break sooner when debugging*/
 #endif
+
+		if ((start - region) % 1073741824 == 0)
+			log_info("%ld gigs done", (start - region) / 1073741824);
 
 		/* is it time to stop? */
 		duration_tsc = rdtscp(NULL) - start_tsc;
@@ -215,17 +206,6 @@ int main(int argc, char *argv[]) {
 		pr_err("arg must be config file\n");
 		return -EINVAL;
 	}
-	cycles_per_us = time_calibrate_tsc();
-	printf("time calibration - cycles per µs: %lu\n", cycles_per_us);
-
-#ifdef WITH_KONA
-	/*shenango includes kona init with runtime; just set params */
-	char value[50];
-	sprintf(value, "%lu", 34359738368);	
-	setenv("MEMORY_LIMIT", value, 1);		/*32gb, BIG to avoid eviction*/
-	setenv("EVICTION_THRESHOLD", "1", 1);		
-	setenv("EVICTION_DONE_THRESHOLD", "1", 1);
-#endif
 
     ret = runtime_set_initializers(global_pre_init, perthread_init, global_post_init);
 	ASSERTZ(ret);

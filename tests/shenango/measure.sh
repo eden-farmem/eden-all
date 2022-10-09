@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set +x
 
 #
 # Benchmarking Kona's page fault bandwidth
@@ -27,7 +28,7 @@ for i in "$@"
 do
 case $i in
     -d|--debug)
-    CFLAGS="$CFLAGS -DDEBUG"
+    CFLAGS="-DDEBUG $CFLAGS"
     ;;
 
     -f|--force)
@@ -36,7 +37,7 @@ case $i in
     
     -l|--lat)
     LATENCIES=1
-    CFLAGS="$CFLAGS -DLATENCY"
+    CFLAGS="-DLATENCY $CFLAGS"
     ;;
 
     -h | --help)
@@ -56,31 +57,31 @@ done
 set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
+NHANDLERS=1
 cores=1
 
-for kind in "kona" "apf-sync" "apf-async"; do    # "vanilla"
-    for op in "write" "read"; do        # "write" "read" "r+w" "random"
+for rmem in "yes"; do    # "no" "yes" "hints"
+    for op in "read"; do        # "write" "read" "r+w" "random"
         # reset
-        cfg=${kind}-${op}
+        cfg=rmem-${rmem}-${op}-${NHANDLERS}hthr
         CFLAGS=${CFLAGS_BEFORE}
         OPTS=
         LS=
         CMI=
         rm -f ${LATFILE}
 
-        case $kind in
-        "vanilla")          ;;
-        "kona")             CFLAGS="$CFLAGS -DFAULT_KIND=0"; OPTS="$OPTS --with-kona";;
-        "apf-sync")         CFLAGS="$CFLAGS -DFAULT_KIND=1"; OPTS="$OPTS --with-kona --pgfaults=SYNC";;
-        "apf-async")        CFLAGS="$CFLAGS -DFAULT_KIND=1"; OPTS="$OPTS --with-kona --pgfaults=ASYNC";;
-        *)                  echo "Unknown fault kind"; exit;;
+        case $rmem in
+        "no")               ;;
+        "yes")              OPTS="$OPTS --rmem";;
+        "hints")            OPTS="$OPTS --rmem --fhints";;
+        *)                  echo "Unknown rmem type"; exit;;
         esac
 
         case $op in
-        "read")             CFLAGS="$CFLAGS -DFAULT_OP=0";  LS=solid;   CMI=0;;
-        "write")            CFLAGS="$CFLAGS -DFAULT_OP=1";  LS=dashed;  CMI=0;;
-        "r+w")              CFLAGS="$CFLAGS -DFAULT_OP=2";  LS=dashdot; CMI=1;;
-        "random")           CFLAGS="$CFLAGS -DFAULT_OP=3";  LS=dotted;  CMI=1;;
+        "read")             CFLAGS="-DFAULT_OP=0 $CFLAGS";  LS=solid;   CMI=0;;
+        "write")            CFLAGS="-DFAULT_OP=1 $CFLAGS ";  LS=dashed;  CMI=0;;
+        "r+w")              CFLAGS="-DFAULT_OP=2 $CFLAGS ";  LS=dashdot; CMI=1;;
+        "random")           CFLAGS="-DFAULT_OP=3 $CFLAGS ";  LS=dotted;  CMI=1;;
         *)                  echo "Unknown fault op"; exit;;
         esac
 
@@ -90,9 +91,9 @@ for kind in "kona" "apf-sync" "apf-async"; do    # "vanilla"
             bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
             tmpfile=${TEMP_PFX}out
             echo "cores,xput" > $datafile
-            for cores in `seq 1 1 6`; do 
+            for cores in `seq 1 1 8`; do 
             # for cores in 1; do 
-                bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -o=${tmpfile}
+                bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" #-o=${tmpfile}
                 xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
                 rm -f $tmpfile
                 echo "$cores,$xput" >> $datafile        # record xput
@@ -103,21 +104,21 @@ for kind in "kona" "apf-sync" "apf-async"; do    # "vanilla"
             done
         fi
         cat $datafile
-        plots="$plots -d $datafile -l $kind"
-        latplots="$latplots -d $DATADIR/lat-${cfg} -l $kind-$op"
+        plots="$plots -d $datafile -l $rmem"
+        latplots="$latplots -d $DATADIR/lat-${cfg} -l $rmem-$op-${NHANDLERS}hthr"
         wc -l $DATADIR/lat-${cfg}
     done
 done
 
 mkdir -p ${PLOTDIR}
 
-# plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
-# python ${PLOTSRC} ${plots}                  \
-#     -xc cores -xl "App CPU"                 \
-#     -yc xput -yl "MOPS" --ymul 1e-6         \
-#     --ymin 0 --ymax .25                     \
-#     --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
-# display $plotname & 
+plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
+python ${PLOTSRC} ${plots}                  \
+    -xc cores -xl "App CPU"                 \
+    -yc xput -yl "MOPS" --ymul 1e-6         \
+    --ymin 0 --ymax .25                     \
+    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+display $plotname &
 
 # if [[ $LATENCIES ]]; then 
 #     echo $latplots

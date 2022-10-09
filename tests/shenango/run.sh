@@ -6,14 +6,10 @@
 
 usage="Example: bash run.sh -f\n
 -f, --force \t force recompile everything\n
--wk,--with-kona \t include kona backend
--kc,--kconfig \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
--ko,--kopts \t C flags passed to gcc when compiling kona\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
--pf,--pgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
 -t, --threads \t number of app threads\n
 -o, --out \t output file for any results\n
--s, --safemode \t build kona with safe mode on\n
+-s, --safe \t keep the assert statements during compile\n
 -c, --clean \t run only the cleanup part\n
 -d, --debug \t build debug\n
 -g, --gdb \t run with a gdb server (on port :1234) to attach to\n
@@ -34,6 +30,9 @@ SHENANGO_DIR="${ROOT_DIR}/scheduler"
 TMP_FILE_PFX="tmp_shen_"
 CFGFILE="default.config"
 NUM_THREADS=1
+OPTS=
+# NO_HYPERTHREADING="-noht"
+SHEN_CFLAGS="-DNO_ZERO_PAGE"
 
 # parse cli
 for i in "$@"
@@ -52,6 +51,16 @@ case $i in
     CFGFILE="${i#*=}"
     ;;
 
+    -rm|--rmem)
+    RMEM=1
+    CFLAGS="$CFLAGS -DREMOTE_MEMORY"
+    ;;
+    
+    -fh|--fhints)
+    FHINTS=1
+    CFLAGS="$CFLAGS -DFAULT_HINTS"
+    ;;
+
     -f|--force)
     FORCE=1
     ;;
@@ -66,6 +75,10 @@ case $i in
 
     -o=*|--out=*)
     OUTFILE=${i#*=}
+    ;;
+    
+    -s|--safe)
+    SAFEMODE=1
     ;;
 
     -g|--gdb)
@@ -117,7 +130,11 @@ set -e
 pushd ${SHENANGO_DIR} 
 if [[ $FORCE ]]; then make clean; fi
 if [[ $DPDK ]]; then ./dpdk.sh;  fi
-make all-but-tests -j ${DEBUG} ${OPT} ${PGFAULT_OPT} NUMA_NODE=${NUMA_NODE}
+if [[ $RMEM ]]; then     OPTS="$OPTS REMOTE_MEMORY=1";  fi
+if [[ $FHINTS ]]; then   OPTS="$OPTS FAULT_HINTS=1";  fi
+if [[ $SAFEMODE ]]; then OPTS="$OPTS SAFEMODE=1";  fi
+
+make all-but-tests -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS""" NUMA_NODE=${NUMA_NODE}
 popd 
 
 LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
@@ -135,19 +152,18 @@ set +e    #to continue to cleanup even on failuer
 echo "starting rmem servers"
 # starting controller
 scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
-ssh ${RCNTRL_SSH} "~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" &
+ssh ${RCNTRL_SSH} "nohup ~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" &
 sleep 2
 # starting mem server
 scp ${SHENANGO_DIR}/memserver ${MEMSERVER_SSH}:~/scratch
-ssh ${MEMSERVER_SSH} "~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" &
-ssh ${MEMSERVER_SSH} "ls ~/scratch"
-sleep 60
+ssh ${MEMSERVER_SSH} "nohup ~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" &
+sleep 40
 
 start_iokernel() {
     set +e
     echo "starting iokerneld"
     sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-    binary=${SHENANGO_DIR}/iokerneld
+    binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
     sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${TMP_FILE_PFX}iokernel.log &
     echo "waiting on iokerneld"
     sleep 5    #for iokernel to be ready
@@ -163,15 +179,19 @@ runtime_kthreads ${NUM_THREADS}
 runtime_guaranteed_kthreads ${NUM_THREADS}
 runtime_spinning_kthreads 0
 host_mac 02:ba:dd:ca:ad:08
-disable_watchdog true"""
+disable_watchdog true
+rmem_local_memory 64000000000"""
 echo "$shenango_cfg" > $CFGFILE
 
 # run
 if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
 echo "running test"
-sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1
-# sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
+if [[ $OUTFILE ]]; then
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
+else
+    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1
+fi
 
 # cleanup
-cleanup
+# cleanup

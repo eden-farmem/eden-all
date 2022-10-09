@@ -32,7 +32,6 @@
 /********************************************
 ************************************************/
 
-void dump_stack(void);
 uint64_t time_calibrate_tsc(void);
 
 static inline const void *page_align(const void *p)
