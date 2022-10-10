@@ -12,11 +12,17 @@ BINFILE="main.out"
 
 mkdir -p ${FAULT_DIR}
 
+# SCRIPT
+# Takes ~20 mins
+# bash run.sh -c=1 -t=1 -nk=1024000000 --nopie --kona --tag=pthreads -d=nopie -fl="-DCUSTOM_QSORT" -lm=1000000000 -f
+
 # DATA
-exp=run-09-21-14-15-44
+# exp=run-09-21-14-15-44
+# exp=run-10-07-10-28-24
+exp=run-10-07-12-06-29
 
 # locate fault samples
-expdir=${DATADIR}/$exp
+expdir=${DATADIR}/saved/$exp
 kfaultsin=${expdir}/kona_fault_samples.out
 if [ ! -f ${kfaultsin} ]; then 
     echo "kona_fault_samples.out not found for ${app} at ${expdir}"

@@ -50,20 +50,34 @@ def main():
     df["kind"] = df.apply(lambda r: kind_to_enum(r["kind"]).value, axis=1)
     if args.kind is not None:
         df = df[df[KINDCOL] == args.kind.value]
-    df = df.groupby(['ip', 'kind']).size().reset_index(name='count')
+
+    # group by ip or btrace
+    if 'btrace' in df:
+        df = df.groupby(['btrace', 'kind']).size().reset_index(name='count')
+        df = df.rename(columns={"btrace": "ips"})
+    else:
+        df = df.groupby(['ip', 'kind']).size().reset_index(name='count')
+        df = df.rename(columns={"ip": "ips"})
+
     df = df.sort_values("count", ascending=False)
     df["percent"] = (df['count'] / df['count'].sum()) * 100
     df["percent"] = df["percent"].astype(int)
 
     if args.binary:
         assert os.path.exists(args.binary)
-        def addr2line(ip):
+        def addr2line(ips):
             # print(ip)
-            return subprocess       \
-                .check_output(['addr2line', '-e', args.binary, ip]) \
-                .decode("utf-8")    \
-                .strip()
-        df['code'] = df['ip'].apply(addr2line)
+            iplist = ips.split("|")
+            code = ""
+            for ip in iplist:
+                if ip:
+                    code += " <//> " + subprocess       \
+                        .check_output(['addr2line', '-e', args.binary, ip]) \
+                        .decode("utf-8")    \
+                        .strip()
+            return code
+
+        df['code'] = df['ips'].apply(addr2line)
 
     # write out
     out = args.out if args.out else sys.stdout
