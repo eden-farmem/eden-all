@@ -1,0 +1,17 @@
+ip        kind       count  percent  code
+0x403c73  write      42596  21       /home/ayelam/rmem-scheduler/apps/psrs/main.c:415 (discriminator 3)
+0x403f65  write      32827  16       /home/ayelam/rmem-scheduler/apps/psrs/main.c:217
+0x403ef8  read       20997  10       /home/ayelam/rmem-scheduler/apps/psrs/main.c:202
+0x4039e6  read       18257  9        /home/ayelam/rmem-scheduler/apps/psrs/main.c:145
+0x4039f0  write      18117  9        /home/ayelam/rmem-scheduler/apps/psrs/main.c:145
+0x4039a7  read       14831  7        /home/ayelam/rmem-scheduler/apps/psrs/main.c:128
+0x403b72  read       14806  7        /home/ayelam/rmem-scheduler/apps/psrs/main.c:388
+0x404453  wrprotect  7792   4        /home/ayelam/rmem-scheduler/apps/psrs/qsort_custom.c:48
+0x40447f  read       7145   3        /home/ayelam/rmem-scheduler/apps/psrs/qsort_custom.c:42
+0x404450  wrprotect  6052   3        /home/ayelam/rmem-scheduler/apps/psrs/qsort_custom.c:47
+0x403ed3  read       5330   2        /home/ayelam/rmem-scheduler/apps/psrs/main.c:196
+0x404462  read       4879   2        /home/ayelam/rmem-scheduler/apps/psrs/qsort_custom.c:30
+0x4039f0  wrprotect  247    0        /home/ayelam/rmem-scheduler/apps/psrs/main.c:145
+0x403895  write      2      0        /home/ayelam/rmem-scheduler/apps/psrs/main.c:91 (discriminator 3)
+0x403911  write      1      0        /home/ayelam/rmem-scheduler/apps/psrs/main.c:107 (discriminator 3)
+0x40443a  read       1      0        /home/ayelam/rmem-scheduler/apps/psrs/qsort_custom.c:16

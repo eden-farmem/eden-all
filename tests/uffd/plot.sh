@@ -68,20 +68,23 @@ mkdir -p $DATADIR
 add_data_to_plot() {
     group=$1
     label=$2
-    cflag=$3
+    cflags=$3
     share_uffd=$4
     hthr=$5
 
     if [ "$share_uffd" == "1" ]; then  sflag="";            fi
     if [ "$share_uffd" == "0" ]; then  sflag="--nosharefd"; fi
-    if [[ $hthr ]]; then               hflag="-th=${hthr}"; fi
 
     datafile=${DATADIR}/${group}_${label}_xput.dat
     if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
         echo "cores,xput,errors,latns" > $datafile
-        for cores in 1 2 4 8 16; do 
+        for cores in 1 2 4 8; do
+            if [[ $hthr ]]; then
+                if [ "$hthr" == "EQUAL" ]; then     hflag="-th=${cores}";
+                else    hflag="-th=${hthr}";    fi
+            fi
             bash ${SCRIPT_DIR}/run.sh -t=$cores ${sflag} ${hflag} \
-                -o="$cflag" -of=${datafile}
+                -o="$cflags" -of=${datafile}
         done
     fi
     # cat $datafile
@@ -126,8 +129,10 @@ rm -f $latfile
 
 ## benchmark UFFD copy
 if [ "$PLOTID" == "1" ]; then
-    add_data_to_plot "uffd_copy" "one_fd"       "-DMAP_PAGE" 1
-    add_data_to_plot "uffd_copy" "fd_per_core"  "-DMAP_PAGE" 0
+    add_data_to_plot "uffd_copy" "one_fd"            "-DMAP_PAGE"                           1
+    add_data_to_plot "uffd_copy" "one_fd_reg"        "-DMAP_PAGE -DSHARE_REGION"            1
+    add_data_to_plot "uffd_copy" "one_fd_reg_nowake" "-DMAP_PAGE -DSHARE_REGION -DNOWAKE"   1
+    add_data_to_plot "uffd_copy" "fd_per_core"       "-DMAP_PAGE"                           0
     generate_plots "uffd_copy"
 fi
 
@@ -136,8 +141,9 @@ if [ "$PLOTID" == "2" ]; then
     plots=
     latfile=${TMP_FILE_PFX}latency
     rm -f $latfile
-    add_data_to_plot "madv_dneed" "one_fd"      "-DUNMAP_PAGE" 1
-    add_data_to_plot "madv_dneed" "fd_per_core" "-DUNMAP_PAGE" 0
+    add_data_to_plot "madv_dneed" "one_fd"          "-DUNMAP_PAGE"              1
+    add_data_to_plot "madv_dneed" "one_fd_one_reg"  "-DMAP_PAGE -DSHARE_REGION" 1
+    add_data_to_plot "madv_dneed" "fd_per_core"     "-DUNMAP_PAGE"              0
     generate_plots   "madv_dneed"
 fi
 
@@ -146,7 +152,7 @@ if [ "$PLOTID" == "3" ]; then
     plots=
     sharefd=1
     YMAX=1.5
-    for hthr in 1 2 4 8 11; do 
+    for hthr in 1 2 4 8 12; do 
         add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_plots "fault_path_one_fd"     ${YMAX}
@@ -157,6 +163,16 @@ if [ "$PLOTID" == "3" ]; then
         add_data_to_plot "fault_path_fd_per_core" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_plots "fault_path_fd_per_core" ${YMAX}
+fi
+
+## benchmark entire fault path with/without hyperthreading handlers
+if [ "$PLOTID" == "4" ]; then
+    plots=
+    sharefd=0
+    YMAX=1.5
+    add_data_to_plot "fault_path_ht_effect" "noht"  "-DACCESS_PAGE"                 $sharefd "EQUAL"
+    add_data_to_plot "fault_path_ht_effect" "ht"    "-DACCESS_PAGE -DHT_HANDLERS"   $sharefd "EQUAL"
+    generate_plots "fault_path_ht_effect" ${YMAX}
 fi
 
 # cleanup

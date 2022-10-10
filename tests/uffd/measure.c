@@ -35,8 +35,8 @@
 #define MAX_CORES 			(2*PHY_CORES_PER_NODE)	/*logical cores per numa node*/
 #define MAX_THREADS 		(MAX_CORES-1)
 #define MAX_FDS				MAX_THREADS
-#define MAX_MEMORY 			(128*GIGA)
-#define RUNTIME_SECS 		5
+#define MAX_MEMORY 			(160*GIGA)	/*max I could register with a single uffd region*/
+#define RUNTIME_SECS 		10
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready;
@@ -51,6 +51,7 @@ const int NODE1_CORES[MAX_CORES] = {
     42, 43, 44, 45, 46, 47, 48, 
     49, 50, 51, 52, 53, 54, 55 };
 #define CORELIST NODE0_CORES
+#define HYPERTHREAD_OFFSET 14
 int start_button = 0, stop_button = 0;
 
 enum app_op {
@@ -90,7 +91,7 @@ void* app_main(void* args) {
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
     int self = tdata->tid;
-	int r, retries;
+	int r, retries, uffd_mode;
 	void *p = (void*)tdata->range_start; 
 	void *page_buf = malloc(PAGE_SIZE);
 
@@ -102,7 +103,11 @@ void* app_main(void* args) {
 		p = (void*) page_align(p);
 		switch(tdata->optype) {
 			case OP_MAP_PAGE:
-				r = uffd_copy(tdata->uffd, (unsigned long)p, 
+				uffd_mode = 0;
+#ifdef NO_WAKE
+				uffd_mode |= UFFDIO_COPY_MODE_DONTWAKE;
+#endif
+				r = uffd_copy(tdata->uffd, (unsigned long)p,
 					(unsigned long) page_buf, 0, true, &retries, false);
 				break;
 			case OP_UNMAP_PAGE:
@@ -236,7 +241,7 @@ int main(int argc, char **argv)
 	char *p;
 	bool page_mapped;
 	int i, j, r, nthreads;
-	int handlers_per_fd, nhandlers, nuffd;
+	int handlers_per_fd, nhandlers, nuffd, handler_start_core;
 	uint64_t start, duration;
 	double duration_secs;
 	size_t size;
@@ -288,6 +293,7 @@ int main(int argc, char **argv)
 #if defined(ACCESS_PAGE)
 	/* start fault handler threads. don't access pages without enabling handlers */
     struct handler_data hdata[MAX_THREADS] CACHE_ALIGN = {0};
+	handler_start_core = coreidx;
 	for(i = 0; i < nhandlers; i++) {
 		hdata[i].tid = i;
         ASSERT(coreidx < MAX_CORES);
@@ -313,23 +319,37 @@ int main(int argc, char **argv)
         pthread_create(&handlers[i], NULL, handler_main, (void*)&hdata[i]);
 #endif
 	
-	/* create/register per-thread uffd regions */
-	int writeable = 1, fd;
-	struct uffd_region_t* reg;
-	size = MAX_MEMORY / nthreads;
-    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
+	/* create uffd regions */
+	int fd, nregions;
+	int writeable = 1;
+#ifdef SHARE_REGION
+	nregions = 1;
+	ASSERT(share_uffd);		/* cannot have shared region over multiple fds */
+#else
+	nregions = nthreads;
+#endif
+	size = MAX_MEMORY / nregions;
 	ASSERT(size % PAGE_SIZE == 0);
+	struct uffd_region_t** reg = malloc(nregions*sizeof(struct uffd_region_t*));
+	for (i = 0; i < nregions; i++) {
+		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
+		reg[i] = create_uffd_region(fd, size, writeable);
+		ASSERT(reg[i] != NULL);
+		ASSERT(reg[i]->addr);
+		r = uffd_register(fd, reg[i]->addr, reg[i]->size, writeable);
+		ASSERTZ(r);
+	}
+
+	/* create/register per-thread uffd regions */
+	size_t size_per_thread = (nregions == 1) ? size / nthreads : size;
+    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
 	for(i = 0; i < nthreads; i++) {
 		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
-		reg = create_uffd_region(fd, size, writeable);
-		ASSERT(reg != NULL);
-		ASSERT(reg->addr);
-		r = uffd_register(fd, reg->addr, reg->size, writeable);
-		ASSERTZ(r);
-
 		tdata[i].uffd = fd;
-		tdata[i].range_start = reg->addr;
-		tdata[i].range_len = size;		
+		tdata[i].range_start = (nregions == 1) ? reg[0]->addr + (i * size_per_thread) : reg[i]->addr;
+		tdata[i].range_len = size_per_thread;
+		pr_debug("thread %d working with region %d (%lu, %lu)", i, 
+			(nregions == 1) ? 0 : i, tdata[i].range_start, tdata[i].range_len);
 	}
 
 	/* start measuring threads */
@@ -343,8 +363,20 @@ int main(int argc, char **argv)
 	do_app_work(OP_MAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
 	xput = do_app_work(OP_UNMAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
 #elif defined(ACCESS_PAGE)
-	xput = do_app_work(OP_ACCESS_PAGE, nthreads, tdata, coreidx, &errors, &latns);
-#else 
+	int app_start_core;
+	#if HT_HANDLERS
+	ASSERT(nthreads == nhandlers);	/* only supported for this case */
+	ASSERT(coreidx < HYPERTHREAD_OFFSET);	/* handlers should not spill over into hyperthreads */
+	app_start_core = handler_start_core + HYPERTHREAD_OFFSET;
+	/* check that there are enough threads left for app threads */
+	ASSERT(nthreads <= (MAX_CORES - app_start_core));
+	#else
+	app_start_core = coreidx;
+	/* guard against inadvertently hyperthreading handlers */
+	ASSERT(app_start_core != handler_start_core + HYPERTHREAD_OFFSET);
+	#endif
+	xput = do_app_work(OP_ACCESS_PAGE, nthreads, tdata, app_start_core, &errors, &latns);
+#else
 	printf("Pick an operation: MAP_PAGE, UNMAP_PAGE, ACCESS_PAGE\n");
 	return 1;
 #endif

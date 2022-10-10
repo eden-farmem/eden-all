@@ -142,8 +142,6 @@ class Plot:
     yerror = None
     xdatafile = None
     xcolumn = None
-    xmultiplier = None 
-    ymultiplier = None
     label = None
     is_twin = False
     def __init__(self, yfile, ycol, yerr, xfile, xcol):
@@ -196,6 +194,12 @@ def parser_definition():
             'each representing a column from the CSV file [-d] that is plotted '
             'separately')
 
+    parser.add_argument('-yce', '--ycolumnyerr',
+        nargs=2,
+        action='append',
+        metavar=('YCOLUMN', 'YERROR'),
+        help='Like -yc but along with an error bar column for each Y-column')
+
     parser.add_argument('-dxc', '--dfilexcol',
         nargs=2,
         action='store',
@@ -212,7 +216,7 @@ def parser_definition():
         nargs=3,
         action='append',
         metavar=('YDATAFILE', 'YCOLUMN', 'YERROR'),
-        help='Like -dycol but along with an error bar column per each Y-column')
+        help='Like -dycol but along with an error bar column for each Y-column')
 
     # PLOT STYLE
     parser.add_argument('-z', '--ptype',
@@ -484,16 +488,23 @@ def parser_get_plots(parser, args):
     formats = 0
     formats += 1 if (args.dfileycolyerr is not None) else 0
     formats += 1 if (args.dfileycol is not None) else 0
-    formats += 1 if (args.datafile is not None or args.ycolumn is not None) else 0
+    formats += 1 if (args.datafile is not None and args.ycolumn is not None) else 0
+    formats += 1 if (args.datafile is not None and args.ycolumnyerr is not None) else 0
     if formats != 1:
-        parser.error('One (and only one) of the (-d/-yc) or (-dyc) or (-dyce) '
-            'formats should be used to provide input data!')
+        parser.error('At least (and only) one of the (-d/-yc) or (-d/-yce) or '
+            '(-dyc) or (-dyce) formats should be used to provide input data!')
 
     if (args.datafile or args.ycolumn) and \
         (args.datafile and len(args.datafile) > 1) and \
         (args.ycolumn and len(args.ycolumn) > 1):
-        parser.error('If using (-d/-yc) format, only one of the -d or -ycol params'
-            ' allow multiple values. Use -dyc(e) format otherwise.')
+        parser.error('If using (-d/-yc) format, only one of the -d or -yc '
+            'params allow multiple values. Use -dyc format otherwise.')
+
+    if (args.datafile or args.ycolumnyerr) and \
+        (args.datafile and len(args.datafile) > 1) and \
+        (args.ycolumnyerr and len(args.ycolumnyerr) > 1):
+        parser.error('If using (-d/-yce) format, only one of the -d or -yce '
+            'params allow multiple values. Use -dyc(e) format otherwise.')
 
     # Constraints on X-column data
     xdatafile = None
@@ -516,8 +527,15 @@ def parser_get_plots(parser, args):
             plots.append(Plot(dfile, ycol, None, xdatafile, xcolumn))
     else:
         for dfile in args.datafile:
-            for ycol in args.ycolumn:
-                plots.append(Plot(dfile, ycol, None, xdatafile, xcolumn))
+            if args.ycolumn is not None:
+                for ycol in args.ycolumn:
+                    plots.append(Plot(dfile, ycol, None, xdatafile, xcolumn))
+            elif args.ycolumnyerr is not None:
+                for (ycol, yerr) in args.ycolumnyerr:
+                    plots.append(Plot(dfile, ycol, yerr, xdatafile, xcolumn))
+
+    if len(plots) == 0:
+        parser.error("Couldn't infer any plots from CLI arguments")
 
     # Infer twin plots
     if args.twin:
@@ -621,7 +639,8 @@ def main():
                 color=COLORS[cidx],
                 marker=(None if args.nomarker else MARKERS[midx]),
                 markerfacecolor=(None if args.nomarker else COLORS[cidx]),
-                ls=args.linestyle[plot_num].as_tuple() if args.linestyle else None)
+                ls=args.linestyle[plot_num].as_tuple() \
+                    if args.linestyle is not None else None)
             # if args.xstr:   ax.set_xticks(xc)
             # if args.xstr:   ax.set_xticklabels(xc, rotation='45')
 

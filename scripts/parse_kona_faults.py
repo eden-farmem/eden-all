@@ -2,6 +2,7 @@ import argparse
 from enum import Enum
 import os
 import sys
+import subprocess
 
 import pandas as pd
 
@@ -28,6 +29,7 @@ def main():
     parser.add_argument('-st', '--start', action='store', type=int,  help='start (unix) time to filter data')
     parser.add_argument('-et', '--end', action='store', type=int, help='end (unix) time to filter data')
     parser.add_argument('-fk', '--kind', action='store', type=FaultKind, choices=list(FaultKind), help='filter for a specific kind of fault')
+    parser.add_argument('-b', '--binary', action='store', help='path to the binary file to locate code location')
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
 
@@ -52,6 +54,16 @@ def main():
     df = df.sort_values("count", ascending=False)
     df["percent"] = (df['count'] / df['count'].sum()) * 100
     df["percent"] = df["percent"].astype(int)
+
+    if args.binary:
+        assert os.path.exists(args.binary)
+        def addr2line(ip):
+            # print(ip)
+            return subprocess       \
+                .check_output(['addr2line', '-e', args.binary, ip]) \
+                .decode("utf-8")    \
+                .strip()
+        df['code'] = df['ip'].apply(addr2line)
 
     # write out
     out = args.out if args.out else sys.stdout

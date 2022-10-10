@@ -59,17 +59,17 @@ check_for_stop() {
     fi
 }
 
-desc="qsort-wpfaults"
+desc="nopie"
 CFLAGS_BEFORE=$CFLAGS
 for cores in 1; do
     for lmem in $LMEM; do 
         for tpc in 5; do 
             # for cfg in "pthr" "uthr" "kona-uthr" "apf-sync" "apf-async" "kona-pthr"; do
-            for cfg in "kona-uthr" "apf-sync" "apf-async"; do
+            for cfg in "kona-uthr"; do
             # for cfg in "kona_pthr"; do
                 OPTS=
                 CFLAGS="$CFLAGS_BEFORE"
-                # OPTS="$OPTS --nopie"    #no ASLR
+                OPTS="$OPTS --nopie"    #no ASLR
 
                 case $cfg in
                 "pthr")             ;;

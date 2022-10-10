@@ -11,10 +11,13 @@ usage="\n
 -c, --cores \t\t results filter: == cores\n
 -d, --desc \t\t results filter: contains desc\n
 -lm, --lmem \t\t results filter: == localmem\n
+-lmp, --lmemper \t results filter: == localmemper\n
 -be, --backend \t results filter: == backend\n
 -pf, --pgfaults \t results filter: == pgfaults\n
+-pc, --pgchecks \t results filter: == pgchecks\n
 -zs, --zipfs \t\t results filter: == zipfs\n
 -f, --force \t\t remove any cached data and parse from scratch\n
+-b, --basic \t\t just print basic exp info and ignore results (faster!)\n
 -g, --good \t\t show just the 'good' runs; definition of good depends on the metrics\n
 -rm, --remove \t\t (recoverably) delete runs that match these filters\n
 -of, --outfile \t output results to a file instead of stdout\n"
@@ -63,6 +66,10 @@ case $i in
     LOCALMEM="${i#*=}"
     ;;
 
+    -lmp=*|--lmemper=*)
+    LMEMPER=${i#*=}
+    ;;
+
     -sc=*|--scheduler=*)
     SCHEDULER="${i#*=}"
     ;;
@@ -75,12 +82,20 @@ case $i in
     PGFAULTS="${i#*=}"
     ;;
 
+    -pc=*|--pgchecks=*)
+    PGCHECKS="${i#*=}"
+    ;;
+
     -zs=*|--zipfs=*)
     ZIPFS="${i#*=}"
     ;;
 
     -d=*|--desc=*)
     DESC="${i#*=}"
+    ;;
+    
+    -b|--basic)
+    BASIC=1
     ;;
 
     -f|--force)
@@ -121,8 +136,10 @@ for exp in $LS_CMD; do
     name=$(basename $exp)
     cores=$(cat $exp/settings | grep "cores:" | awk -F: '{ print $2 }')
     threads=$(cat $exp/settings | grep "threads:" | awk -F: '{ print $2 }')
-    localmem=$(cat $exp/settings | grep "localmem:" | awk -F: '{ printf $2/1000000 }')
+    localmem=$(cat $exp/settings | grep "localmem:" | awk -F: '{ printf $2/1048576 }')
+    lmemper=$(cat $exp/settings | grep "lmemper:" | awk -F: '{ printf $2 }')
     pgfaults=$(cat $exp/settings | grep "pgfaults:" | awk -F: '{ print $2 }')
+    pgchecks=$(cat $exp/settings | grep "pgchecks:" | awk -F: '{ print $2 }')
     sched=$(cat $exp/settings | grep "scheduler:" | awk -F: '{ print $2 }')
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
     nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
@@ -132,90 +149,133 @@ for exp in $LS_CMD; do
     sched=${sched:-none}
     backend=${backend:-none}
     pgfaults=${pgfaults:-none}
+    pgchecks=${pgchecks:-none}
 
     # apply filters
-    if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];  then    continue;   fi
-    if [[ $CORES ]] && [ "$CORES" != "$cores" ];        then    continue;   fi
-    if [[ $LOCALMEM ]] && [ "$LOCALMEM" != "$localmem" ]; then  continue;   fi
-    if [[ $BACKEND ]] && [ "$BACKEND" != "$backend" ];  then    continue;   fi
-    if [[ $PGFAULTS ]] && [ "$PGFAULTS" != "$pgfaults" ]; then  continue;   fi
+    if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];      then    continue;   fi
+    if [[ $CORES ]] && [ "$CORES" != "$cores" ];            then    continue;   fi
+    if [[ $LOCALMEM ]] && [ "$LOCALMEM" != "$localmem" ];   then    continue;   fi
+    if [[ $LMEMPER ]] && [ "$LMEMPER" != "$lmemper" ];      then    continue;   fi
+    if [[ $BACKEND ]] && [ "$BACKEND" != "$backend" ];      then    continue;   fi
+    if [[ $PGFAULTS ]] && [ "$PGFAULTS" != "$pgfaults" ];   then    continue;   fi
+    if [[ $PGCHECKS ]] && [ "$PGCHECKS" != "$pgchecks" ];   then    continue;   fi
     if [[ $SCHEDULER ]] && [ "$SCHEDULER" != "$sched" ];    then    continue;   fi
-    if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];        then    continue;   fi
-    # if [[ $DESC ]] && [[ "$desc" != *"$DESC"*  ]];      then    continue;   fi
-    if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];      then    continue;   fi
+    if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];            then    continue;   fi
+    if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
     
-    # gather numbers
-    preload_start=$(cat $exp/preload_start 2>/dev/null)
-    preload_end=$(cat $exp/preload_end 2>/dev/null)
-    ptime=$((preload_end-preload_start))
+    if [ -z "$BASIC" ]; then
+        # gather numbers
+        preload_start=$(cat $exp/preload_start 2>/dev/null)
+        preload_end=$(cat $exp/preload_end 2>/dev/null)
+        ptime=$((preload_end-preload_start))
 
-    rstart=$(cat $exp/run_start 2>/dev/null)
-    rend=$(cat $exp/run_end 2>/dev/null)
-    rtime=$((rend-rstart))
-    xput=$(grep "result:" $exp/app.out | sed -n "s/^.*result://p")
-    xputpercore=
-    if [[ $xput ]]; then xputpercore=$((xput/cores));   fi
+        rstart=$(cat $exp/run_start 2>/dev/null)
+        rend=$(cat $exp/run_end 2>/dev/null)
+        rtime=$((rend-rstart))
+        xput=$(grep "result:" $exp/app.out | sed -n "s/^.*result://p")
+        xputpercore=
+        if [[ $xput ]]; then xputpercore=$((xput/cores));   fi
 
-    # if runtime is zero, exclude  
-    if [[ $FILTER_GOOD ]] && (! [[ $rtime ]] || [ $rtime -le 0 ]); then continue; fi
+        # if runtime is zero, exclude  
+        if [[ $FILTER_GOOD ]] && (! [[ $rtime ]] || [ $rtime -le 0 ]); then continue; fi
 
-    if [[ $FORCE ]]; then
-        rm -f ${exp}/kona_counters_parsed
-        rm -f ${exp}/runtime_parsed
-        rm -f ${exp}/cpu_sar_parsed
+        if [[ $FORCE ]]; then
+            rm -f ${exp}/kona_counters_parsed
+            rm -f ${exp}/runtime_parsed
+            rm -f ${exp}/cpu_sar_parsed
+        fi
+
+        # KONA
+        konastatsout=${exp}/kona_counters_parsed
+        konastatsin=${exp}/kona_counters.out 
+        if [ ! -f $konastatsout ] && [ -f $konastatsin ] && [[ $rstart ]] && [[ $rend ]]; then 
+            python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py -i ${konastatsin} \
+                -st=${rstart} -et ${rend} -o ${konastatsout}
+        fi
+        faultsr=$(csv_column_mean "$konastatsout" "n_faults_r")
+        faultsw=$(csv_column_mean "$konastatsout" "n_faults_w")
+        faultswp=$(csv_column_mean "$konastatsout" "n_faults_wp")
+        afaults=$(csv_column_mean "$konastatsout" "n_afaults")
+        afaultsr=$(csv_column_mean "$konastatsout" "n_afaults_r")
+        afaultsw=$(csv_column_mean "$konastatsout" "n_afaults_w")
+        af_waitq=$(csv_column_mean "$konastatsout" "n_af_waitq")
+        faults=$((faultsr+faultsw+faultswp+af_waitq))
+        mallocd=$(csv_column_max "$konastatsout" "malloc_size")
+        mempressure=$(csv_column_max "$konastatsout" "mem_pressure")
+
+        # KONA LATENCIES
+        konaprofout=${exp}/kona_profiler_parsed
+        konaprofin=${exp}/kona_profiler.out 
+        if [ ! -f $konaprofout ] && [ -f $konaprofin ] && [[ $rstart ]] && [[ $rend ]]; then 
+            python ${ROOT_SCRIPTS_DIR}/parse_kona_profiler.py -i ${konaprofin} \
+                -st=${rstart} -et ${rend} -o ${konaprofout}
+        fi
+        uffd_copy_cost=$(csv_column_mean "$konaprofout" "PERF_POLLER_UFFD_COPY")
+
+        # SHENANGO
+        shenangoout=${exp}/runtime_parsed
+        shenangoin=${exp}/runtime.out 
+        if [ ! -f $shenangoout ] && [ -f $shenangoin ] && [[ $rstart ]] && [[ $rend ]]; then 
+            python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
+                -o ${shenangoout} -st=${rstart} -et ${rend}
+        fi
+        user_idle_per=$(csv_column_mean "$shenangoout" "sched_idle_per")
+        pf_annot_hits=$(csv_column_mean "$shenangoout" "pf_annot_hits")
+        pf_posted=$(csv_column_mean "$shenangoout" "pf_posted")
+        # pf_annot_hitr=$(percentage "$pf_annot_hits" "$((pf_posted+pf_annot_hits))" | ftoi)
+        # pf_annot_hitpm=$(percentage $pf_annot_hits $pf_posted | ftoi)
+        hitcost=30; misscost=1400;  #vdso
+        if [ "$pgchecks" == "kona" ]; then  hitcost=120; misscost=120; fi
+        annot_hitcost_ms=$((pf_annot_hits*hitcost/1000000))
+        annot_misscost_ms=$((pf_posted*misscost/1000000))
+        annot_hit_overhd=$((annot_hitcost_ms*xput/1000))
+        annot_miss_overhd=$((annot_misscost_ms*xput/1000))
+        xput_accounted=$((xput+annot_hit_overhd+annot_miss_overhd))
+
+        # KERNEL
+        cpusarout=${exp}/cpu_sar_parsed
+        cpusarin=${exp}/cpu.sar
+        if [ ! -f $cpusarout ] && [ -f $cpusarin ] && [[ $rstart ]] && [[ $rend ]]; then 
+            bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%idle" \
+                -st=${rstart} -et=${rend} -of=${cpusarout}
+        fi
+        kernel_idle_per=$(csv_column_mean "$cpusarout" "%idle")
     fi
-
-    # KONA
-    konastatsout=${exp}/kona_counters_parsed
-    konastatsin=${exp}/kona_counters.out 
-    if [ ! -f $konastatsout ] && [ -f $konastatsin ] && [[ $rstart ]] && [[ $rend ]]; then 
-        python ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py -i ${konastatsin} \
-            -st=${rstart} -et ${rend} -o ${konastatsout}
-    fi
-    faultsr=$(csv_column_mean "$konastatsout" "n_faults_r")
-    faultsw=$(csv_column_mean "$konastatsout" "n_faults_w")
-    faultswp=$(csv_column_mean "$konastatsout" "n_faults_wp")
-    afaultsr=$(csv_column_mean "$konastatsout" "n_afaults_r")
-    faults=$((faultsr+faultsw+faultswp))
-
-    # SHENANGO
-    shenangoout=${exp}/runtime_parsed
-    shenangoin=${exp}/runtime.out 
-    if [ ! -f $shenangoout ] && [ -f $shenangoin ] && [[ $rstart ]] && [[ $rend ]]; then 
-        python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
-            -o ${shenangoout} -st=${rstart} -et ${rend}
-    fi
-    user_idle_per=$(csv_column_sum "$shenangoout" "sched_idle_per")
-
-    # KERNEL
-    cpusarout=${exp}/cpu_sar_parsed
-    cpusarin=${exp}/cpu.sar
-    if [ ! -f $cpusarout ] && [ -f $cpusarin ] && [[ $rstart ]] && [[ $rend ]]; then 
-        bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%idle" \
-             -st=${rstart} -et=${rend} -of=${cpusarout}
-    fi
-    kernel_idle_per=$(csv_column_mean "$cpusarout" "%idle")
 
     # write
     HEADER="Exp";                   LINE="$name";
     HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
     HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
     HEADER="$HEADER,PFType";        LINE="$LINE,${pgfaults}";
+    HEADER="$HEADER,Checks";        LINE="$LINE,${pgchecks}";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
     HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
-    HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs}";
-    # HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime}";
-    HEADER="$HEADER,Runtime";       LINE="$LINE,${rtime}";
-    HEADER="$HEADER,Xput";          LINE="$LINE,${xput:-}";
-    HEADER="$HEADER,XputPerCore";   LINE="$LINE,${xputpercore}";
-    HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
-    # HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
-    # HEADER="$HEADER,ReadAPF";       LINE="$LINE,${afaultsr}";
-    # HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
-    # HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
-    HEADER="$HEADER,UIdle%";        LINE="$LINE,${user_idle_per}";
-    HEADER="$HEADER,KIdle%";        LINE="$LINE,${kernel_idle_per}";
+    # HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
+    # HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs}";
+    if [ -z "$BASIC" ]; then
+        # HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime}";
+        HEADER="$HEADER,Runtime";       LINE="$LINE,${rtime}";
+        HEADER="$HEADER,Xput";          LINE="$LINE,${xput:-}";
+        HEADER="$HEADER,XputPerCore";   LINE="$LINE,${xputpercore}";
+        HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
+        HEADER="$HEADER,AFaults";       LINE="$LINE,${afaults}";
+        # HEADER="$HEADER,ReadPF";        LINE="$LINE,${faultsr}";
+        # HEADER="$HEADER,WritePF";       LINE="$LINE,${faultsw}";
+        HEADER="$HEADER,AFaultsR";      LINE="$LINE,${afaultsr}";
+        HEADER="$HEADER,AFaultsW";      LINE="$LINE,${afaultsw}";
+        HEADER="$HEADER,AFaultsWQ";     LINE="$LINE,${af_waitq}";
+        # HEADER="$HEADER,WPFaults";      LINE="$LINE,${faultswp}";
+        # HEADER="$HEADER,Mallocd";     LINE="$LINE,$((mallocd/1048576))M";
+        # HEADER="$HEADER,MaxRSS";      LINE="$LINE,$((mempressure/1048576))M";
+
+        HEADER="$HEADER,UFFDCopy";      LINE="$LINE,${uffd_copy_cost}";
+        HEADER="$HEADER,UIdle%";        LINE="$LINE,${user_idle_per}";
+        HEADER="$HEADER,KIdle%";        LINE="$LINE,${kernel_idle_per}";
+        HEADER="$HEADER,AnnotHit";      LINE="$LINE,$((pf_annot_hits+pf_posted))";
+        HEADER="$HEADER,AnnotMiss";     LINE="$LINE,${pf_posted}";
+        HEADER="$HEADER,XputAcc";       LINE="$LINE,${xput_accounted}";
+    fi
     
     HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    
     OUT=`echo -e "${OUT}\n${LINE}"`
