@@ -12,8 +12,12 @@ BINFILE="main.out"
 
 mkdir -p ${FAULT_DIR}
 
+# SCRIPT
+# bash run.sh --with-kona -fl="-DCOMPRESS=5" --warmup -ko= -c=1 -t=1 -nk=10000000 -nb=400000 -lm=3250585600 -lmp=50 -zs=1 --nopie -d=nopie -f
+
 # DATA
-exp=run-09-21-13-22-28
+# exp=run-09-21-13-22-28
+exp=run-10-07-13-44-24
 
 # locate fault samples
 expdir=${DATADIR}/$exp

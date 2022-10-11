@@ -46,7 +46,7 @@ KONA_OPTS="-DNO_ZEROPAGE_OPT"
 
 # benchmark
 SCRATCHDIR=~/scratch
-APP='dedup'
+APP='dataframe'
 LMEM=1000000000    # 1GB
 NCORES=1
 SCHEDULER=pthreads
@@ -126,6 +126,7 @@ case $i in
     ;;
 
     -np|--nopie)
+    NOPIE=1
     CFLAGS="$CFLAGS -g -no-pie -fno-pie"   #no PIE
     CXXFLAGS="$CXXFLAGS -g -no-pie -fno-pie"
     echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
@@ -215,6 +216,14 @@ if [[ $FORCE ]] && [[ $KONA ]]; then
     make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG} ${GDBFLAG}
     sudo sysctl -w vm.unprivileged_userfaultfd=1
     popd
+
+    # build shim
+    if [[ $NOPIE ]] && [ -d ${KONADIR}/shim ]; then
+        pushd ${KONADIR}/shim
+        make clean
+        make
+        popd
+    fi
 fi
 
 # build AIFM
@@ -229,6 +238,10 @@ if [[ $FORCE ]] && [[ $AIFM ]]; then
     make EDEN_PATH=${ROOTDIR_REAL} clean
     make CXXFLAGS="$CXXFLAGS" EDEN_PATH=${ROOTDIR_REAL} -j$(nproc)
     popd
+fi
+
+if [[ $NOPIE ]] && [ -d ${KONADIR}/shim ]; then
+    CXXFLAGS="$CXXFLAGS -Wl,--wrap=main ${KONADIR}/shim/libshim.a -ldl"
 fi
 
 # build app
