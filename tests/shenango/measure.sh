@@ -57,13 +57,13 @@ done
 set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
-NHANDLERS=1
-cores=1
+NHANDLERS=4
+cores=4
 
-for rmem in "yes"; do    # "no" "yes" "hints"
+for rmem in "rmem"; do    # "none" "rmem" "hints"
     for op in "read"; do        # "write" "read" "r+w" "random"
         # reset
-        cfg=rmem-${rmem}-${op}-${NHANDLERS}hthr
+        cfg=${rmem}-${op}-${NHANDLERS}hthr
         CFLAGS=${CFLAGS_BEFORE}
         OPTS=
         LS=
@@ -71,9 +71,9 @@ for rmem in "yes"; do    # "no" "yes" "hints"
         rm -f ${LATFILE}
 
         case $rmem in
-        "no")               ;;
-        "yes")              OPTS="$OPTS --rmem";;
-        "hints")            OPTS="$OPTS --rmem --fhints";;
+        "none")             ;;
+        "rmem")             OPTS="$OPTS --rmem";;
+        "hints")            OPTS="$OPTS --rmem --hints";;
         *)                  echo "Unknown rmem type"; exit;;
         esac
 
@@ -91,9 +91,9 @@ for rmem in "yes"; do    # "no" "yes" "hints"
             bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
             tmpfile=${TEMP_PFX}out
             echo "cores,xput" > $datafile
-            for cores in `seq 1 1 8`; do 
-            # for cores in 1; do 
-                bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" #-o=${tmpfile}
+            # for cores in `seq 1 1 12`; do 
+            for cores in 1 4 8 12; do 
+                bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -o=${tmpfile}
                 xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
                 rm -f $tmpfile
                 echo "$cores,$xput" >> $datafile        # record xput
@@ -101,6 +101,10 @@ for rmem in "yes"; do    # "no" "yes" "hints"
                 if [[ $LATENCIES ]] && [ -f $LATFILE ]; then 
                     mv -f ${LATFILE} ${latfile}            # record latency
                 fi
+
+                # clean and wait a bit
+                bash run.sh --clean
+                sleep 10
             done
         fi
         cat $datafile

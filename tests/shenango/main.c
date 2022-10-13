@@ -18,7 +18,7 @@
 #ifdef LATENCY
 #define BATCH_SIZE 1
 #else 
-#define BATCH_SIZE 10
+#define BATCH_SIZE 1000
 #endif
 
 #ifdef REMOTE_MEMORY
@@ -166,8 +166,7 @@ void main_handler(void* arg) {
 #endif
 
 #ifdef DEBUG
-		// if (count >= 2 * BATCH_SIZE)
-		if (count >= 10)
+		if (count >= 10 * BATCH_SIZE)
 			break;	/*break sooner when debugging*/
 #endif
 
@@ -183,6 +182,7 @@ void main_handler(void* arg) {
 	pr_info("ran for %.1lf secs with %.0lf ops /sec", 
 		duration_secs, count / duration_secs);
 	printf("result:%.0lf\n", count / duration_secs);
+	sleep(1);
 
 	/* dump latencies to file */
 	if (samples > 0) {

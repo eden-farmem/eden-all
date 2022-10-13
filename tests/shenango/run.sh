@@ -8,6 +8,8 @@ usage="Example: bash run.sh -f\n
 -f, --force \t force recompile everything\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
 -t, --threads \t number of app threads\n
+-rm, --rmem \t run with remote memory\n
+-h, --hints \t enable remote memory hints\n
 -o, --out \t output file for any results\n
 -s, --safe \t keep the assert statements during compile\n
 -c, --clean \t run only the cleanup part\n
@@ -31,7 +33,7 @@ TMP_FILE_PFX="tmp_shen_"
 CFGFILE="default.config"
 NUM_THREADS=1
 OPTS=
-# NO_HYPERTHREADING="-noht"
+NO_HYPERTHREADING="-noht"
 SHEN_CFLAGS="-DNO_ZERO_PAGE"
 
 # parse cli
@@ -56,9 +58,9 @@ case $i in
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
     
-    -fh|--fhints)
-    FHINTS=1
-    CFLAGS="$CFLAGS -DFAULT_HINTS"
+    -h|--hints)
+    RHINTS=1
+    CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
     ;;
 
     -f|--force)
@@ -83,8 +85,7 @@ case $i in
 
     -g|--gdb)
     GDB=1
-    DEBUG="DEBUG=1"
-    CFLAGS="$CFLAGS -DDEBUG -g -ggdb"
+    CFLAGS="$CFLAGS -g -ggdb"
     ;;
 
     -bo|--buildonly)
@@ -110,12 +111,16 @@ done
 # RNIC NUMA node = 1
 NUMA_NODE=1
 NIC_PCI_SLOT="0000:d8:00.1"
+RMEM_HANDLER_CORE=55
+SHENANGO_STATS_CORE=51
+SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE}
 
 cleanup() {
     rm -f ${BINFILE}
     rm -f ${TMP_FILE_PFX}*
     rm -f ${CFGFILE}
     sudo pkill iokerneld
+    sudo pkill iokerneld${NO_HYPERTHREADING}
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
 }
@@ -128,14 +133,19 @@ set -e
 
 # build shenango
 pushd ${SHENANGO_DIR} 
-if [[ $FORCE ]]; then make clean; fi
-if [[ $DPDK ]]; then ./dpdk.sh;  fi
-if [[ $RMEM ]]; then     OPTS="$OPTS REMOTE_MEMORY=1";  fi
-if [[ $FHINTS ]]; then   OPTS="$OPTS FAULT_HINTS=1";  fi
-if [[ $SAFEMODE ]]; then OPTS="$OPTS SAFEMODE=1";  fi
+if [[ $FORCE ]];    then    make clean;                         fi
+if [[ $DPDK ]];     then    ./dpdk.sh;                          fi
+if [[ $RMEM ]];     then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
+if [[ $RHINTS ]];   then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
+if [[ $SAFEMODE ]]; then    OPTS="$OPTS SAFEMODE=1";            fi
+if [[ $GDB ]];      then    OPTS="$OPTS GDB=1";                 fi
+if ! [[ $NO_STATS ]]; then  OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
 
-make all-but-tests -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS""" NUMA_NODE=${NUMA_NODE}
-popd 
+# NOTE: make "-j" was causing iokernel issues when compiling with gcc -O3 flag
+OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
+make runtime ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
+make iok ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
+popd
 
 LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
 INC="${INC} -I${SHENANGO_DIR}/inc"
@@ -148,16 +158,18 @@ fi
 
 set +e    #to continue to cleanup even on failuer
 
-# prepare for run
-echo "starting rmem servers"
-# starting controller
-scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
-ssh ${RCNTRL_SSH} "nohup ~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" &
-sleep 2
-# starting mem server
-scp ${SHENANGO_DIR}/memserver ${MEMSERVER_SSH}:~/scratch
-ssh ${MEMSERVER_SSH} "nohup ~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" &
-sleep 40
+# prepare remote memory servers for the run
+if [[ $RMEM ]]; then
+    echo "starting rmem servers"
+    # starting controller
+    scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
+    ssh ${RCNTRL_SSH} "nohup ~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" &
+    sleep 2
+    # starting mem server
+    scp ${SHENANGO_DIR}/memserver ${MEMSERVER_SSH}:~/scratch
+    ssh ${MEMSERVER_SSH} "nohup ~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" &
+    sleep 40
+fi
 
 start_iokernel() {
     set +e
@@ -166,7 +178,7 @@ start_iokernel() {
     binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
     sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${TMP_FILE_PFX}iokernel.log &
     echo "waiting on iokerneld"
-    sleep 5    #for iokernel to be ready
+    sleep 10    #for iokernel to be ready
 }
 start_iokernel
 
@@ -177,21 +189,25 @@ host_netmask 255.255.255.0
 host_gateway 192.168.0.1
 runtime_kthreads ${NUM_THREADS}
 runtime_guaranteed_kthreads ${NUM_THREADS}
-runtime_spinning_kthreads 0
+runtime_spinning_kthreads ${NUM_THREADS}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true
 rmem_local_memory 64000000000"""
 echo "$shenango_cfg" > $CFGFILE
 
 # run
-if [[ $GDB ]]; then gdbcmd="gdbserver :1234";   fi
 env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
+if [[ $GDB ]]; then 
+    prefix="gdbserver --wrapper env ${env} -- :1234 "
+else
+    prefix="env $env"
+fi
 echo "running test"
 if [[ $OUTFILE ]]; then
-    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
+    sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
 else
-    sudo ${env} ${gdbcmd} ./${BINFILE} ${CFGFILE} 2>&1
+    sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1
 fi
 
 # cleanup
-# cleanup
+cleanup
