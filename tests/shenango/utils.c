@@ -22,21 +22,6 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-void dump_stack() {
-  void *trace[16];
-  char **messages = (char **)NULL;
-  int i, trace_size = 0;
-
-  trace_size = backtrace(trace, 16);
-  messages = backtrace_symbols(trace, trace_size);
-  pr_err("%d==[stack trace]>>>", 0);
-
-  for (i = 0; i < trace_size; i++) pr_err("%s", messages[i]);
-
-  pr_err("<<<[stack trace]==%d\n", 0);
-  free(messages);
-}
-
 /* Returns number of rdtsc cycles based on CPU freq */
 /* derived from DPDK */
 uint64_t time_calibrate_tsc(void)
@@ -58,7 +43,7 @@ uint64_t time_calibrate_tsc(void)
 		ns += (t_end.tv_nsec - t_start.tv_nsec);
 
 		secs = (double)ns / 1000;
-		pr_debug("time: detected %lu ticks / us", (uint64_t)((end - start) / secs));
+		log_debug("time: detected %lu ticks / us", (uint64_t)((end - start) / secs));
 		return (uint64_t)((end - start) / secs);
 	}
 	return 0;

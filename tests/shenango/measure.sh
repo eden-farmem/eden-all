@@ -58,9 +58,8 @@ set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
 NHANDLERS=4
-cores=4
 
-for rmem in "rmem"; do    # "none" "rmem" "hints"
+for rmem in "rmem-evict"; do    # "none" "rmem" "hints"
     for op in "read"; do        # "write" "read" "r+w" "random"
         # reset
         cfg=${rmem}-${op}-${NHANDLERS}hthr
@@ -73,7 +72,9 @@ for rmem in "rmem"; do    # "none" "rmem" "hints"
         case $rmem in
         "none")             ;;
         "rmem")             OPTS="$OPTS --rmem";;
+        "rmem-evict")       OPTS="$OPTS --rmem --evict";;
         "hints")            OPTS="$OPTS --rmem --hints";;
+        "hints-evict")      OPTS="$OPTS --rmem --hints --evict";;
         *)                  echo "Unknown rmem type"; exit;;
         esac
 
@@ -91,10 +92,11 @@ for rmem in "rmem"; do    # "none" "rmem" "hints"
             bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
             tmpfile=${TEMP_PFX}out
             echo "cores,xput" > $datafile
-            # for cores in `seq 1 1 12`; do 
-            for cores in 1 4 8 12; do 
-                bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" -o=${tmpfile}
-                xput=$(grep "result:" $tmpfile | sed -n "s/^.*result://p")
+            for cores in `seq 1 1 8`; do 
+            # for cores in 1 4 8 12; do 
+                rm -f result
+                bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS"""
+                xput=$(cat result 2>/dev/null)
                 rm -f $tmpfile
                 echo "$cores,$xput" >> $datafile        # record xput
                 latfile=$DATADIR/lat-${cfg}

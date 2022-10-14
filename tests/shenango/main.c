@@ -3,7 +3,6 @@
 #include <unistd.h>
 #include <math.h>
 
-#include "logging.h"
 #include "base/time.h"
 #include "runtime/thread.h"
 #include "runtime/sync.h"
@@ -15,6 +14,8 @@
 
 #define RUNTIME_SECS 10
 #define NUM_LAT_SAMPLES 5000
+#define MAX_MEMORY	64000000000		// 64 GB
+
 #ifdef LATENCY
 #define BATCH_SIZE 1
 #else 
@@ -53,6 +54,15 @@ int global_post_init(void) 	{ return 0; }
 double next_poisson_time(double rate, unsigned long randomness)
 {
     return -logf(1.0f - ((double)(randomness % RAND_MAX)) / (double)(RAND_MAX)) / rate;
+}
+
+/* save unix timestamp of a checkpoint */
+void save_number_to_file(char* fname, unsigned long val)
+{
+	FILE* fp = fopen(fname, "w");
+	fprintf(fp, "%lu", val);
+	fflush(fp);
+	fclose(fp);
 }
 
 /* work for each user thread */
@@ -94,7 +104,7 @@ void thread_main(void* arg) {
 			ASSERT(0);	/* bug */
 	}
 
-	pr_debug("thread %lx done", (unsigned long) args->addr);
+	log_debug("thread %lx done", (unsigned long) args->addr);
 	args->end_tsc = rdtscp(NULL);
 	waitgroup_add(&workers, -1);	/* signal done */
 }
@@ -102,9 +112,9 @@ void thread_main(void* arg) {
 /* main thread called into by shenango runtime */
 void main_handler(void* arg) {
 	void* region;
-	region = heap_alloc(local_memory);
+	region = heap_alloc(MAX_MEMORY);
 	ASSERT(region != NULL);
-	pr_info("region start at %p, size %lu", region, local_memory);
+	log_info("region start at %p, size %lu", region, MAX_MEMORY);
 	waitgroup_init(&workers);
 	ASSERT(cycles_per_us);
 
@@ -122,7 +132,7 @@ void main_handler(void* arg) {
 
 	ASSERTZ(rand_seed(&rand, time(NULL)));
 	start_tsc = rdtsc();
-	while(start < (region + local_memory)) {
+	while(start < (region + MAX_MEMORY)) {
 		now_tsc = rdtsc();
 #ifdef LATENCY
 		sample_in_batch = -1;
@@ -135,8 +145,7 @@ void main_handler(void* arg) {
 #endif
 		for (i = 0; i < BATCH_SIZE; i++) {
 			/* init batch */
-			if (start >= (region + local_memory))
-				break;
+			BUG_ON(start >= (region + MAX_MEMORY));
 			targs[i].addr = start;
 			targs[i].rand_num = rand_next(&rand);
 			targs[i].start_tsc = sample_in_batch == i ? now_tsc : 0;
@@ -179,22 +188,23 @@ void main_handler(void* arg) {
 		if (duration_secs >= RUNTIME_SECS)
 			break;
 	}
-	pr_info("ran for %.1lf secs with %.0lf ops /sec", 
+	log_info("ran for %.1lf secs with %.0lf ops /sec", 
 		duration_secs, count / duration_secs);
 	printf("result:%.0lf\n", count / duration_secs);
+	save_number_to_file("result", count / duration_secs);
 	sleep(1);
 
 	/* dump latencies to file */
 	if (samples > 0) {
 		FILE* outfile = fopen("latencies", "w");
 		if (outfile == NULL)
-			pr_warn("could not write to latencies file");
+			log_warn("could not write to latencies file");
 		else {
 			fprintf(outfile, "latency\n");
 			for (i = 0; i < samples; i++)
 				fprintf(outfile, "%.3lf\n", latencies[i] * 1.0);
 			fclose(outfile);
-			pr_info("Wrote %d sampled latencies", samples);
+			log_info("Wrote %d sampled latencies", samples);
 		}
 	}
 }
@@ -203,7 +213,7 @@ int main(int argc, char *argv[]) {
 	int ret;
 
 	if (argc < 2) {
-		pr_err("arg must be config file\n");
+		log_err("arg must be config file\n");
 		return -EINVAL;
 	}
 

@@ -10,6 +10,7 @@ data
 *.out
 out
 __running__
+result
 
 ~$*.ppt*
 .DS_Store

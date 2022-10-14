@@ -35,6 +35,7 @@ NUM_THREADS=1
 OPTS=
 NO_HYPERTHREADING="-noht"
 SHEN_CFLAGS="-DNO_ZERO_PAGE"
+LOCALMEM=64000000000        # 64 GB (see RDMA_SERVER_NSLABS)
 
 # parse cli
 for i in "$@"
@@ -61,6 +62,12 @@ case $i in
     -h|--hints)
     RHINTS=1
     CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
+    ;;
+
+    -e|--evict)
+    EVICT=1
+    LOCALMEM=1000000    # 1MB to trigger eviction on most faults
+    CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
 
     -f|--force)
@@ -112,7 +119,7 @@ done
 NUMA_NODE=1
 NIC_PCI_SLOT="0000:d8:00.1"
 RMEM_HANDLER_CORE=55
-SHENANGO_STATS_CORE=51
+SHENANGO_STATS_CORE=46
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE}
 
 cleanup() {
@@ -143,8 +150,8 @@ if ! [[ $NO_STATS ]]; then  OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
 
 # NOTE: make "-j" was causing iokernel issues when compiling with gcc -O3 flag
 OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
-make runtime ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
-make iok ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
+make runtime -j ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
+make iok -j ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
 popd
 
 LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
@@ -192,7 +199,7 @@ runtime_guaranteed_kthreads ${NUM_THREADS}
 runtime_spinning_kthreads ${NUM_THREADS}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true
-rmem_local_memory 64000000000"""
+rmem_local_memory ${LOCALMEM}"""
 echo "$shenango_cfg" > $CFGFILE
 
 # run
@@ -204,9 +211,9 @@ else
 fi
 echo "running test"
 if [[ $OUTFILE ]]; then
-    sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 | tee $OUTFILE
+    sudo ${prefix} ./${BINFILE} ${CFGFILE} | tee -a $OUTFILE
 else
-    sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1
+    sudo ${prefix} ./${BINFILE} ${CFGFILE}
 fi
 
 # cleanup

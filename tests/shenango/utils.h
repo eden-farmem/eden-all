@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "logging.h"
+#include "base/log.h"
 #include "asm/ops.h"
 
 // #define DEBUG
