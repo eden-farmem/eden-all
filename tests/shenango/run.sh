@@ -35,6 +35,8 @@ NUM_THREADS=1
 OPTS=
 NO_HYPERTHREADING="-noht"
 SHEN_CFLAGS="-DNO_ZERO_PAGE"
+RMEM_ENABLED=0
+BACKEND=local
 LOCALMEM=64000000000        # 64 GB (see RDMA_SERVER_NSLABS)
 
 # parse cli
@@ -56,11 +58,13 @@ case $i in
 
     -rm|--rmem)
     RMEM=1
+    RMEM_ENABLED=1
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
     
     -h|--hints)
     RHINTS=1
+    RMEM_ENABLED=1
     CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
     ;;
 
@@ -68,6 +72,10 @@ case $i in
     EVICT=1
     LOCALMEM=1000000    # 1MB to trigger eviction on most faults
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
+    ;;
+
+    -b=*|--bkend=*)
+    BACKEND=${i#*=}
     ;;
 
     -f|--force)
@@ -166,7 +174,7 @@ fi
 set +e    #to continue to cleanup even on failuer
 
 # prepare remote memory servers for the run
-if [[ $RMEM ]]; then
+if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then
     echo "starting rmem servers"
     # starting controller
     scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
@@ -199,8 +207,11 @@ runtime_guaranteed_kthreads ${NUM_THREADS}
 runtime_spinning_kthreads ${NUM_THREADS}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true
+remote_memory ${RMEM_ENABLED}
+rmem_backend ${BACKEND}
 rmem_local_memory ${LOCALMEM}"""
 echo "$shenango_cfg" > $CFGFILE
+cat $CFGFILE
 
 # run
 env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"

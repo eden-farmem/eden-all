@@ -19,7 +19,7 @@
 #ifdef LATENCY
 #define BATCH_SIZE 1
 #else 
-#define BATCH_SIZE 1000
+#define BATCH_SIZE 1024
 #endif
 
 #ifdef REMOTE_MEMORY
@@ -101,7 +101,7 @@ void thread_main(void* arg) {
 			*(char*)(void*)addr = tmp;
 			break;
 		default:
-			ASSERT(0);	/* bug */
+			BUG();	/* bug */
 	}
 
 	log_debug("thread %lx done", (unsigned long) args->addr);
@@ -130,9 +130,12 @@ void main_handler(void* arg) {
 	thread_data_t* targs = aligned_alloc(CACHE_LINE_SIZE,
 		BATCH_SIZE * sizeof(thread_data_t));
 
+	unsigned long batch_offset = (MAX_MEMORY / BATCH_SIZE);
+	BUILD_ASSERT(MAX_MEMORY % BATCH_SIZE == 0);
+
 	ASSERTZ(rand_seed(&rand, time(NULL)));
 	start_tsc = rdtsc();
-	while(start < (region + MAX_MEMORY)) {
+	while(start < (region + batch_offset)) {
 		now_tsc = rdtsc();
 #ifdef LATENCY
 		sample_in_batch = -1;
@@ -145,13 +148,13 @@ void main_handler(void* arg) {
 #endif
 		for (i = 0; i < BATCH_SIZE; i++) {
 			/* init batch */
-			BUG_ON(start >= (region + MAX_MEMORY));
-			targs[i].addr = start;
-			targs[i].rand_num = rand_next(&rand);
+			BUG_ON(start >= (region + batch_offset));
+			targs[i].addr = start + i * batch_offset;
+			targs[i].rand_num = 0;	//rand_next(&rand);
 			targs[i].start_tsc = sample_in_batch == i ? now_tsc : 0;
 			targs[i].end_tsc = 0;
-			start += _PAGE_SIZE;
 		}
+		start += _PAGE_SIZE;
 
 		/* start batch */
 		for (j = 0; j < i; j++) {
