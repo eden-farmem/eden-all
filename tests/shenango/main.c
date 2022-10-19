@@ -14,7 +14,8 @@
 
 #define RUNTIME_SECS 10
 #define NUM_LAT_SAMPLES 5000
-#define MAX_MEMORY	64000000000		// 64 GB
+#define MAX_XPUT 	1000000
+#define MAX_MEMORY	68719476736		// 64 GB
 
 #ifdef LATENCY
 #define BATCH_SIZE 1
@@ -37,10 +38,11 @@ enum fault_op {
 
 struct thread_data {
     void* addr;
+	int rdahead;
     unsigned long rand_num;
     uint64_t start_tsc;
     uint64_t end_tsc;
-	uint64_t pad[4];
+	uint64_t pad[3];
 };
 typedef struct thread_data thread_data_t;
 BUILD_ASSERT((sizeof(thread_data_t) % CACHE_LINE_SIZE == 0));
@@ -53,7 +55,9 @@ int global_post_init(void) 	{ return 0; }
 
 double next_poisson_time(double rate, unsigned long randomness)
 {
-    return -logf(1.0f - ((double)(randomness % RAND_MAX)) / (double)(RAND_MAX)) / rate;
+    return -logf(1.0f - ((double)(randomness % RAND_MAX)) 
+		/ (double)(RAND_MAX)) 
+		/ rate;
 }
 
 /* save unix timestamp of a checkpoint */
@@ -88,15 +92,15 @@ void thread_main(void* arg) {
 	/* perform access/trigger fault */
 	switch (op) {
 		case FO_READ:
-			hint_read_fault((void*)addr);
+			hint_read_fault_rdahead((void*)addr, args->rdahead);
 			tmp = *(char*)(void*)addr;
 			break;
 		case FO_WRITE:
-			hint_write_fault((void*)addr);
+			hint_write_fault_rdahead((void*)addr, args->rdahead);
 			*(char*)(void*)addr = tmp;
 			break;
 		case FO_READ_WRITE:
-			hint_write_fault((void*)addr);
+			hint_write_fault_rdahead((void*)addr, args->rdahead);
 			tmp = *(char*)(void*)addr;
 			*(char*)(void*)addr = tmp;
 			break;
@@ -120,15 +124,24 @@ void main_handler(void* arg) {
 
 	int ret, i, j, samples = 0;
 	int sample_in_batch = -1;
-	uint64_t start_tsc, duration_tsc, now_tsc, count = 0;
-	uint64_t latencies[NUM_LAT_SAMPLES], next_tsc = 0;
+	int rdahead, rdahead_skip;
+	uint64_t start_tsc, duration_tsc, now_tsc, count = 0, batches = 0;
+	uint64_t latencies[NUM_LAT_SAMPLES], next_sample = 0;
 	unsigned long randomness;
 	struct rand_state rand;
 	double duration_secs;
-	double sampling_rate = (NUM_LAT_SAMPLES * 1.0 / (RUNTIME_SECS * 1e6 * cycles_per_us));
+	double sampling_rate = (NUM_LAT_SAMPLES * BATCH_SIZE * 1.0 / (RUNTIME_SECS * MAX_XPUT));
 	void* start = region;
 	thread_data_t* targs = aligned_alloc(CACHE_LINE_SIZE,
 		BATCH_SIZE * sizeof(thread_data_t));
+
+	/* figure out read ahead */
+	rdahead = rdahead_skip = 0;
+#ifdef RDAHEAD
+	rdahead = RDAHEAD;
+	log_info("setting read ahead %d", RDAHEAD);
+#endif
+	assert(rdahead >= 0);
 
 	unsigned long batch_offset = (MAX_MEMORY / BATCH_SIZE);
 	BUILD_ASSERT(MAX_MEMORY % BATCH_SIZE == 0);
@@ -139,10 +152,9 @@ void main_handler(void* arg) {
 		now_tsc = rdtsc();
 #ifdef LATENCY
 		sample_in_batch = -1;
-		if (now_tsc - start_tsc >= next_tsc) {
+		if (batches >= next_sample) {
 			randomness = rand_next(&rand);
-			next_tsc = (now_tsc - start_tsc) + 
-				next_poisson_time(sampling_rate, randomness);
+			next_sample = batches + next_poisson_time(sampling_rate, randomness);
 			sample_in_batch = randomness % BATCH_SIZE;
 		}
 #endif
@@ -150,11 +162,16 @@ void main_handler(void* arg) {
 			/* init batch */
 			BUG_ON(start >= (region + batch_offset));
 			targs[i].addr = start + i * batch_offset;
+			targs[i].rdahead = !rdahead_skip ? rdahead : 0;
 			targs[i].rand_num = 0;	//rand_next(&rand);
 			targs[i].start_tsc = sample_in_batch == i ? now_tsc : 0;
 			targs[i].end_tsc = 0;
 		}
+
+		/* params for next batch */
 		start += _PAGE_SIZE;
+		if(rdahead_skip-- <= 0)
+			rdahead_skip = rdahead;
 
 		/* start batch */
 		for (j = 0; j < i; j++) {
@@ -166,6 +183,7 @@ void main_handler(void* arg) {
 		/* yield & wait until the batch is done */
 		waitgroup_wait(&workers);
 		count += i;
+		batches++;
 
 #ifdef LATENCY
 		/* note down latencies of the batch */

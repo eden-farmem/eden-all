@@ -37,7 +37,7 @@ NO_HYPERTHREADING="-noht"
 SHEN_CFLAGS="-DNO_ZERO_PAGE"
 RMEM_ENABLED=0
 BACKEND=local
-LOCALMEM=64000000000        # 64 GB (see RDMA_SERVER_NSLABS)
+LOCALMEM=68719476736        # 64 GB (see RDMA_SERVER_NSLABS)
 
 # parse cli
 for i in "$@"
@@ -88,6 +88,16 @@ case $i in
 
     -t=*|--threads=*)
     NUM_THREADS=${i#*=}
+    ;;
+    
+    -l|--lat)
+    LATENCIES=1
+    CFLAGS="$CFLAGS -DLATENCY"
+    ;;
+
+    -rd=*|--rdahead=*)
+    RDAHEAD=${i#*=}
+    CFLAGS="$CFLAGS -DRDAHEAD=${RDAHEAD}"
     ;;
 
     -o=*|--out=*)
@@ -171,7 +181,12 @@ if [[ $BUILD_ONLY ]]; then
     exit 0
 fi
 
-set +e    #to continue to cleanup even on failuer
+set +e    #to continue to cleanup even on failure
+
+if [[ $LATENCIES ]] && [ $NUM_THREADS -gt 1 ]; then
+    echo "can't do more than 1 thr with latency sampling"
+    exit 1
+fi
 
 # prepare remote memory servers for the run
 if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then

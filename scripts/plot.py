@@ -80,10 +80,10 @@ class LegendLoc(Enum):
 
 LINESTYLE_TUPLES = {
     'solid':               (0, ()),
-    'dashed':              (0, (5, 5)),
+    'dashed':              (0, (3, 2)),
     'dotted':              (0, (1, 5)),
-    'dashdot':             (0, (3, 5, 1, 5)),
-    'dashdotdot':          (0, (3, 5, 1, 5, 1, 5)),
+    'dashdot':             (0, (3, 2, 1, 2)),
+    'dashdotdot':          (0, (3, 2, 1, 2, 1, 2)),
     'loosedash':           (0, (5, 10)),
     'loosedot':            (0, (1, 10)),
     'loosedashdot':        (0, (3, 10, 1, 10)),
@@ -691,7 +691,7 @@ def main():
             ycol = [y * ymul for y in ycol]
             axes.step(xcol, ycol, label=plot.label, color=COLORS[cidx],
                 where="post", marker=(None if args.nomarker else MARKERS[midx]),
-                ls=args.linestyle[plot_num] if args.linestyle is not None else None)
+                ls=args.linestyle[plot_num].as_tuple() if args.linestyle is not None else None)
                 # markerfacecolor=(None if args.nomarker else COLORS[cidx]))
 
         else:

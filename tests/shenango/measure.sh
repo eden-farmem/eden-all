@@ -10,6 +10,7 @@ set +x
 usage="\n
 -f, --force \t\t force re-run experiments\n
 -l, --lat \t\t get latencies\n
+-p, --plot \t\t generate plot from results\n
 -d, --debug \t\t build debug\n
 -h, --help \t\t this usage information message\n"
 
@@ -37,7 +38,11 @@ case $i in
     
     -l|--lat)
     LATENCIES=1
-    CFLAGS="-DLATENCY $CFLAGS"
+    OPTS="$OPTS --lat"
+    ;;
+    
+    -p|--plot)
+    PLOT=1
     ;;
 
     -h | --help)
@@ -57,92 +62,172 @@ done
 set +e    #to continue to cleanup even on failure
 mkdir -p $DATADIR
 CFLAGS_BEFORE=$CFLAGS
-NHANDLERS=4
+OPTS_BEFORE=$OPTS
+NHANDLERS=1
 
-for rmem in "hints"; do    # "none" "rmem" "hints" "rmem-evict"
-    for bkend in "local" "rdma"; do
-        for op in "read"; do        # "write" "read" "r+w" "random"
-            # reset
-            cfg=${rmem}-${bkend}-${op}-${NHANDLERS}hthr
-            CFLAGS=${CFLAGS_BEFORE}
-            OPTS=
-            LS=
-            CMI=
-            rm -f ${LATFILE}
+set_hints_opts() {
+    rmem=$1
+    case $rmem in
+    "normem")           ;;
+    "nohints")          LS=dotted;      OPTS="$OPTS --rmem";;
+    "hints")            LS=solid;       OPTS="$OPTS --rmem --hints";;
+    "hints+1")          LS=dashed;      OPTS="$OPTS --rmem --hints --rdahead=1";;
+    "hints+2")          LS=dashdot;     OPTS="$OPTS --rmem --hints --rdahead=2";;
+    "hints+4")          LS=dashdotdot;  OPTS="$OPTS --rmem --hints --rdahead=4";;
+    *)                  echo "Unknown rmem type"; exit;;
+    esac
+}
 
-            case $rmem in
-            "none")             ;;
-            "rmem")             OPTS="$OPTS --rmem";;
-            "rmem-evict")       OPTS="$OPTS --rmem --evict";;
-            "hints")            OPTS="$OPTS --rmem --hints";;
-            "hints-evict")      OPTS="$OPTS --rmem --hints --evict";;
-            *)                  echo "Unknown rmem type"; exit;;
-            esac
+set_evict_opts() {
+    evict=$1
+    case $evict in
+    "noevict")             ;;
+    "evict")            OPTS="$OPTS --evict";;
+    *)                  echo "Unknown evict type"; exit;;
+    esac
+}
 
-            case $bkend in
-            "none")             ;;
-            "local")            OPTS="$OPTS --bkend=local";;
-            "rdma")             OPTS="$OPTS --bkend=rdma";;
-            *)                  echo "Unknown backend type"; exit;;
-            esac
+set_backend_opts() {
+    bkend=$1
+    case $bkend in
+    "none")             ;;
+    "local")            OPTS="$OPTS --bkend=local"; CMI=1;;
+    "rdma")             OPTS="$OPTS --bkend=rdma";  CMI=1;;
+    *)                  echo "Unknown backend type"; exit;;
+    esac
+}
 
-            case $op in
-            "read")             CFLAGS="-DFAULT_OP=0 $CFLAGS";  LS=solid;   CMI=0;;
-            "write")            CFLAGS="-DFAULT_OP=1 $CFLAGS ";  LS=dashed;  CMI=0;;
-            "r+w")              CFLAGS="-DFAULT_OP=2 $CFLAGS ";  LS=dashdot; CMI=1;;
-            "random")           CFLAGS="-DFAULT_OP=3 $CFLAGS ";  LS=dotted;  CMI=1;;
-            *)                  echo "Unknown fault op"; exit;;
-            esac
+set_fault_op_opts() {
+    op=$1
+    case $op in
+    "read")             CFLAGS="-DFAULT_OP=0 $CFLAGS";;
+    "write")            CFLAGS="-DFAULT_OP=1 $CFLAGS ";;
+    "r+w")              CFLAGS="-DFAULT_OP=2 $CFLAGS ";;
+    "random")           CFLAGS="-DFAULT_OP=3 $CFLAGS ";;
+    *)                  echo "Unknown fault op"; exit;;
+    esac
+}
 
-            # run and log result
-            datafile=$DATADIR/xput-${cfg}
-            if [ ! -f $datafile ] || [[ $FORCE ]]; then 
-                bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
-                tmpfile=${TEMP_PFX}out
-                echo "cores,xput" > $datafile
-                for cores in `seq 1 1 12`; do 
-                # for cores in 1 4 8 12; do 
-                    rm -f result
-                    bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS"""
-                    xput=$(cat result 2>/dev/null)
-                    rm -f $tmpfile
-                    echo "$cores,$xput" >> $datafile        # record xput
-                    latfile=$DATADIR/lat-${cfg}
-                    if [[ $LATENCIES ]] && [ -f $LATFILE ]; then 
-                        mv -f ${LATFILE} ${latfile}            # record latency
+measure_xput()
+{
+    for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
+        for evict in "noevict"; do
+            for bkend in "local" "rdma"; do
+                for op in "read"; do
+                    # reset
+                    cfg=${rmem}-${evict}-${bkend}-${op}
+                    CFLAGS=${CFLAGS_BEFORE}
+                    OPTS=${OPTS_BEFORE}
+                    LS=solid
+                    CMI=1
+
+                    # set opts
+                    set_hints_opts      "$rmem"
+                    set_evict_opts      "$evict"
+                    set_backend_opts    "$bkend"
+                    set_fault_op_opts   "$op"
+
+                    # run and log result
+                    datafile=$DATADIR/xput-${cfg}
+                    if [ ! -f $datafile ] || [[ $FORCE ]]; then
+                        bash run.sh --clean
+                        bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
+                        echo "cores,xput" > $datafile
+                        for cores in `seq 1 1 12`; do 
+                        # for cores in 1; do 
+                            rm -f result
+                            bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS"""
+                            xput=$(cat result 2>/dev/null)
+                            echo "$cores,$xput" >> $datafile        # record xput
+
+                            # clean and wait a bit
+                            bash run.sh --clean
+                            sleep 10
+                        done
                     fi
-
-                    # clean and wait a bit
-                    bash run.sh --clean
-                    sleep 10
+                    cat $datafile
+                    plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
                 done
-            fi
-            cat $datafile
-            plots="$plots -d $datafile -l ${rmem}-${bkend}"
-            latplots="$latplots -d $DATADIR/lat-${cfg} -l $rmem-$op-${NHANDLERS}hthr"
+            done
         done
     done
-done
 
-mkdir -p ${PLOTDIR}
+    if [[ $PLOT ]]; then
+        mkdir -p ${PLOTDIR}
+        plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
+        python ${PLOTSRC} ${plots}                  \
+            -xc cores -xl "App CPU"                 \
+            -yc xput -yl "MOPS" --ymul 1e-6         \
+            --ymin 0 --ymax 1.75                    \
+            --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+        display $plotname &
+    fi
+}
 
-plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
-python ${PLOTSRC} ${plots}                  \
-    -xc cores -xl "App CPU"                 \
-    -yc xput -yl "MOPS" --ymul 1e-6         \
-    --ymin 0 --ymax 1.75                    \
-    --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname &
+measure_latency() 
+{
+    for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
+        for evict in "noevict"; do
+            for bkend in "local" "rdma"; do
+                for op in "read"; do
+                    # reset
+                    cfg=${rmem}-${evict}-${bkend}-${op}
+                    CFLAGS=${CFLAGS_BEFORE}
+                    OPTS=${OPTS_BEFORE}
+                    LS=solid
+                    CMI=1
 
-# if [[ $LATENCIES ]]; then 
-#     echo $latplots
-#     plotname=${PLOTDIR}/latency.${PLOTEXT}
-#     python3 ${PLOTSRC} -z cdf ${latplots}   \
-#         -yc latency -xl "Latency (µs)"      \
-#         --xmin 10 --xmax 20 -nm             \
-#         --size 8 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
-#     display $plotname & 
-# fi
+                    # set opts
+                    set_hints_opts      "$rmem"
+                    set_evict_opts      "$evict"
+                    set_backend_opts    "$bkend"
+                    set_fault_op_opts   "$op"
+
+                    # run and log result
+                    latfile=$DATADIR/lat-${cfg}
+                    if [ ! -f "$latfile" ] || [[ $FORCE ]]; then
+                        bash run.sh --clean
+                        bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
+                        for cores in 1; do 
+                            rm -f result
+                            bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS"""
+                            xput=$(cat result 2>/dev/null)
+                            echo "RESULT: $xput"
+                            if [ ! -f $LATFILE ]; then 
+                                echo "no latency file ${LATFILE} found"
+                                exit 1
+                            fi
+                            mv -f ${LATFILE} ${latfile}
+
+                            # clean and wait a bit
+                            bash run.sh --clean
+                            echo "waiting 10 secs"
+                            sleep 10
+                        done
+                    fi
+                    latplots="$latplots -d ${latfile} -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
+                done
+            done
+        done
+    done
+
+    if [[ $PLOT ]]; then
+        mkdir -p $PLOTDIR
+        echo $latplots
+        plotname=${PLOTDIR}/latency.${PLOTEXT}
+        python3 ${PLOTSRC} -z cdf ${latplots}       \
+            -yc latency -xl "Latency (µs)" -yl "CDF"\
+            --xmin 0 --xmax 40 -nm --xmul 1e-3      \
+            --size 5 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
+        display $plotname & 
+    fi
+}
+
+if [[ $LATENCIES ]]; then
+    measure_latency
+else
+    measure_xput
+fi
 
 # cleanup
 rm -f ${TEMP_PFX}*
