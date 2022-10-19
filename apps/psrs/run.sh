@@ -251,14 +251,6 @@ if [[ $FORCE ]] && [[ $KONA ]]; then
     make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
     sudo sysctl -w vm.unprivileged_userfaultfd=1    
     popd
-
-    # build shim
-    if [[ $NOPIE ]] && [ -d ${KONA_DIR}/shim ]; then
-        pushd ${KONA_DIR}/shim
-        make clean
-        make
-        popd
-    fi
 fi
 
 # rebuild shenango
@@ -282,9 +274,6 @@ if [[ $KONA ]]; then
     INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
     LIBS="${LIBS} -L${KONA_BIN}"
     LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
-    if [[ $NOPIE ]] && [ -d ${KONA_DIR}/shim ]; then
-        CFLAGS="$CFLAGS -Wl,--wrap=main ${KONA_DIR}/shim/libshim.a"
-    fi
 fi
 
 # link shenango

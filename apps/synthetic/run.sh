@@ -268,14 +268,6 @@ if [[ $FORCE ]] && [[ $WITH_KONA ]]; then
     sudo sysctl -w vm.unprivileged_userfaultfd=1   
     echo 0 | sudo tee /proc/sys/kernel/numa_balancing   # to avoid numa hint faults 
     popd
-
-    # build shim
-    if [[ $NOPIE ]] && [ -d ${KONA_DIR}/shim ]; then
-        pushd ${KONA_DIR}/shim
-        make clean
-        make
-        popd
-    fi
 fi
 
 # rebuild shenango
@@ -310,9 +302,6 @@ if [[ $WITH_KONA ]]; then
     INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
     LIBS="${LIBS} -L${KONA_BIN}"
     LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
-    if [[ $NOPIE ]] && [ -d ${KONA_DIR}/shim ]; then
-        CFLAGS="$CFLAGS -Wl,--wrap=main ${KONA_DIR}/shim/libshim.a"
-    fi
 fi
 
 # link shenango

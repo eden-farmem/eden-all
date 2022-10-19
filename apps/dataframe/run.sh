@@ -216,14 +216,6 @@ if [[ $FORCE ]] && [[ $KONA ]]; then
     make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG} ${GDBFLAG}
     sudo sysctl -w vm.unprivileged_userfaultfd=1
     popd
-
-    # build shim
-    if [[ $NOPIE ]] && [ -d ${KONADIR}/shim ]; then
-        pushd ${KONADIR}/shim
-        make clean
-        make
-        popd
-    fi
 fi
 
 # build AIFM
@@ -238,10 +230,6 @@ if [[ $FORCE ]] && [[ $AIFM ]]; then
     make EDEN_PATH=${ROOTDIR_REAL} clean
     make CXXFLAGS="$CXXFLAGS" EDEN_PATH=${ROOTDIR_REAL} -j$(nproc)
     popd
-fi
-
-if [[ $NOPIE ]] && [ -d ${KONADIR}/shim ]; then
-    CXXFLAGS="$CXXFLAGS -Wl,--wrap=main ${KONADIR}/shim/libshim.a -ldl"
 fi
 
 # build app

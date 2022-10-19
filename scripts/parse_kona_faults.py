@@ -20,7 +20,7 @@ def kind_to_enum(kind):
     if kind == 0:   return FaultKind.READ
     if kind == 1:   return FaultKind.WRITE
     if kind == 3:   return FaultKind.WRPROTECT
-    raise Exception("unknown kind")
+    raise Exception("unknown kind: {}".format(kind))
 
 
 def main():
