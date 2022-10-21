@@ -70,7 +70,7 @@ case $i in
 
     -e|--evict)
     EVICT=1
-    LOCALMEM=1000000    # 1MB to trigger eviction on most faults
+    LOCALMEM=100000000    # 100MB to trigger eviction on most faults
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
 
@@ -229,11 +229,15 @@ echo "$shenango_cfg" > $CFGFILE
 cat $CFGFILE
 
 # run
-env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
+env=
+if [ "$BACKEND" == "rdma" ]; then
+    env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
+fi
 if [[ $GDB ]]; then 
     prefix="gdbserver --wrapper env ${env} -- :1234 "
 else
-    prefix="env $env"
+    prefix="env ${env} perf record -F 999 "
+    # prefix=
 fi
 echo "running test"
 if [[ $OUTFILE ]]; then

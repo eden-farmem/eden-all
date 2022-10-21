@@ -33,6 +33,10 @@ case $i in
     -h|--headers)
     HEADERS=1
     ;;
+
+    -t|--tools)
+    TOOLS=1
+    ;;
     
     -h | --help)
     echo -e $usage
@@ -54,6 +58,11 @@ bash ${SCRIPT_DIR}/remove.sh -v=${VERSION} ${FFLAG}
 sudo make install 
 if [[ $HEADERS ]]; then 
     sudo make headers_install INSTALL_HDR_PATH=/usr
+fi
+if [[ $TOOLS ]]; then 
+    sudo apt-get install libpci-dev libpopt-dev
+    make -C tools/perf
+    sudo make -C tools/perf prefix=/usr/ install
 fi
 echo "ready to reboot"
 sudo reboot

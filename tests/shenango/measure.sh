@@ -81,7 +81,7 @@ set_hints_opts() {
 set_evict_opts() {
     evict=$1
     case $evict in
-    "noevict")             ;;
+    "noevict")          ;;
     "evict")            OPTS="$OPTS --evict";;
     *)                  echo "Unknown evict type"; exit;;
     esac
@@ -91,8 +91,8 @@ set_backend_opts() {
     bkend=$1
     case $bkend in
     "none")             ;;
-    "local")            OPTS="$OPTS --bkend=local"; CMI=1;;
-    "rdma")             OPTS="$OPTS --bkend=rdma";  CMI=1;;
+    "local")            OPTS="$OPTS --bkend=local"; LS=dashed;  CMI=0;;
+    "rdma")             OPTS="$OPTS --bkend=rdma";  LS=solid;   CMI=1;;
     *)                  echo "Unknown backend type"; exit;;
     esac
 }
@@ -110,9 +110,9 @@ set_fault_op_opts() {
 
 measure_xput()
 {
-    for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
-        for evict in "noevict"; do
-            for bkend in "local" "rdma"; do
+    for bkend in "local" "rdma"; do
+        for rmem in "hints"; do     #"hints+1" "hints+2" "hints+4"; do
+            for evict in "evict"; do
                 for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
@@ -164,10 +164,12 @@ measure_xput()
     fi
 }
 
-measure_latency() 
+measure_latency()
 {
     for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
+    # for rmem in "hints"; do
         for evict in "noevict"; do
+        # for evict in "noevict" "evict"; do
             for bkend in "local" "rdma"; do
                 for op in "read"; do
                     # reset
@@ -205,7 +207,7 @@ measure_latency()
                             sleep 10
                         done
                     fi
-                    latplots="$latplots -d ${latfile} -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
+                    latplots="$latplots -d ${latfile} -l ${rmem}-${evict}-${bkend} -ls $LS -cmi $CMI"
                 done
             done
         done
@@ -218,7 +220,7 @@ measure_latency()
         python3 ${PLOTSRC} -z cdf ${latplots}       \
             -yc latency -xl "Latency (µs)" -yl "CDF"\
             --xmin 0 --xmax 40 -nm --xmul 1e-3      \
-            --size 5 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
+            --size 6 3.5 -fs 12 -of ${PLOTEXT} -o $plotname 
         display $plotname & 
     fi
 }
