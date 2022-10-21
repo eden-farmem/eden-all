@@ -129,62 +129,62 @@ int uffd_unregister(int fd, unsigned long addr, size_t size) {
   return r;
 }
 
-// TODO(irina): can we avoid the userfault copy?
-int uffd_copy(int fd, unsigned long dst, unsigned long src, int wpmode,
-              bool retry, int *n_retries, bool wake_on_exist) {
-  struct uffdio_copy copy = {
-      .dst = dst, .src = src, .len = PAGE_SIZE, .mode = wpmode};
-  int r;
+int uffd_copy(int fd, unsigned long dst, unsigned long src, size_t size, 
+    bool wrprotect, bool no_wake, bool retry, int *n_retries) 
+{
+    int r;
+    int mode = 0;
 
-  do {
-    pr_debug("uffd_copy from src %lx to dst %lx mode %d", src, dst, wpmode);
-    errno = 0;
+    if (n_retries)
+        *n_retries = 0;
 
-    r = ioctl(fd, UFFDIO_COPY, &copy);
+    if (wrprotect)  
+        mode |= UFFDIO_COPY_MODE_WP;
+    if (no_wake)    
+        mode |= UFFDIO_COPY_MODE_DONTWAKE;
+    struct uffdio_copy copy = {
+        .dst = dst, 
+        .src = src, 
+        .len = size, 
+        .mode = mode
+    };
 
-    if (r < 0) {
-      pr_debug("uffd_copy copied %lld bytes, addr=%lx, errno=%d", copy.copy,
-               dst, errno);
+    do {
+        pr_debug("uffd_copy from src %lx, size %lu to dst %lx wpmode %d nowake %d", 
+            src, size, dst, wrprotect, no_wake);
+        errno = 0;
 
-      if (errno == ENOSPC) {
-        // The child process has exited.
-        // We should drop this request.
-        r = 0;
-        break;
+        /* TODO: Use UFFD_USE_PWRITE (see kona)? */
+        r = ioctl(fd, UFFDIO_COPY, &copy);
+        if (r < 0) {
+            pr_debug("uffd_copy copied %lld bytes, addr=%lx, errno=%d", 
+                copy.copy, dst, errno);
 
-      } else if (errno == EEXIST) {
-        // We don't currently use wake_on_exist. We should not be asking
-        // multiple uffd_copy on the same address anyways. We take care of that
-        // elsewhere in the framework. This option is here for future use.
-        if (wake_on_exist) {
-          // We will assert in uffd_wake if we fail. We should not fail here.
-          r = uffd_wake(fd, dst, PAGE_SIZE);
-        } else {
-          pr_debug("uffd_copy err EEXIST but wake_on_exist=false: %lx", dst);
-          return EEXIST;
+            if (errno == ENOSPC) {
+                // The child process has exited.
+                // We should drop this request.
+                r = 0;
+                break;
+
+            } else if (errno == EEXIST) {
+                /* something wrong with our page locking */
+                pr_err("uffd_copy err EEXIST on %lx", dst);
+                BUG();
+            } else if (errno == EAGAIN) {
+                /* layout change in progress; try again */
+                if (retry == false) {
+                    /* do not retry, let the caller handle it */
+                    r = EAGAIN;
+                    break;
+                }
+                (*n_retries)++;
+            } else {
+                pr_info("uffd_copy errno=%d: unhandled error", errno);
+                BUG();
+            }
         }
-
-        // We are done with this request
-        // Return the return value from uffd_wake
-        break;
-      } else if (errno == EAGAIN) {
-        // layout change in progress; try again
-        if (retry == false) {
-          // Do not spin in this function and retry, let the caller handle it.
-          r = EAGAIN;
-          break;
-        }
-        (*n_retries)++;
-      } else {
-        pr_info("uffd_copy errno=%d: unhandled error", errno);
-        ASSERT(0);
-      }
-    } else {
-      // This uffd_copy was successful
-    }
-  } while (r && errno == EAGAIN);
-
-  return r;
+    } while (r && errno == EAGAIN);
+    return r;
 }
 
 int uffd_copy_size(int fd, unsigned long dst, unsigned long src, size_t size,
@@ -202,44 +202,48 @@ int uffd_copy_size(int fd, unsigned long dst, unsigned long src, size_t size,
   return r;
 }
 
-int uffd_wp(int fd, unsigned long addr, size_t size, int wpmode, bool retry,
-            int *n_retries) {
-  struct uffdio_writeprotect wp = {.mode = wpmode,
-                                   .range = {.start = addr, .len = size}};
-  int r;
+int uffd_wp(int fd, unsigned long addr, size_t size, bool wrprotect, 
+    bool no_wake, bool retry, int *n_retries) 
+{
+    int r;
+    int mode = 0;
 
-  do {
-    pr_debug("uffd_wp start %p size %lx mode %d", (void *)addr, size, wpmode);
-    errno = 0;
-    r = ioctl(fd, UFFDIO_WRITEPROTECT, &wp);
+    if (wrprotect)  
+        mode |= UFFDIO_WRITEPROTECT_MODE_WP;
+    if (no_wake)    
+        mode |= UFFDIO_WRITEPROTECT_MODE_DONTWAKE;
+    struct uffdio_writeprotect wp = {
+        .mode = mode,
+        .range = {.start = addr, .len = size}
+    };
 
-    if (r < 0) {
-      pr_debug("uffd_wp errno=%d", errno);
-
-      if (errno == EEXIST || errno == ENOSPC) {
-        // This page is already write-protected OR the child process has exited.
-        // We should drop this request.
-        r = 0;
-        break;
-
-      } else if (errno == EAGAIN) {
-        // layout change in progress; try again
-
-        if (retry == false) {
-          // Do not spin in this function and retry, let the caller handle it.
-          r = EAGAIN;
-          break;
+    do {
+        pr_debug("uffd_wp start %p size %lx mode %d nowake %d", 
+            (void *)addr, size, wrprotect, no_wake);
+        errno = 0;
+        r = ioctl(fd, UFFDIO_WRITEPROTECT, &wp);
+        if (r < 0) {
+            pr_debug("uffd_wp errno=%d", errno);
+            if (errno == EEXIST || errno == ENOSPC) {
+                /* This page is already write-protected OR the child process 
+                    has exited. We should drop this request. */
+                r = 0;
+                break;
+            } else if (errno == EAGAIN) {
+                /* layout change in progress; try again */
+                if (retry == false) {
+                    /* do not retry, let the caller handle it */
+                    r = EAGAIN;
+                    break;
+                }
+                (*n_retries)++;
+            } else {
+                pr_info("uffd_wp errno=%d: unhandled error", errno);
+                BUG();
+            }
         }
-        *n_retries++;
-
-      } else {
-        pr_info("uffd_wp errno=%d: unhandled error", errno);
-        ASSERT(0);
-      }
-    }
-  } while (r && errno == EAGAIN);
-
-  return r;
+    } while (r && errno == EAGAIN);
+    return r;
 }
 
 int uffd_zero(int fd, unsigned long addr, size_t size, bool retry,

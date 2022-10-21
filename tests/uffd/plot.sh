@@ -11,6 +11,7 @@ PLOTSRC=${SCRIPT_DIR}/../../scripts/plot.py
 PLOTDIR=${SCRIPT_DIR}/plots
 DATADIR=${SCRIPT_DIR}/data
 TMP_FILE_PFX='tmp_uffd_'
+PTI=on
 
 usage="\n
 -f,   --force \t\t force re-summarize data and re-generate plots\n
@@ -59,10 +60,16 @@ if [ -z "$PLOTID" ]; then
     PLOTID=$((PLOTID-1))
 fi
 
+# PTI status
+pti_msg=$(sudo dmesg | grep 'page tables isolation: enabled' || true)
+if [ -z "$pti_msg" ]; then
+    PTI=off
+fi
+echo "PTI status: $PTI"
+
 # setup
 mkdir -p $PLOTDIR
 mkdir -p $DATADIR
-
 
 # gets data and fills $plots
 add_data_to_plot() {
@@ -75,7 +82,7 @@ add_data_to_plot() {
     if [ "$share_uffd" == "1" ]; then  sflag="";            fi
     if [ "$share_uffd" == "0" ]; then  sflag="--nosharefd"; fi
 
-    datafile=${DATADIR}/${group}_${label}_xput.dat
+    datafile=${DATADIR}/${group}_${label}_pti_${PTI}.dat
     if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
         echo "cores,xput,errors,latns" > $datafile
         for cores in 1 2 4 8; do
@@ -97,12 +104,12 @@ add_data_to_plot() {
 }
 
 # plots from $plots
-generate_plots() {
+generate_xput_plot() {
     group=$1
     ymax=$2
     if [[ $ymax ]]; then ylflag="--ymin 0 --ymax ${ymax}"; fi
 
-    plotname=${PLOTDIR}/${group}_xput.${PLOTEXT}
+    plotname=${PLOTDIR}/${group}_pti_${PTI}_xput.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python ${PLOTSRC} ${plots} ${ylflag}    \
             -yc xput -yl "MOPS" --ymul 1e-6     \
@@ -110,17 +117,6 @@ generate_plots() {
             --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
     fi
     display $plotname &
-
-    if [[ $LATPLOT ]]; then
-        plotname=${PLOTDIR}/${group}_latency.${PLOTEXT}
-        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-            python3 ${PLOTSRC} -z bar -d ${latfile}     \
-                -xc config -xl "Config"                 \
-                -yc latns -yl "Cost (µs)" -ym 1e-3      \
-                --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname 
-        fi
-        display $plotname &
-    fi
 }
 
 plots=
@@ -131,9 +127,9 @@ rm -f $latfile
 if [ "$PLOTID" == "1" ]; then
     add_data_to_plot "uffd_copy" "one_fd"            "-DMAP_PAGE"                           1
     add_data_to_plot "uffd_copy" "one_fd_reg"        "-DMAP_PAGE -DSHARE_REGION"            1
-    add_data_to_plot "uffd_copy" "one_fd_reg_nowake" "-DMAP_PAGE -DSHARE_REGION -DNOWAKE"   1
+    add_data_to_plot "uffd_copy" "one_fd_reg_nowake" "-DMAP_PAGE_NOWAKE -DSHARE_REGION"     1
     add_data_to_plot "uffd_copy" "fd_per_core"       "-DMAP_PAGE"                           0
-    generate_plots "uffd_copy"
+    generate_xput_plot "uffd_copy"
 fi
 
 ## benchmark Madvise
@@ -141,39 +137,87 @@ if [ "$PLOTID" == "2" ]; then
     plots=
     latfile=${TMP_FILE_PFX}latency
     rm -f $latfile
-    add_data_to_plot "madv_dneed" "one_fd"          "-DUNMAP_PAGE"              1
-    add_data_to_plot "madv_dneed" "one_fd_one_reg"  "-DMAP_PAGE -DSHARE_REGION" 1
-    add_data_to_plot "madv_dneed" "fd_per_core"     "-DUNMAP_PAGE"              0
-    generate_plots   "madv_dneed"
+    add_data_to_plot "madv_dneed" "one_fd"          "-DUNMAP_PAGE"                  1
+    add_data_to_plot "madv_dneed" "one_fd_reg"      "-DUNMAP_PAGE -DSHARE_REGION"   1
+    add_data_to_plot "madv_dneed" "fd_per_core"     "-DUNMAP_PAGE"                  0
+    generate_xput_plot   "madv_dneed"
+fi
+
+## benchmark UFFD WP Add
+if [ "$PLOTID" == "3" ]; then
+    add_data_to_plot "uffd_prot" "one_fd"        "-DPROTECT_PAGE"                    1
+    add_data_to_plot "uffd_prot" "one_fd_reg"    "-DPROTECT_PAGE -DSHARE_REGION"     1
+    add_data_to_plot "uffd_prot" "fd_per_core"   "-DPROTECT_PAGE"                    0
+    generate_xput_plot "uffd_prot"
+fi
+
+## benchmark UFFD WP Remove
+if [ "$PLOTID" == "4" ]; then
+    add_data_to_plot "uffd_unprot" "one_fd"             "-DUNPROTECT_PAGE"                          1
+    add_data_to_plot "uffd_unprot" "one_fd_reg"         "-DUNPROTECT_PAGE -DSHARE_REGION"           1
+    add_data_to_plot "uffd_unprot" "one_fd_reg_nowake"  "-DUNPROTECT_PAGE_NOWAKE -DSHARE_REGION"    1
+    add_data_to_plot "uffd_unprot" "fd_per_core"        "-DUNPROTECT_PAGE"                          0
+    generate_xput_plot "uffd_unprot"
 fi
 
 ## benchmark entire fault path
-if [ "$PLOTID" == "3" ]; then
+if [ "$PLOTID" == "5" ]; then
     plots=
     sharefd=1
     YMAX=1.5
     for hthr in 1 2 4 8 12; do 
         add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
-    generate_plots "fault_path_one_fd"     ${YMAX}
+    generate_xput_plot "fault_path_one_fd"     ${YMAX}
 
     plots=
     sharefd=0
     for hthr in 1 2 4 8 11; do 
         add_data_to_plot "fault_path_fd_per_core" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
-    generate_plots "fault_path_fd_per_core" ${YMAX}
+    generate_xput_plot "fault_path_fd_per_core" ${YMAX}
 fi
 
 ## benchmark entire fault path with/without hyperthreading handlers
-if [ "$PLOTID" == "4" ]; then
+if [ "$PLOTID" == "6" ]; then
     plots=
     sharefd=0
     YMAX=1.5
-    add_data_to_plot "fault_path_ht_effect" "noht"  "-DACCESS_PAGE"                 $sharefd "EQUAL"
-    add_data_to_plot "fault_path_ht_effect" "ht"    "-DACCESS_PAGE -DHT_HANDLERS"   $sharefd "EQUAL"
-    generate_plots "fault_path_ht_effect" ${YMAX}
+    # add_data_to_plot "fault_path_ht_eff" "noht"  "-DACCESS_PAGE"                  $sharefd "EQUAL"
+    # add_data_to_plot "fault_path_ht_eff" "ht"    "-DACCESS_PAGE -DHT_HANDLERS"    $sharefd "EQUAL"
+    add_data_to_plot "fault_path_ht_eff" "noht-page"    "-DACCESS_PAGE_WHOLE"       $sharefd "EQUAL"
+    add_data_to_plot "fault_path_ht_eff" "ht-page"      "-DACCESS_PAGE_WHOLE -DHT_HANDLERS"   $sharefd "EQUAL"
+    generate_xput_plot "fault_path_ht_eff" ${YMAX}
 fi
+
+## collect latencies for all configs
+if [ "$PLOTID" == "7" ]; then
+    plots=
+    for op in "uffd_copy" "madv_dneed" "uffd_prot" "uffd_unprot"; do
+        latdata=${TMP_FILE_PFX}${op}_latdata
+        rm -f $latdata
+        echo "config,latns" > $latdata
+        for config in "one_fd" "one_fd_reg" "fd_per_core"; do
+            datafile=${DATADIR}/${op}_${config}_pti_${PTI}.dat
+            row2col4=`sed -n '2p' ${datafile}  2>/dev/null | awk -F, '{ print $4 }'`
+            echo "$config,$row2col4" >> $latdata
+        done
+        plots="$plots -d $latdata -l $op"
+    done
+    echo $plots
+    ls *latdata
+
+    plotname=${PLOTDIR}/latency_pti_${PTI}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${PLOTSRC} ${plots}  -z bar -bw 0.1     \
+            -yc latns -yl "Op cost (µs)" --ymul 1e-3    \
+            --ymax 4 -xc config -xl "Config"            \
+            --size 5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+    fi
+    display $plotname &
+fi
+
+## bench
 
 # cleanup
 rm -f ${TMP_FILE_PFX}*
