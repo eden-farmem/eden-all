@@ -31,6 +31,7 @@ APPDIR=${SCRIPT_DIR}/dataframe
 TMPFILE_PFX="tmp_dataframes_"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 BINFILE=main
+BUILD=Release
 
 # default kona opts
 KONA_CFG="PBMEM_CONFIG=CONFIG_WP"
@@ -121,12 +122,14 @@ case $i in
     ;;
 
     -d|--debug)
+    BUILD=Debug
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
     ;;
 
     -np|--nopie)
     NOPIE=1
+    BUILD=Debug
     CFLAGS="$CFLAGS -g -no-pie -fno-pie"   #no PIE
     CXXFLAGS="$CXXFLAGS -g -no-pie -fno-pie"
     echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
@@ -236,7 +239,7 @@ fi
 if [[ $FORCE ]]; then rm -rf ${APPDIR}/build; fi
 mkdir -p ${APPDIR}/build
 pushd ${APPDIR}/build
-cmake -E env CXXFLAGS="$CXXFLAGS" cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-9 ..
+cmake -E env CXXFLAGS="$CXXFLAGS" cmake -DCMAKE_BUILD_TYPE=${BUILD} -DCMAKE_CXX_COMPILER=g++-9 ..
 make -j$(nproc)
 popd
 
