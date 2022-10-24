@@ -74,6 +74,8 @@ echo "PTI status: $PTI"
 # setup
 mkdir -p $PLOTDIR
 mkdir -p $DATADIR
+LS=solid
+CMI=1
 
 # gets data and fills $plots
 add_data_to_plot() {
@@ -98,8 +100,8 @@ add_data_to_plot() {
                 -o="$cflags" -of=${datafile}
         done
     fi
-    # cat $datafile
-    plots="$plots -d $datafile -l $label"
+    cat $datafile
+    plots="$plots -d $datafile -l $label -ls $LS -cmi $CMI"
 
     # gather latency numbers
     if [ ! -f $latfile ]; then  echo "config,latns" > $latfile; fi
@@ -240,6 +242,28 @@ if [ "$PLOTID" == "8" ]; then
         fi
         display $plotname &
     fi
+fi
+
+## benchmark Madvise batching (with single fd, single region)
+if [ "$PLOTID" == "9" ]; then
+    YMAX=2.5
+    LS=dashed; CMI=0;
+    add_data_to_plot "madv" "batch_1"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=1" 1
+    LS=solid; CMI=1;
+    add_data_to_plot "proc_madv" "batch_1"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=1" 1
+    LS=dashed; CMI=0;
+    add_data_to_plot "madv" "batch_2"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=2" 1
+    LS=solid; CMI=1;
+    add_data_to_plot "proc_madv" "batch_2"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=2" 1
+    LS=dashed; CMI=0;
+    add_data_to_plot "madv" "batch_4"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=4" 1
+    LS=solid; CMI=1;
+    add_data_to_plot "proc_madv" "batch_4"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=4" 1
+    LS=dashed; CMI=0;
+    add_data_to_plot "madv" "batch_8"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=8" 1
+    LS=solid; CMI=1;
+    add_data_to_plot "proc_madv" "batch_8"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=8" 1
+    generate_xput_plot "madv_batching" ${YMAX}
 fi
 
 ## bench

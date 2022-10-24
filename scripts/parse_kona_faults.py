@@ -3,7 +3,6 @@ from enum import Enum
 import os
 import sys
 import subprocess
-
 import pandas as pd
 
 TIMECOL = "time"
@@ -37,7 +36,8 @@ def main():
         print("can't locate input file: {}".format(args.input))
         exit(1)
 
-    df = pd.read_csv(args.input, skipinitialspace=True) 
+    df = pd.read_csv(args.input, skipinitialspace=True)
+    sys.stderr.write("total rows read: {}\n".format(len(df)))
 
     # filter 
     if args.start:  
@@ -66,17 +66,21 @@ def main():
     if args.binary:
         assert os.path.exists(args.binary)
         def addr2line(ips):
-            # print(ip)
+            global processed
             iplist = ips.split("|")
             code = ""
-            for ip in iplist:
-                if ip:
-                    code += " <//> " + subprocess       \
-                        .check_output(['addr2line', '-e', args.binary, ip]) \
-                        .decode("utf-8")    \
-                        .strip()
+            if iplist:
+                code = subprocess   \
+                    .check_output(['addr2line', '-e', args.binary] + iplist) \
+                    .decode('utf-8') \
+                    .split("\n")
+                code = "<//>".join(code)
+            processed += 1
+            if processed % 100 == 0:
+                sys.stderr.write("processed {} entries\n".format(processed))
             return code
 
+        sys.stderr.write("getting backtraces for {} ips\n".format(len(df)))
         df['code'] = df['ips'].apply(addr2line)
 
     # write out
@@ -84,4 +88,5 @@ def main():
     df.to_csv(out, index=False, header=True)
 
 if __name__ == '__main__':
+    processed = 0
     main()
