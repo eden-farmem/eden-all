@@ -12,11 +12,12 @@ usage="\n
 -l, --lat \t\t get latencies\n
 -p, --plot \t\t generate plot from results\n
 -d, --debug \t\t build debug\n
+-t, --test \t\t run all configs once for testing\n
 -h, --help \t\t this usage information message\n"
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
-TEMP_PFX=tmp_kona_
+TEMP_PFX=tmp_shenango_
 PLOTSRC=${SCRIPT_DIR}/../../scripts/plot.py
 PLOTDIR=plots 
 DATADIR=data
@@ -43,6 +44,10 @@ case $i in
     
     -p|--plot)
     PLOT=1
+    ;;
+
+    -t|--test)
+    TEST=1
     ;;
 
     -h | --help)
@@ -83,6 +88,7 @@ set_evict_opts() {
     case $evict in
     "noevict")          ;;
     "evict")            OPTS="$OPTS --evict";;
+    # "evict-dirty")      OPTS="$OPTS --evict";;
     *)                  echo "Unknown evict type"; exit;;
     esac
 }
@@ -91,7 +97,7 @@ set_backend_opts() {
     bkend=$1
     case $bkend in
     "none")             ;;
-    "local")            OPTS="$OPTS --bkend=local"; LS=dashed;  CMI=0;;
+    "local")            OPTS="$OPTS --bkend=local"; LS=solid;  CMI=1;;
     "rdma")             OPTS="$OPTS --bkend=rdma";  LS=solid;   CMI=1;;
     *)                  echo "Unknown backend type"; exit;;
     esac
@@ -110,9 +116,9 @@ set_fault_op_opts() {
 
 measure_xput()
 {
-    for bkend in "local" "rdma"; do
-        for rmem in "hints"; do     #"hints+1" "hints+2" "hints+4"; do
-            for evict in "evict"; do
+    for bkend in "local"; do
+        for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
+            for evict in "noevict"; do  # "evict" "evict-dirty"; do
                 for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
@@ -147,6 +153,7 @@ measure_xput()
                     fi
                     cat $datafile
                     plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
+                    # plots="$plots -d $datafile -l ${evict} -ls $LS -cmi $CMI"
                 done
             done
         done
@@ -158,7 +165,7 @@ measure_xput()
         python ${PLOTSRC} ${plots}                  \
             -xc cores -xl "App CPU"                 \
             -yc xput -yl "MOPS" --ymul 1e-6         \
-            --ymin 0 --ymax 1.75                    \
+            --ymin 0 --ymax 2.25                    \
             --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
         display $plotname &
     fi
@@ -166,8 +173,8 @@ measure_xput()
 
 measure_latency()
 {
-    for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
-    # for rmem in "hints"; do
+    # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
+    for rmem in "hints"; do
         for evict in "noevict"; do
         # for evict in "noevict" "evict"; do
             for bkend in "local" "rdma"; do
@@ -225,7 +232,64 @@ measure_latency()
     fi
 }
 
-if [[ $LATENCIES ]]; then
+test_every_config()
+{
+    configs="""
+    normem  local   read    noevict
+    nohints local   read    noevict
+    nohints local   read    evict
+    nohints local   write   evict
+    hints   local   read    noevict
+    hints   local   read    evict
+    hints+4 local   write   evict
+    """
+    rdma_configs="""
+    nohints rdma    read    noevict
+    hints   rdma    read    noevict
+    hints   rdma    read    evict
+    hints   rdma    read    evict
+    hints+4 rdma    write   evict
+    """
+
+    result=${TEMP_PFX}result
+    rm -f $result
+    echo "$configs" "$rdma_configs" | while read line;
+    do
+        if [ $(echo $line | awk '{  print NF }') -ne 4 ]; then
+            continue
+        fi
+        rmem=$(echo $line | awk '{  print $1 }')
+        bkend=$(echo $line | awk '{  print $2 }')
+        op=$(echo $line | awk '{  print $3 }')
+        evict=$(echo $line | awk '{  print $4 }')
+        echo "testing $rmem $bkend $op $evict"
+
+        # reset
+        cfg=${rmem}-${evict}-${bkend}-${op}
+        CFLAGS=${CFLAGS_BEFORE}
+        OPTS=${OPTS_BEFORE}
+
+        # set opts
+        set_hints_opts      "$rmem"
+        set_evict_opts      "$evict"
+        set_backend_opts    "$bkend"
+        set_fault_op_opts   "$op"
+
+        # run and log result
+        bash run.sh --clean
+        sleep 5
+        rm -f result
+        bash run.sh ${OPTS} -t=1 -fl="""$CFLAGS""" --force
+        xput=$(cat result 2>/dev/null)
+        echo "$cfg passed xput for 1 core: $xput" >> $result
+    done
+    cat $result
+}
+
+
+if [[ $TEST ]]; then
+    test_every_config
+elif [[ $LATENCIES ]]; then
     measure_latency
 else
     measure_xput

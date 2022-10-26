@@ -8,8 +8,8 @@
 #include "runtime/sync.h"
 #include "runtime/pgfault.h"
 #include "runtime/timer.h"
-#include "runtime/rmem.h"
 #include "rmem/common.h"
+#include "rmem/api.h"
 #include "utils.h"
 
 #define RUNTIME_SECS 10
@@ -160,12 +160,12 @@ void main_handler(void* arg) {
 #endif
 		for (i = 0; i < BATCH_SIZE; i++) {
 			/* init batch */
-			BUG_ON(start >= (region + batch_offset));
 			targs[i].addr = start + i * batch_offset;
 			targs[i].rdahead = !rdahead_skip ? rdahead : 0;
 			targs[i].rand_num = 0;	//rand_next(&rand);
 			targs[i].start_tsc = sample_in_batch == i ? now_tsc : 0;
 			targs[i].end_tsc = 0;
+			BUG_ON(targs[i].addr >= (region + MAX_MEMORY));
 		}
 
 		/* params for next batch */
@@ -173,7 +173,7 @@ void main_handler(void* arg) {
 		if(rdahead_skip-- <= 0)
 			rdahead_skip = rdahead;
 
-		/* start batch */
+		/* start threads */
 		for (j = 0; j < i; j++) {
 			waitgroup_add(&workers, 1);
 			ret = thread_spawn(thread_main, &targs[j]);

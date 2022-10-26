@@ -36,6 +36,7 @@ OPTS=
 NO_HYPERTHREADING="-noht"
 SHEN_CFLAGS="-DNO_ZERO_PAGE"
 RMEM_ENABLED=0
+RMEM_HINTS_ENABLED=0
 BACKEND=local
 LOCALMEM=68719476736        # 64 GB (see RDMA_SERVER_NSLABS)
 
@@ -65,13 +66,12 @@ case $i in
     -h|--hints)
     RHINTS=1
     RMEM_ENABLED=1
+    RMEM_HINTS_ENABLED=1
     CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
     ;;
 
     -e|--evict)
-    EVICT=1
     LOCALMEM=100000000    # 100MB to trigger eviction on most faults
-    CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
 
     -b=*|--bkend=*)
@@ -141,6 +141,7 @@ SHENANGO_STATS_CORE=46
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE}
 
 cleanup() {
+    echo "Cleaning up..."
     rm -f ${BINFILE}
     rm -f ${TMP_FILE_PFX}*
     rm -f ${CFGFILE}
@@ -172,7 +173,8 @@ make runtime -j ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS
 make iok -j ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
 popd
 
-LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
+LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a "\
+"${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
 INC="${INC} -I${SHENANGO_DIR}/inc"
 LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
 gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
@@ -180,8 +182,6 @@ gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFIL
 if [[ $BUILD_ONLY ]]; then 
     exit 0
 fi
-
-set +e    #to continue to cleanup even on failure
 
 if [[ $LATENCIES ]] && [ $NUM_THREADS -gt 1 ]; then
     echo "can't do more than 1 thr with latency sampling"
@@ -223,6 +223,7 @@ runtime_spinning_kthreads ${NUM_THREADS}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog true
 remote_memory ${RMEM_ENABLED}
+rmem_hints ${RMEM_HINTS_ENABLED}
 rmem_backend ${BACKEND}
 rmem_local_memory ${LOCALMEM}"""
 echo "$shenango_cfg" > $CFGFILE
@@ -236,8 +237,8 @@ fi
 if [[ $GDB ]]; then 
     prefix="gdbserver --wrapper env ${env} -- :1234 "
 else
-    prefix="env ${env} perf record -F 999 "
-    # prefix=
+    # prefix="env ${env} perf record -F 999 "
+    prefix="env ${env}"
 fi
 echo "running test"
 if [[ $OUTFILE ]]; then
@@ -247,4 +248,4 @@ else
 fi
 
 # cleanup
-cleanup
+# cleanup
