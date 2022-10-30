@@ -39,6 +39,8 @@ RMEM_ENABLED=0
 RMEM_HINTS_ENABLED=0
 BACKEND=local
 LOCALMEM=68719476736        # 64 GB (see RDMA_SERVER_NSLABS)
+EVICT_THRESHOLD=100         # no handler eviction
+EVICT_BATCH_SIZE=1
 
 # parse cli
 for i in "$@"
@@ -71,7 +73,13 @@ case $i in
     ;;
 
     -e|--evict)
-    LOCALMEM=100000000    # 100MB to trigger eviction on most faults
+    EVICT=1
+    ;;
+
+    -be=*|--batchevict=*)
+    EVICT=1
+    EVICT_BATCH_SIZE="${i#*=}"
+    SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE"
     ;;
 
     -b=*|--bkend=*)
@@ -147,8 +155,8 @@ cleanup() {
     rm -f ${CFGFILE}
     sudo pkill iokerneld
     sudo pkill iokerneld${NO_HYPERTHREADING}
-    ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
-    ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
+    ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" < /dev/null
+    ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver" < /dev/null
 }
 cleanup     #start clean
 if [[ $CLEANUP ]]; then
@@ -169,8 +177,7 @@ if ! [[ $NO_STATS ]]; then  OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
 
 # NOTE: make "-j" was causing iokernel issues when compiling with gcc -O3 flag
 OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
-make runtime -j ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
-make iok -j ${DEBUG} ${OPTS} ${SAFEMODE_OPT} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
+make all -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
 popd
 
 LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a "\
@@ -193,11 +200,11 @@ if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then
     echo "starting rmem servers"
     # starting controller
     scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
-    ssh ${RCNTRL_SSH} "nohup ~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" &
+    ssh ${RCNTRL_SSH} "nohup ~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" < /dev/null &
     sleep 2
     # starting mem server
     scp ${SHENANGO_DIR}/memserver ${MEMSERVER_SSH}:~/scratch
-    ssh ${MEMSERVER_SSH} "nohup ~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" &
+    ssh ${MEMSERVER_SSH} "nohup ~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" < /dev/null &
     sleep 40
 fi
 
@@ -212,6 +219,11 @@ start_iokernel() {
 }
 start_iokernel
 
+# low localmem to trigger evict
+if [[ $EVICT ]]; then
+    LOCALMEM=$((NUM_THREADS*10000000))   # 10 MB per core
+fi
+
 # prepare shenango config
 shenango_cfg="""
 host_addr 192.168.0.100
@@ -221,11 +233,13 @@ runtime_kthreads ${NUM_THREADS}
 runtime_guaranteed_kthreads ${NUM_THREADS}
 runtime_spinning_kthreads ${NUM_THREADS}
 host_mac 02:ba:dd:ca:ad:08
-disable_watchdog true
+disable_watchdog 0
 remote_memory ${RMEM_ENABLED}
 rmem_hints ${RMEM_HINTS_ENABLED}
 rmem_backend ${BACKEND}
-rmem_local_memory ${LOCALMEM}"""
+rmem_local_memory ${LOCALMEM}
+rmem_evict_threshold ${EVICT_THRESHOLD}
+rmem_evict_batch_size ${EVICT_BATCH_SIZE}"""
 echo "$shenango_cfg" > $CFGFILE
 cat $CFGFILE
 
@@ -248,4 +262,4 @@ else
 fi
 
 # cleanup
-# cleanup
+cleanup

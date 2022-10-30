@@ -88,7 +88,9 @@ set_evict_opts() {
     case $evict in
     "noevict")          ;;
     "evict")            OPTS="$OPTS --evict";;
-    # "evict-dirty")      OPTS="$OPTS --evict";;
+    "evict2")           OPTS="$OPTS --batchevict=2";;
+    "evict4")           OPTS="$OPTS --batchevict=4";;
+    "evict8")           OPTS="$OPTS --batchevict=8";;
     *)                  echo "Unknown evict type"; exit;;
     esac
 }
@@ -116,10 +118,10 @@ set_fault_op_opts() {
 
 measure_xput()
 {
-    for bkend in "local"; do
+    for bkend in "rdma"; do
         for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
-            for evict in "noevict"; do  # "evict" "evict-dirty"; do
-                for op in "read"; do
+            for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
+                for op in "read" "write"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
@@ -173,12 +175,10 @@ measure_xput()
 
 measure_latency()
 {
-    # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
-    for rmem in "hints"; do
-        for evict in "noevict"; do
-        # for evict in "noevict" "evict"; do
-            for bkend in "local" "rdma"; do
-                for op in "read"; do
+    for bkend in "local" "rdma"; do
+        for rmem in "hints" "hints+1" "hints+2" "hints+4";; do
+            for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
+                for op in "read" "write"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
@@ -241,23 +241,25 @@ test_every_config()
     nohints local   write   evict
     hints   local   read    noevict
     hints   local   read    evict
+    hints   local   write   evict
     hints+4 local   write   evict
     """
     rdma_configs="""
     nohints rdma    read    noevict
     hints   rdma    read    noevict
     hints   rdma    read    evict
-    hints   rdma    read    evict
+    hints   rdma    write   evict
     hints+4 rdma    write   evict
     """
 
-    result=${TEMP_PFX}result
+    result=test_result
     rm -f $result
     echo "$configs" "$rdma_configs" | while read line;
     do
         if [ $(echo $line | awk '{  print NF }') -ne 4 ]; then
             continue
         fi
+        echo "$line"
         rmem=$(echo $line | awk '{  print $1 }')
         bkend=$(echo $line | awk '{  print $2 }')
         op=$(echo $line | awk '{  print $3 }')
@@ -275,11 +277,10 @@ test_every_config()
         set_backend_opts    "$bkend"
         set_fault_op_opts   "$op"
 
-        # run and log result
+        # # run and log result
         bash run.sh --clean
-        sleep 5
         rm -f result
-        bash run.sh ${OPTS} -t=1 -fl="""$CFLAGS""" --force
+        bash run.sh ${OPTS} -t=12 -fl="""$CFLAGS""" --force
         xput=$(cat result 2>/dev/null)
         echo "$cfg passed xput for 1 core: $xput" >> $result
     done
