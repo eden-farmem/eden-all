@@ -4,12 +4,6 @@
 [submodule "shenango"]
 	path = eden
 	url = git@gitlab.eng.vmware.com:kona/shenango.git
-[submodule "kona"]
-	path = backends/kona
-	url = git@gitlab.eng.vmware.com:kona/kona.git
-[submodule "umap"]
-	path = backends/umap
-	url = git@gitlab.eng.vmware.com:kona/umap.git
 [submodule "parsec"]
 	path = apps/parsec
 	url = git@gitlab.eng.vmware.com:kona/parsec-kona.git
@@ -25,6 +19,3 @@
 [submodule "silodb"]
 	path = apps/silo/silo
 	url = git@gitlab.eng.vmware.com:kona/silodb.git
-[submodule "kona2"]
-	path = backends/kona2
-	url = git@gitlab.eng.vmware.com:kona/kona.git
