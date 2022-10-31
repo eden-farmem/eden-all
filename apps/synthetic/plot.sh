@@ -18,6 +18,7 @@ usage="\n
 -f, --force \t\t force re-summarize data and re-generate plots\n
 -fp, --force-plots \t force re-generate just the plots\n
 -id, --plotid \t pick one of the many charts this script can generate\n
+-r, --run \t run id if focusing on a single run\n
 -h, --help \t\t this usage information message\n"
 
 for i in "$@"
@@ -26,16 +27,20 @@ case $i in
     -f|--force)
     FORCE=1
     FORCE_PLOTS=1
-    FORCE_FLAG=" -f "
+    FORCE_FLAG="-f"
     ;;
     
     -fp|--force-plots)
     FORCE_PLOTS=1
-    FORCEP_FLAG=" -fp "
+    FORCEP_FLAG="-fp"
     ;;
 
     -id=*|--fig=*|--plotid=*)
     PLOTID="${i#*=}"
+    ;;
+
+    -r=*|--run=*)
+    RUNID="${i#*=}"
     ;;
 
     *)                      # unknown option
@@ -302,7 +307,6 @@ if [ "$PLOTID" == "3" ]; then
     display ${plotname} &
 fi
 
-
 # performance of async page faults (vdso updates)
 if [ "$PLOTID" == "4" ]; then
     plotdir=$PLOTDIR/$PLOTID
@@ -395,11 +399,11 @@ if [ "$PLOTID" == "5" ]; then
     basefile=$plotdir/data_${cores}cores_pgf${pgf}_${cfg}
     if [[ $FORCE ]] || [ ! -f "$basefile" ]; then
         echo "lmemfr,Xput,XputErr,Faults,FaultsErr,Count,Backend,PFType,CPU,Threads,Zipfs" > $basefile
-        for mem in `seq 1000 500 6000`; do 
+        for mem in `seq 1000 500 6000`; do
             tmpfile=${TMP_FILE_PFX}data
             rm -f ${tmpfile}
             bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
-                -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+                -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good ${FORCE_FLAG}
             cat $tmpfile
             memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
             xmean=$(csv_column_mean $tmpfile "Xput")
@@ -422,7 +426,7 @@ if [ "$PLOTID" == "5" ]; then
             tmpfile=${TMP_FILE_PFX}data
             rm -f ${tmpfile}
             bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
-                -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+                -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good ${FORCE_FLAG}
             cat $tmpfile
             memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
             xmean=$(csv_column_mean $tmpfile "Xput")
@@ -505,7 +509,7 @@ if [ "$PLOTID" == "6" ]; then
                 rm -f ${tmpfile}
                 thr=$((cores*tperc))
                 bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf -lm=${mem} \
-                    -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+                    -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good ${FORCE_FLAG}
                 cat $tmpfile
                 xmean=$(csv_column_mean $tmpfile "Xput")
                 fmean=$(csv_column_mean $tmpfile "Faults")
@@ -525,7 +529,7 @@ if [ "$PLOTID" == "6" ]; then
                 rm -f ${tmpfile}
                 thr=$((cores*tperc))
                 bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$bkend -pf=$pgf -lm=${mem} \
-                    -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good
+                    -c=$cores -of=$tmpfile -t=${thr} -zs=${zipfs} ${descopt} --good ${FORCE_FLAG}
                 cat $tmpfile
                 xmean=$(csv_column_mean $tmpfile "Xput")
                 fmean=$(csv_column_mean $tmpfile "Faults")
@@ -558,6 +562,348 @@ if [ "$PLOTID" == "6" ]; then
             -xc CPU -xl "CPU Cores"                         \
             --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname -lt "Local Memory"
     fi
+    display ${plotname} &
+fi
+
+# performance of Eden vs pthreads and kona-based checks, etc.
+if [ "$PLOTID" == "7" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    size_font_opts="--size 5 3.5 -fs 12"
+
+    ## data
+    # pattern="09-1[2345]"; bkend=kona; zipfs=1; cores=4; ymax=600; tpc=;
+    # pattern="09-1[89]"; bkend=kona; zipfs=1; cores=4; ymax=600; tpc=; desc=annotstats;
+    # pattern="09-21"; bkend=kona; zipfs=0.1; cores=1; ymax=150; tpc=5; desc=sametpc;
+    # pattern="09-21"; bkend=kona; zipfs=1; cores=1; ymax=150; tpc=5; desc=sametpc;
+    # pattern="09-2[12]"; bkend=kona; zipfs=0.1; cores=4; ymax=600; tpc=5; desc=sametpc;
+    # pattern="09-2[12]"; bkend=kona; zipfs=0.1; cores=4; ymax=600; tpc=20; desc=sametpc;
+    # pattern="09-2[12]"; bkend=kona; zipfs=1; cores=4; ymax=600; tpc=5; desc=sametpc;
+    # pattern="09-2[12]"; bkend=kona; zipfs=1; cores=4; ymax=600; tpc=20; desc=sametpc;
+
+    cfg=${cores}cores_be${bkend}_${cores}cores_zs${zipfs}
+    for runcfg in "pthr" "uthr" "eden-vdso"; do
+    # # for runcfg in "pthr" "uthr" "eden-vdso" "eden-kona" "eden-2chan"; do
+    # for runcfg in "eden-vdso" "eden-kona" "eden-2chan"; do
+        descopt=
+        thropt=
+        case $runcfg in
+        "pthr")             sc=none;        pf=none;    pc=vdso;    maxlmem=6200;;
+        "uthr")             sc=shenango;    pf=none;    pc=vdso;    maxlmem=5700;;
+        "eden-vdso")        sc=shenango;    pf=ASYNC;   pc=vdso;    maxlmem=5700;;
+        "eden-kona")        sc=shenango;    pf=ASYNC;   pc=kona;    maxlmem=5700;;
+        "eden-2chan")       sc=shenango;    pf=ASYNC;   pc=kona;    maxlmem=5700;   desc=secondchance;;
+        *)                  echo "Unknown config"; exit;;
+        esac
+
+        if [[ $desc ]]; then descopt="-d=$desc"; fi
+        if [[ $tpc ]]; then thropt="-t=$((cores*tpc))"; fi
+        datafile=$plotdir/data_${runcfg}_tpc${tpc}_${cfg}_${desc}
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            echo "lmemfr,Xput,XputErr,Faults,FaultsErr,KIdle,KIdleErr,UIdle,UIdleErr,"\
+"UFFDCopy,Count,Backend,PFType,PgChecks,CPU,Threads,Zipfs" > $datafile
+            # for mem in `seq 1000 500 6000`; do 
+            for memp in `seq 20 10 100`; do 
+                tmpfile=${TMP_FILE_PFX}data
+                rm -f ${tmpfile}
+                mem=$(percentof "$maxlmem" "$memp" | ftoi)
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$bkend -sc=$sc -pf=$pf -pc=$pc -zs=${zipfs}   \
+                    -lm=${mem} -c=$cores ${thropt} -of=$tmpfile ${descopt} --good ${FORCE_FLAG}
+                cat $tmpfile
+                xmean=$(csv_column_mean $tmpfile "Xput")
+                xstd=$(csv_column_stdev $tmpfile "Xput")
+                xnum=$(csv_column_count $tmpfile "Xput")
+                fmean=$(csv_column_mean $tmpfile "Faults")
+                fstd=$(csv_column_stdev $tmpfile "Faults")
+                kidlemean=$(csv_column_mean $tmpfile "KIdle%")
+                kidleerr=$(csv_column_stdev $tmpfile "KIdle%")
+                uidlemean=$(csv_column_mean $tmpfile "UIdle%")
+                uidleerr=$(csv_column_stdev $tmpfile "UIdle%")
+                ucpymean=$(csv_column_mean $tmpfile "UFFDCopy")
+                echo ${memp},${xmean},${xstd},${fmean},${fstd},${kidlemean},${kidleerr},${uidlemean},${uidleerr},\
+${ucpymean},${xnum},${bkend},${pf},${pc},${cores},${thr},${zipfs} >> ${datafile}
+            done
+        fi
+        cat $datafile
+        plots="$plots -d $datafile -l $runcfg"
+    done
+
+    # plot xput
+    YLIMS="--ymin 0 --ymax $ymax"
+    plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce Xput XputErr   \
+            -yl "KOPS" --ymul 1e-3 ${YLIMS}                             \
+            -xc lmemfr -xl "Local Memory Fraction"                      \
+            ${size_font_opts} -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    plotname=${plotdir}/faults_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce Faults FaultsErr   \
+            -yl "KFPS" --ymul 1e-3 --ymin 0 --ymax 180  \
+            -xc lmemfr -xl "Local Memory Fraction"      \
+            ${size_font_opts} -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    plotname=${plotdir}/kidle_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce KIdle KIdleErr     \
+            -yl "Idle % (Kernel)" --ymin 0 --ymax 100   \
+            -xc lmemfr -xl "Local Memory Fraction"      \
+            ${size_font_opts} -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    plotname=${plotdir}/uidle_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce UIdle KIdleErr     \
+            -yl "Idle % (User)" --ymin 0 --ymax 100     \
+            -xc lmemfr -xl "Local Memory Fraction"      \
+            ${size_font_opts} -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    # plotname=${plotdir}/uffdcopy_${cfg}.${PLOTEXT}
+    # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+    #     python3 ${ROOTDIR}/scripts/plot.py ${plots} -yc UFFDCopy            \
+    #         -yl "Cost (KCycles)" --ymul 1e-3 -xc lmemfr -xl "Local Memory Fraction" \
+    #         ${size_font_opts} -of $PLOTEXT -o $plotname
+    # fi
+    # files="$files $plotname"
+    
+    # Combine
+    plotname=${plotdir}/all_${cfg}.$PLOTEXT
+    montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
+    display ${plotname} &
+fi
+
+# performance of Eden and pthreads with varying concur
+if [ "$PLOTID" == "8" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    size_font_opts="--size 4 3 -fs 12"
+
+    ## data
+    pattern="09-13"; bkend=kona; zipfs=1; cores=4; ymax=600; desc=bestconcur;
+
+    for mem in 1500 3000; do
+        files=
+        plots=
+        cfg=${cores}cores_be${bkend}_${cores}cores_zs${zipfs}_lm${mem}
+        for runcfg in "pthr" "eden-vdso" "eden-kona"; do
+            descopt=
+            case $runcfg in
+            "pthr")             sc=none;        pf=none;    pc=vdso;;
+            "eden-vdso")        sc=shenango;    pf=ASYNC;   pc=vdso;;
+            "eden-kona")        sc=shenango;    pf=ASYNC;   pc=kona;;
+            *)                  echo "Unknown config"; exit;;
+            esac
+
+            if [[ $desc ]]; then descopt="-d=$desc"; fi
+            datafile=$plotdir/data_${runcfg}_${cfg}
+            if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+                echo "lmemfr,Xput,XputErr,Faults,FaultsErr,UIdle,UIdleErr,KIdle,KIdleErr,UFFDCopy,"\
+"Count,Backend,PFType,PgChecks,CPU,Threads,ThrPC,Zipfs" > $datafile
+                for tpc in 1 5 10 20 30 40 50; do
+                    thr=$((cores*tpc)) 
+                    tmpfile=${TMP_FILE_PFX}data
+                    rm -f ${tmpfile}
+                    bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$bkend -sc=$sc -pf=$pf -pc=$pc   \
+                        -lm=${mem} -c=$cores -t=$thr -of=$tmpfile -zs=${zipfs} ${descopt} --good ${FORCE_FLAG}
+                    cat $tmpfile
+                    memf=$(echo $mem | awk '{ printf "%.2f", $0/6000 }' )
+                    xmean=$(csv_column_mean $tmpfile "Xput")
+                    xstd=$(csv_column_stdev $tmpfile "Xput")
+                    xnum=$(csv_column_count $tmpfile "Xput")
+                    fmean=$(csv_column_mean $tmpfile "Faults")
+                    fstd=$(csv_column_stdev $tmpfile "Faults")
+                    kidlemean=$(csv_column_mean $tmpfile "KIdle%")
+                    kidleerr=$(csv_column_stdev $tmpfile "KIdle%")
+                    uidlemean=$(csv_column_mean $tmpfile "UIdle%")
+                    uidleerr=$(csv_column_stdev $tmpfile "UIdle%")
+                    ucpymean=$(csv_column_mean $tmpfile "UFFDCopy")
+                    echo ${memf},${xmean},${xstd},${fmean},${fstd},${uidlemean},${uidleerr},${kidlemean},${kidleerr},${ucpymean},\
+${xnum},${bkend},${pf},${pc},${cores},${thr},${tpc},${zipfs} >> ${datafile}
+                done
+            fi
+            cat $datafile
+            plots="$plots -d $datafile -l $runcfg"
+        done
+
+        # plot xput
+        YLIMS="--ymin 0 --ymax $ymax"
+        plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce Xput XputErr       \
+                -yl "KOPS" --ymul 1e-3 ${YLIMS} -xc ThrPC -xl "Threads per core"\
+                ${size_font_opts} -of $PLOTEXT -o $plotname
+        fi
+        files="$files $plotname"
+
+        plotname=${plotdir}/faults_${cfg}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce Faults FaultsErr   \
+                -yl "KFPS" --ymul 1e-3 -xc ThrPC -xl "Threads per core"         \
+                ${size_font_opts} -of $PLOTEXT -o $plotname --ymin 0 --ymax 150
+        fi
+        files="$files $plotname"
+
+        plotname=${plotdir}/kidle_${cfg}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce KIdle KIdleErr     \
+                -yl "Idle % (Kernel)" -xc ThrPC -xl "Threads per core"          \
+                ${size_font_opts} -of $PLOTEXT -o $plotname
+        fi
+        files="$files $plotname"
+
+        plotname=${plotdir}/uidle_${cfg}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${ROOTDIR}/scripts/plot.py ${plots} -yce UIdle UIdleErr     \
+                -yl "Idle % (User)" -xc ThrPC -xl "Threads per core"            \
+                ${size_font_opts} -of $PLOTEXT -o $plotname
+        fi
+        files="$files $plotname"
+
+        plotname=${plotdir}/uffdcopy_${cfg}.${PLOTEXT}
+        if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+            python3 ${ROOTDIR}/scripts/plot.py ${plots} -yc UFFDCopy            \
+                -yl "Cost (KCycles)" --ymul 1e-3 -xc ThrPC -xl "Threads per core"  \
+                ${size_font_opts} -of $PLOTEXT -o $plotname
+        fi
+        files="$files $plotname"
+        
+        # Combine
+        plotname=${plotdir}/all_${cfg}.$PLOTEXT
+        montage -tile 3x0 -geometry +5+5 -border 5 $files ${plotname}
+        display ${plotname} &
+    done
+fi
+
+# performance of pthreads vs uthreads with varying concur (no kona)
+if [ "$PLOTID" == "9" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    size_font_opts="--size 6 4 -fs 15"
+    plots=
+
+    ## data
+    # pattern="09-1[56]"; bkend=none; cores=4; ymax=600; desc=varyconcur;
+    pattern="09-16";    bkend=none; cores=4; ymax=2000; desc=varyconcur-zip;
+
+    cfg=${cores}cores_be${bkend}_${cores}cores_${desc}
+    for zipfs in 0.1 1; do
+        for runcfg in "pthr" "uthr"; do
+            descopt=
+            case $runcfg in
+            "pthr")             sc=none;;
+            "uthr")             sc=shenango;;
+            *)                  echo "Unknown config"; exit;;
+            esac
+
+            if [[ $desc ]]; then descopt="-d=$desc"; fi
+            datafile=$plotdir/data_${runcfg}__zs${zipfs}_${cfg}
+            if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+                thr=$((cores*tpc)) 
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$bkend -sc=$sc ${descopt} \
+                    -c=$cores -of=$datafile -zs=${zipfs} --good ${FORCE_FLAG}
+            fi
+            cat $datafile
+            plots="$plots -d $datafile -l $runcfg(s=${zipfs})"
+        done
+    done
+
+    # plot xput
+    YLIMS="--ymin 0 --ymax $ymax"
+    plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}     \
+            -yc Xput -yl "KOPS" --ymul 1e-3 ${YLIMS}    \
+            -xc Threads -xl "Threads per core" -xm 0.25 \
+            ${size_font_opts} -of $PLOTEXT -o $plotname
+    fi
+    display ${plotname} &
+fi
+
+# kona page fault time series
+if [ "$PLOTID" == "10" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    VLINES=
+
+    # take the most recent run if not specified
+    latest_dir_path=$(ls -td -- $DATADIR/*/ | head -n 1)
+    RUNID=${RUNID:-$(basename $latest_dir_path)}
+    exp=$DATADIR/$RUNID
+
+    # annotations
+    annotations=${TMP_FILE_PFX}vlines
+    echo -n > $annotations
+    if [ -f "${exp}/warmup_start" ]; then 
+        start=`cat ${exp}/warmup_start`
+        echo "start,0" >  $annotations
+        echo "warmup_done,$((`cat ${exp}/warmup_end`-start))" >> $annotations
+    fi
+    if [ -f "${exp}/run_start" ]; then
+        if [ -z "$start" ]; then start=`cat ${exp}/run_start`; fi
+        echo "run_start,$((`cat ${exp}/run_start`-start))" >> $annotations
+        end=`cat ${exp}/run_end`
+        echo "run_end,$((end-start))" >> $annotations
+    fi
+    VLINES="--vlinesfile $annotations"
+    cat $annotations
+
+    # parse kona log
+    konastatsout=${exp}/kona_counters_parsed_ts
+    konastatsin=${exp}/kona_counters.out 
+    if ([[ $FORCE ]] || [ ! -f $konastatsout ]) && [ -f $konastatsin ]; then 
+        python3 ${ROOT_SCRIPTS_DIR}/parse_kona_counters.py   \
+            -i ${konastatsin} -o ${konastatsout}            \
+            -st=${start} -et=${end}
+    fi
+
+    plotname=${plotdir}/faults_${RUNID}.${PLOTEXT}
+    python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout \
+        -yc n_faults    -l "total"      -ls solid       \
+        -yc n_faults_r  -l "read"       -ls solid       \
+        -yc n_faults_w  -l "write"      -ls solid       \
+        -yc n_faults_wp -l "wrprotect"  -ls dashdot     \
+        -yc n_evictions -l "evictions"  -ls dashed      \
+        -xc "time" -xl "time (s)"  ${VLINES}            \
+        -yl "KFPS" --ymul 1e-3  -nm --ymin 0 --ymax 150 \
+        --size 10 2.5 -fs 11  -of $PLOTEXT  -o $plotname
+    files="${files} ${plotname}"
+
+    plotname=${plotdir}/app_faults_${RUNID}.${PLOTEXT}
+    python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout \
+        -yc n_afaults   -l "total (apt)"    -ls solid   \
+        -yc n_afaults_r -l "read (apt)"     -ls dashed  \
+        -yc n_afaults_w -l "write (apt)"    -ls dashdot \
+        -yc n_af_waitq -l "waits (apt)"     -ls solid   \
+        -xc "time" -xl "time (s)"  ${VLINES}            \
+        -yl "KFPS" --ymul 1e-3  -nm --ymin 0 --ymax 150 \
+        --size 10 2.5 -fs 11  -of $PLOTEXT  -o $plotname
+    files="${files} ${plotname}"
+
+    plotname=${plotdir}/memory_${RUNID}.${PLOTEXT}
+    python3 ${ROOTDIR}/scripts/plot.py -d $konastatsout \
+        --ymul 1e-9 -yl "Memory (GB)" --ymin 0 --ymax 9 \
+        -yc "malloc_size" -l "mallocd mem"              \
+        -yc "mem_pressure" -l "working set"             \
+        -xc "time" -xl "time (s)" ${VLINES} -nm         \
+        --size 10 2 -fs 11  -of $PLOTEXT  -o $plotname
+    files="${files} ${plotname}"
+
+    # Combine
+    plotname=${plotdir}/kona_timeseries_${RUNID}.$PLOTEXT
+    montage -tile 0x3 -geometry +5+5 -border 5 $files ${plotname}
+    rm -f ${files}
     display ${plotname} &
 fi
 

@@ -159,6 +159,7 @@ case $i in
     ;;
 
     -np|--nopie)
+    NOPIE=1
     KEEPBIN=1
     CFLAGS="$CFLAGS -g"                 #for symbols
     CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE

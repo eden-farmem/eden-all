@@ -1,0 +1,10 @@
+lmemfr,Xput,XputErr,Faults,FaultsErr,KIdle,KIdleErr,UIdle,UIdleErr,UFFDCopy,Count,Backend,PFType,PgChecks,CPU,Threads,Zipfs
+20,61021,0,136223,0,1,0,7,0,6536,1,kona,ASYNC,vdso,1,,0.1
+30,67396,0,129245,0,2,0,0,0,6379,1,kona,ASYNC,vdso,1,,0.1
+40,74184,0,119080,0,1,0,0,0,6303,1,kona,ASYNC,vdso,1,,0.1
+50,90477,0,96502,0,1,0,0,0,5993,1,kona,ASYNC,vdso,1,,0.1
+60,85959,0,95728,0,1,0,1,0,6100,1,kona,ASYNC,vdso,1,,0.1
+70,97701,0,75121,0,0,0,1,0,5889,1,kona,ASYNC,vdso,1,,0.1
+80,108852,0,50636,0,0,0,0,0,5673,1,kona,ASYNC,vdso,1,,0.1
+90,114747,0,29579,0,0,0,0,0,5409,1,kona,ASYNC,vdso,1,,0.1
+100,126936,0,1694,0,0,0,0,0,5929,1,kona,ASYNC,vdso,1,,0.1

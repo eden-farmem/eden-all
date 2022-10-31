@@ -81,10 +81,18 @@ count() {
 }
 
 percentof() {
+    local VALUE=$1
+    local PERCENT=$2
+    if [[ $VALUE ]] && [[ $PERCENT ]]; then
+        echo $VALUE $PERCENT | awk '{ printf "%f", $1*$2/100.0 }'
+    fi
+}
+
+percentage() {
     local NUMERATOR=$1
     local DENOMINATOR=$2
     if [[ $NUMERATOR ]] && [[ $DENOMINATOR ]]; then
-        echo $NUMERATOR $DENOMINATOR | awk '{ printf "%.1f", $1*100/$2 }'
+        echo $NUMERATOR $DENOMINATOR | awk '{ printf "%f", $1*100/$2 }'
     fi
 }
 
@@ -186,13 +194,16 @@ UTILS_LOCAL_run_tests() {
     res=$(min "$input")
     if [ "$res" != "1" ]; then echo "min error"; fi
 
-    res=$(percentof 1 2)
-    if [ "$res" != "50.0" ]; then echo "percentof error"; fi
-
     res=$(ftoi "50.012")        # input as cli
     if [ "$res" != "50" ]; then echo "ftoi error"; fi
     res=$(echo "60.012" | ftoi) # input through pipeing
     if [ "$res" != "60" ]; then echo "ftoi error"; fi
+
+    res=$(ftoi $(percentage 1 2))
+    if [ "$res" != "50" ]; then echo "percentage error"; fi
+
+    res=$(ftoi $(percentof 100 50))
+    if [ "$res" != "50" ]; then echo "percentof error"; fi
 
     echo "if you just see this text, all good!"
 }

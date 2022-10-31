@@ -17,11 +17,13 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <time.h>
 #include <linux/userfaultfd.h>
+#include <sys/uio.h>       /* Definition of struct iovec type */
 
 #include "utils.h"
 #include "logging.h"
@@ -35,8 +37,13 @@
 #define MAX_CORES 			(2*PHY_CORES_PER_NODE)	/*logical cores per numa node*/
 #define MAX_THREADS 		(MAX_CORES-1)
 #define MAX_FDS				MAX_THREADS
-#define MAX_MEMORY 			(128*GIGA)
-#define RUNTIME_SECS 		5
+#define MAX_MEMORY 			(160*GIGA)	/*max I could register with a single uffd region*/
+#define RUNTIME_SECS 		10
+#define NPAGE_ACCESSES 		10
+#ifndef BATCH_SIZE
+#define BATCH_SIZE 			1
+#endif
+#define NSTRIPS				BATCH_SIZE
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready;
@@ -51,12 +58,22 @@ const int NODE1_CORES[MAX_CORES] = {
     42, 43, 44, 45, 46, 47, 48, 
     49, 50, 51, 52, 53, 54, 55 };
 #define CORELIST NODE0_CORES
+#define HYPERTHREAD_OFFSET 14
 int start_button = 0, stop_button = 0;
+int pidfd;
 
 enum app_op {
-	OP_MAP_PAGE,
-	OP_UNMAP_PAGE,
-	OP_ACCESS_PAGE
+	OP_MAP_PAGE_WP,
+	OP_MAP_PAGE_WP_NO_WAKE,
+	OP_MAP_PAGE_NO_WP,
+	OP_MAP_PAGE_NO_WP_NO_WAKE,
+	OP_PROTECT_PAGE,
+	OP_UNPROTECT_PAGE,
+	OP_UNPROTECT_PAGE_NO_WAKE,
+	OP_UNMAP_PAGE,					/* madvise DONT_NEED */
+	OP_UNMAP_PAGE_VEC,				/* process_madvise DONT_NEED */
+	OP_ACCESS_PAGE,
+	OP_ACCESS_PAGE_WHOLE,
 };
 
 struct thread_data {
@@ -65,6 +82,7 @@ struct thread_data {
     struct rand_state rs;
 	uint64_t range_start;
 	uint64_t range_len;
+	uint64_t prev_stripe_size;
 	int xput_ops;
 	int errors;
 	int uffd;
@@ -85,50 +103,146 @@ struct handler_data {
 	struct pollfd evt[MAX_FDS];	
 } CACHE_ALIGN;
 
+/* perform an operation */
+int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
+	unsigned long page_buf, uint64_t offsets[])
+{
+	int i, x, r = 0, retries;
+	ssize_t ret;
+
+	/* vectored ops */
+	switch(optype) {
+		case OP_UNMAP_PAGE_VEC:
+			x = *(int*) iov[0].iov_base;	/* access before remove */
+			/* FIXME: hardcoded syscall number, need to rebuild glibc */
+			ret = syscall(440, pidfd, iov, niov, MADV_DONTNEED, 0);
+			if(ret != niov * PAGE_SIZE) {
+				pr_err("syscall returned %ld expected %llu, errno %d", 
+					ret, niov * PAGE_SIZE, errno);
+				BUG();
+			}
+			return 0;
+		default:
+			break;
+	}
+
+	/* non-vectored ops */
+	for (i = 0; i < niov; i++) {
+		switch(optype) {
+			case OP_MAP_PAGE_WP:
+				r |= uffd_copy(uffd, (unsigned long) iov[i].iov_base,
+					page_buf, iov[i].iov_len, 1, 0, true, &retries);
+				break;
+			case OP_MAP_PAGE_WP_NO_WAKE:
+				r |= uffd_copy(uffd, (unsigned long) iov[i].iov_base,
+					page_buf, iov[i].iov_len, 1, 1, true, &retries);
+				break;
+			case OP_MAP_PAGE_NO_WP:
+				r |= uffd_copy(uffd, (unsigned long) iov[i].iov_base,
+					page_buf, iov[i].iov_len, 0, 0, true, &retries);
+				break;
+			case OP_MAP_PAGE_NO_WP_NO_WAKE:
+				r |= uffd_copy(uffd, (unsigned long) iov[i].iov_base,
+					page_buf, iov[i].iov_len, 0, 1, true, &retries);
+				break;
+			case OP_UNMAP_PAGE:
+				x = *(int*) iov[i].iov_base;	/* access before remove */
+				r |= madvise(iov[i].iov_base, iov[i].iov_len, MADV_DONTNEED);
+				break;
+			case OP_PROTECT_PAGE:
+				r |= uffd_wp(uffd, (unsigned long) iov[i].iov_base, 
+					iov[i].iov_len, 1, 0, true, &retries);
+				break;
+			case OP_UNPROTECT_PAGE:
+				r |= uffd_wp(uffd, (unsigned long) iov[i].iov_base, 
+					iov[i].iov_len, 0, 0, true, &retries);
+				break;
+			case OP_UNPROTECT_PAGE_NO_WAKE:
+				r |= uffd_wp(uffd, (unsigned long) iov[i].iov_base, 
+					iov[i].iov_len, 0, 1, true, &retries);
+				break;
+			case OP_ACCESS_PAGE:
+				x = *(int*) iov[i].iov_base;
+				r |= 0;
+				break;
+			case OP_ACCESS_PAGE_WHOLE:
+				for(i = 0; i < NPAGE_ACCESSES; i++) {
+					ASSERT(offsets[i] < iov[i].iov_len);
+					r = *(int*)(iov[i].iov_base + offsets[i]);
+				}
+				r |= 0;
+				break;
+			default:
+				printf("unhandled app op: %d\n", optype);
+				ASSERT(0);
+		}
+	}
+	return r;
+}
+
 /* main for measuring threads */
-void* app_main(void* args) {
+void* app_main(void* args)
+{
     struct thread_data * tdata = (struct thread_data *)args;
     ASSERTZ(pin_thread(tdata->core));
     int self = tdata->tid;
-	int r, retries;
+	int i, r, retries, uffd_mode, npages;
 	void *p = (void*)tdata->range_start; 
+	struct iovec iovs[BATCH_SIZE];
+	ssize_t ret;
+	size_t stripe_size = tdata->range_len / NSTRIPS;
+	size_t strip_offset = 0, offset;
+	int cur_strip = 0;
 	void *page_buf = malloc(PAGE_SIZE);
+	uint64_t offsets[NPAGE_ACCESSES];
+	size_t max_stripe_size = (tdata->prev_stripe_size != 0) ?
+		tdata->prev_stripe_size : stripe_size;
+	
+	/* random page accesses */
+	for (i = 0; i < NPAGE_ACCESSES; i++)
+		offsets[i] = rand_next(&tdata->rs) % 
+			(PAGE_SIZE * BATCH_SIZE - sizeof(int));
 
 	r = pthread_barrier_wait(&ready);	/*signal ready*/
     ASSERT(r != EINVAL);
 
 	while(!start_button)	cpu_relax();
 	while(!stop_button) {
-		p = (void*) page_align(p);
-		switch(tdata->optype) {
-			case OP_MAP_PAGE:
-				r = uffd_copy(tdata->uffd, (unsigned long)p, 
-					(unsigned long) page_buf, 0, true, &retries, false);
-				break;
-			case OP_UNMAP_PAGE:
-				r = madvise(p, PAGE_SIZE, MADV_DONTNEED);
-				break;
-			case OP_ACCESS_PAGE:
-				r = *(int*)p;
-				r = 0;
-				break;
-			default:
-				printf("unhandled app op: %d\n", tdata->optype);
-				ASSERT(0);
+		/* prepare batch */
+		npages = 0;
+		for (i = 0; i < BATCH_SIZE; i++) {
+			offset = stripe_size * cur_strip + strip_offset;
+			BUG_ON(offset >= tdata->range_len);
+			iovs[i].iov_base = (void*) (tdata->range_start + offset);
+			iovs[i].iov_len = PAGE_SIZE;
+			cur_strip++;
+			if (cur_strip == NSTRIPS) {
+				cur_strip = 0;
+				strip_offset += PAGE_SIZE;
+			}
+			npages++;
+			BUG_ON(strip_offset >= max_stripe_size);
 		}
+
+		/* execute batch */
+		r = perform_app_op(tdata->uffd, tdata->optype, iovs, npages, 
+			(unsigned long) page_buf, offsets);
+
 		if (r)	tdata->errors++;
-		else tdata->xput_ops++;
-		p += PAGE_SIZE;
-		ASSERT((uint64_t)p < (tdata->range_start + tdata->range_len));		/*out of memory region*/
+		else tdata->xput_ops += npages;
+
 #ifdef DEBUG
 		break;
 #endif
 	}
-	tdata->range_len = (uint64_t)(p - PAGE_SIZE);		/*update range to where we reached*/
+
+	/* update range to where we reached for next iteration */
+	tdata->prev_stripe_size = strip_offset;
 }
 
 uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata, 
-		int starting_core, uint64_t* errors, uint64_t* latencyns) {
+	int starting_core, uint64_t* errors, uint64_t* latencyns, int nsecs)
+{
 	int i, r;
 	uint64_t start, duration;
 	double duration_secs;
@@ -155,7 +269,7 @@ uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata
 	do {
 		duration = rdtscp(NULL) - start;
 		duration_secs = duration / (1000000.0 * cycles_per_us);
-	} while(duration_secs <= RUNTIME_SECS);
+	} while(duration_secs <= nsecs);
 	stop_button = 1;
 
 	/* gather results */
@@ -166,8 +280,10 @@ uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata
 		*errors += tdata[i].errors;
 	}
 	xput /= duration_secs;
-	*latencyns = tdata[0].xput_ops > 0 ? 
-		duration * 1000 / (cycles_per_us * tdata[0].xput_ops) : 0;	 /*latency seen by any one core*/ 
+	
+	/* latency seen by any one core */ 
+	*latencyns = tdata[0].xput_ops > 0 ?
+		duration * 1000 / (cycles_per_us * tdata[0].xput_ops) : 0;
 	return xput;
 }
 
@@ -214,7 +330,7 @@ void* handler_main(void* args) {
 				case UFFD_EVENT_PAGEFAULT:
 					/* plugin a zero page */
 					pr_debug("handler %d resolving fault %llu", self, msg.arg.pagefault.address);
-					r = uffd_zero(hdata->evt[fdnow].fd, msg.arg.pagefault.address & PAGE_MASK, PAGE_SIZE, false, &retries);
+					r = uffd_zero(hdata->evt[fdnow].fd, msg.arg.pagefault.address & PAGE_MASK, PAGE_SIZE, true, &retries);
 					ASSERT(r == 0);
 					pr_debug("fault ip, addr: 0x%lx 0x%llx", (long) msg.ip, msg.arg.pagefault.address);
 					break;
@@ -226,7 +342,7 @@ void* handler_main(void* args) {
 					printf("ERROR! unhandled uffd event %d\n", msg.event);
 					ASSERT(0);
     		}
-      }
+      	}
     }
 }
 
@@ -236,11 +352,12 @@ int main(int argc, char **argv)
 	char *p;
 	bool page_mapped;
 	int i, j, r, nthreads;
-	int handlers_per_fd, nhandlers, nuffd;
+	int handlers_per_fd, nhandlers, nuffd, handler_start_core;
 	uint64_t start, duration;
 	double duration_secs;
 	size_t size;
 	bool share_uffd = true;
+	enum app_op op;
 
 	/* parse & validate args */
     if (argc > 4) {
@@ -271,6 +388,8 @@ int main(int argc, char **argv)
     ASSERT(sizeof(struct handler_data) % CACHE_LINE_SIZE == 0);
 	cycles_per_us = time_calibrate_tsc();
 	ASSERT(cycles_per_us);
+	pidfd = syscall(SYS_pidfd_open, getpid(), 0);
+	ASSERT(pidfd >= 0);
 
 	/*uffd init*/
 	uffd_info.fd_count = 0;
@@ -285,9 +404,10 @@ int main(int argc, char **argv)
 	int coreidx = 0;
 	pin_thread(coreidx++);	
 
-#if defined(ACCESS_PAGE)
+#if defined(ACCESS_PAGE) || defined(ACCESS_PAGE_WHOLE)
 	/* start fault handler threads. don't access pages without enabling handlers */
     struct handler_data hdata[MAX_THREADS] CACHE_ALIGN = {0};
+	handler_start_core = coreidx;
 	for(i = 0; i < nhandlers; i++) {
 		hdata[i].tid = i;
         ASSERT(coreidx < MAX_CORES);
@@ -313,39 +433,103 @@ int main(int argc, char **argv)
         pthread_create(&handlers[i], NULL, handler_main, (void*)&hdata[i]);
 #endif
 	
-	/* create/register per-thread uffd regions */
-	int writeable = 1, fd;
-	struct uffd_region_t* reg;
-	size = MAX_MEMORY / nthreads;
-    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
+	/* create uffd regions */
+	int fd, nregions;
+	int writeable = 1;
+#ifdef SHARE_REGION
+	nregions = 1;
+	ASSERT(share_uffd);		/* cannot have shared region over multiple fds */
+#else
+	nregions = nthreads;
+#endif
+	size = MAX_MEMORY / nregions;
 	ASSERT(size % PAGE_SIZE == 0);
+	struct uffd_region_t** reg = malloc(nregions*sizeof(struct uffd_region_t*));
+	for (i = 0; i < nregions; i++) {
+		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
+		reg[i] = create_uffd_region(fd, size, writeable);
+		ASSERT(reg[i] != NULL);
+		ASSERT(reg[i]->addr);
+		r = uffd_register(fd, reg[i]->addr, reg[i]->size, writeable);
+		ASSERTZ(r);
+	}
+
+	/* create/register per-thread uffd regions */
+	size_t size_per_thread = (nregions == 1) ? size / nthreads : size;
+    struct thread_data tdata[MAX_THREADS] CACHE_ALIGN = {0};
 	for(i = 0; i < nthreads; i++) {
 		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
-		reg = create_uffd_region(fd, size, writeable);
-		ASSERT(reg != NULL);
-		ASSERT(reg->addr);
-		r = uffd_register(fd, reg->addr, reg->size, writeable);
-		ASSERTZ(r);
-
 		tdata[i].uffd = fd;
-		tdata[i].range_start = reg->addr;
-		tdata[i].range_len = size;		
+		tdata[i].range_start = (nregions == 1) ? 
+			reg[0]->addr + (i * size_per_thread) : reg[i]->addr;
+		tdata[i].range_len = size_per_thread;
+		tdata[i].prev_stripe_size = 0;
+		pr_debug("thread %d working with region %d (%lu, %lu)", i, 
+			(nregions == 1) ? 0 : i, tdata[i].range_start, tdata[i].range_len);
 	}
 
 	/* start measuring threads */
 	uint64_t xput, errors, latns;
 	ASSERTZ(pthread_barrier_init(&ready, NULL, nthreads + 1));
 #if defined(MAP_PAGE)
-	xput = do_app_work(OP_MAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
+	xput = do_app_work(OP_MAP_PAGE_NO_WP, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+#elif defined(MAP_PAGE_NOWAKE)
+	xput = do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, 
+		&errors, &latns, RUNTIME_SECS);
 #elif defined(UNMAP_PAGE)
 	/* map pages before unmapping them. currently map is faster than unmap 
 	 * so we should have enough pages to unmap for a given run duration */
-	do_app_work(OP_MAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
-	xput = do_app_work(OP_UNMAP_PAGE, nthreads, tdata, coreidx, &errors, &latns);
-#elif defined(ACCESS_PAGE)
-	xput = do_app_work(OP_ACCESS_PAGE, nthreads, tdata, coreidx, &errors, &latns);
-#else 
-	printf("Pick an operation: MAP_PAGE, UNMAP_PAGE, ACCESS_PAGE\n");
+	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+	xput = do_app_work(OP_UNMAP_PAGE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+#elif defined(UNMAP_PAGE_VEC)
+	/* map pages before unmapping them. currently map is faster than unmap 
+	 * so we should have enough pages to unmap for a given run duration */
+	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+	xput = do_app_work(OP_UNMAP_PAGE_VEC, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+#elif defined(PROTECT_PAGE)
+	/* map pages unprotected before protecting them. WRprotect is TODO */
+	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+	xput = do_app_work(OP_PROTECT_PAGE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS/2);
+#elif defined(UNPROTECT_PAGE)
+	/* map pages protected before unprotecting them. WRprotect is TODO */
+	do_app_work(OP_MAP_PAGE_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+	xput = do_app_work(OP_UNPROTECT_PAGE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS/2);
+#elif defined(UNPROTECT_PAGE_NOWAKE)
+	/* map pages protected before unprotecting them. WRprotect is TODO */
+	do_app_work(OP_MAP_PAGE_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, RUNTIME_SECS);
+	xput = do_app_work(OP_UNPROTECT_PAGE_NO_WAKE, nthreads, tdata, coreidx, 
+		&errors, &latns, RUNTIME_SECS/2);
+#elif defined(ACCESS_PAGE) || defined(ACCESS_PAGE_WHOLE)
+	op = OP_ACCESS_PAGE;
+#ifdef ACCESS_PAGE_WHOLE
+	op = OP_ACCESS_PAGE_WHOLE;
+#endif
+	int app_start_core;
+	#if HT_HANDLERS
+	ASSERT(nthreads == nhandlers);	/* only supported for this case */
+	ASSERT(coreidx < HYPERTHREAD_OFFSET);	/* handlers should not spill over into hyperthreads */
+	app_start_core = handler_start_core + HYPERTHREAD_OFFSET;
+	/* check that there are enough threads left for app threads */
+	ASSERT(nthreads <= (MAX_CORES - app_start_core));
+	#else
+	app_start_core = coreidx;
+	/* guard against inadvertently hyperthreading handlers */
+	ASSERT(app_start_core != handler_start_core + HYPERTHREAD_OFFSET);
+	#endif
+	xput = do_app_work(op, nthreads, tdata, app_start_core, &errors, 
+		&latns, RUNTIME_SECS);
+#else
+	printf("Unknown operation\n");
 	return 1;
 #endif
 

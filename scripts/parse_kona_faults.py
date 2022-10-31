@@ -3,7 +3,6 @@ from enum import Enum
 import os
 import sys
 import subprocess
-
 import pandas as pd
 
 TIMECOL = "time"
@@ -20,7 +19,7 @@ def kind_to_enum(kind):
     if kind == 0:   return FaultKind.READ
     if kind == 1:   return FaultKind.WRITE
     if kind == 3:   return FaultKind.WRPROTECT
-    raise Exception("unknown kind")
+    raise Exception("unknown kind: {}".format(kind))
 
 
 def main():
@@ -37,7 +36,8 @@ def main():
         print("can't locate input file: {}".format(args.input))
         exit(1)
 
-    df = pd.read_csv(args.input, skipinitialspace=True) 
+    df = pd.read_csv(args.input, skipinitialspace=True)
+    sys.stderr.write("total rows read: {}\n".format(len(df)))
 
     # filter 
     if args.start:  
@@ -50,24 +50,43 @@ def main():
     df["kind"] = df.apply(lambda r: kind_to_enum(r["kind"]).value, axis=1)
     if args.kind is not None:
         df = df[df[KINDCOL] == args.kind.value]
-    df = df.groupby(['ip', 'kind']).size().reset_index(name='count')
+
+    # group by ip or btrace
+    if 'btrace' in df:
+        df = df.groupby(['btrace', 'kind']).size().reset_index(name='count')
+        df = df.rename(columns={"btrace": "ips"})
+    else:
+        df = df.groupby(['ip', 'kind']).size().reset_index(name='count')
+        df = df.rename(columns={"ip": "ips"})
+
     df = df.sort_values("count", ascending=False)
     df["percent"] = (df['count'] / df['count'].sum()) * 100
     df["percent"] = df["percent"].astype(int)
 
     if args.binary:
         assert os.path.exists(args.binary)
-        def addr2line(ip):
-            # print(ip)
-            return subprocess       \
-                .check_output(['addr2line', '-e', args.binary, ip]) \
-                .decode("utf-8")    \
-                .strip()
-        df['code'] = df['ip'].apply(addr2line)
+        def addr2line(ips):
+            global processed
+            iplist = ips.split("|")
+            code = ""
+            if iplist:
+                code = subprocess   \
+                    .check_output(['addr2line', '-e', args.binary] + iplist) \
+                    .decode('utf-8') \
+                    .split("\n")
+                code = "<//>".join(code)
+            processed += 1
+            if processed % 100 == 0:
+                sys.stderr.write("processed {} entries\n".format(processed))
+            return code
+
+        sys.stderr.write("getting backtraces for {} ips\n".format(len(df)))
+        df['code'] = df['ips'].apply(addr2line)
 
     # write out
     out = args.out if args.out else sys.stdout
     df.to_csv(out, index=False, header=True)
 
 if __name__ == '__main__':
+    processed = 0
     main()

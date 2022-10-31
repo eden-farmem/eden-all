@@ -12,8 +12,13 @@ BINFILE="${SCRIPT_DIR}/dataframe/build/bin/main"
 
 mkdir -p ${FAULT_DIR}
 
+# SCRIPT
+# bash run.sh --nopie --kona -d=nopie -f
+
 # DATA
-exp=run-09-21-12-26-23
+# exp=run-09-21-12-26-23
+# exp=run-10-18-23-27-02
+exp=run-10-20-14-33-19
 
 # locate fault samples
 expdir=${DATADIR}/$exp

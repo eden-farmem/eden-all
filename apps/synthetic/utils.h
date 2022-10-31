@@ -26,7 +26,9 @@
 #define ASSERT(x) assert((x))
 #define ASSERTZ(x) ASSERT(!(x))
 
+#ifndef PAGE_SIZE
 #define PAGE_SIZE 4096
+#endif
 #define CACHE_LINE_SIZE 64
 #define __aligned(x) __attribute__((aligned(x)))
 #define CACHE_ALIGN __aligned(CACHE_LINE_SIZE)
