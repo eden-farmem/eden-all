@@ -10,6 +10,7 @@ usage="Example: bash run.sh -f\n
 -t, --threads \t number of app threads\n
 -rm, --rmem \t run with remote memory\n
 -h, --hints \t enable remote memory hints\n
+-fs, --fastswap \t enable remote memory with fastswap\n
 -o, --out \t output file for any results\n
 -s, --safe \t keep the assert statements during compile\n
 -c, --clean \t run only the cleanup part\n
@@ -21,6 +22,8 @@ usage="Example: bash run.sh -f\n
 # settings
 SCRIPT_DIR=`dirname "$0"`
 ROOT_DIR="${SCRIPT_DIR}/../.."
+FASTSWAP_DIR="${ROOT_DIR}/fastswap"
+APPNAME="pfbenchmark"
 BINFILE="main.out"
 RCNTRL_SSH="sc07"
 RCNTRL_IP="192.168.0.7"
@@ -28,7 +31,7 @@ RCNTRL_PORT="9202"
 MEMSERVER_SSH=$RCNTRL_SSH
 MEMSERVER_IP=$RCNTRL_IP
 MEMSERVER_PORT="9200"
-SHENANGO_DIR="${ROOT_DIR}/scheduler"
+SHENANGO_DIR="${ROOT_DIR}/eden"
 TMP_FILE_PFX="tmp_shen_"
 CFGFILE="default.config"
 NUM_THREADS=1
@@ -41,6 +44,7 @@ BACKEND=local
 LOCALMEM=68719476736        # 64 GB (see RDMA_SERVER_NSLABS)
 EVICT_THRESHOLD=100         # no handler eviction
 EVICT_BATCH_SIZE=1
+EXPECTED_PTI=off
 
 # parse cli
 for i in "$@"
@@ -70,6 +74,10 @@ case $i in
     RMEM_ENABLED=1
     RMEM_HINTS_ENABLED=1
     CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
+    ;;
+
+    -fs|--fastswap)
+    FASTSWAP=1
     ;;
 
     -e|--evict)
@@ -141,13 +149,15 @@ done
 # Initial CPU allocation
 # NUMA node0 CPU(s):   0-13,28-41
 # NUMA node1 CPU(s):   14-27,42-55
-# RNIC NUMA node = 1
+# RNIC NUMA node = 1 (good for sc30, sc40)
 NUMA_NODE=1
 NIC_PCI_SLOT="0000:d8:00.1"
 RMEM_HANDLER_CORE=55
-SHENANGO_STATS_CORE=46
-SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE}
+FASTSWAP_RECLAIM_CPU=55
+SHENANGO_STATS_CORE=54
+SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
 
+# helpers
 cleanup() {
     echo "Cleaning up..."
     rm -f ${BINFILE}
@@ -157,13 +167,59 @@ cleanup() {
     sudo pkill iokerneld${NO_HYPERTHREADING}
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" < /dev/null
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver" < /dev/null
+    pkill sar
+    rm -f *.sar
+    rm -f main_pid
+    sleep 1     #to unbind port
 }
-cleanup     #start clean
+start_sar() {
+    int=$1
+    nohup sar -r ${int}     | ts %s > memory.sar  2>&1 &
+    nohup sar -b ${int}     | ts %s > diskio.sar  2>&1 &
+    nohup sar -P ALL ${int} | ts %s > cpu.sar     2>&1 &
+    nohup sar -n DEV ${int} | ts %s > network.sar 2>&1 &
+    nohup sar -B ${int}     | ts %s > pgfaults.sar 2>&1 &
+}
+stop_sar() {
+    pkill sar
+}
+
+#start clean
+cleanup
 if [[ $CLEANUP ]]; then
     exit 0
 fi
 
 set -e
+
+# check pti state
+# PTI status
+PTI=on
+pti_msg=$(sudo dmesg | grep 'page tables isolation: enabled' || true)
+if [ -z "$pti_msg" ]; then  PTI=off; fi
+if [ "$EXPECTED_PTI" != "$PTI" ]; then
+    echo "Warning! Page table isolation feature is not in expected state"
+    echo "Expected: ${EXPECTED_PTI}, Found: ${PTI}"
+fi
+
+
+# setup fastswap
+if [[ $FASTSWAP ]]; then
+    if [[ $RMEM ]] || [[ $RHINTS ]]; then
+        echo "ERROR! rmem or hints can't be enabled with fastswap"
+        exit 1
+    fi
+
+    if [[ $FORCE ]]; then
+        bash ${FASTSWAP_DIR}/setup.sh           \
+            --memserver-ssh=${MEMSERVER_SSH}    \
+            --memserver-ip=${MEMSERVER_IP}      \
+            --memserver-port=${MEMSERVER_PORT}  \
+            --host-ip=${HOST_IP}                \
+            --host-ssh=${HOST_SSH}              \
+            --backend=${BACKEND}
+    fi
+fi
 
 # build shenango
 pushd ${SHENANGO_DIR} 
@@ -175,11 +231,11 @@ if [[ $SAFEMODE ]]; then    OPTS="$OPTS SAFEMODE=1";            fi
 if [[ $GDB ]];      then    OPTS="$OPTS GDB=1";                 fi
 if ! [[ $NO_STATS ]]; then  OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
 
-# NOTE: make "-j" was causing iokernel issues when compiling with gcc -O3 flag
 OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
 make all -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
 popd
 
+# build benchmark
 LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a "\
 "${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
 INC="${INC} -I${SHENANGO_DIR}/inc"
@@ -208,6 +264,20 @@ if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then
     sleep 40
 fi
 
+# low localmem to trigger evict
+if [[ $EVICT ]]; then
+    LOCALMEM=$((NUM_THREADS*10000000))   # 10 MB per core
+fi
+
+# fastswap setup already takes care of its memory server
+# but we need to setup local mem limit in advance
+if [[ $FASTSWAP ]]; then
+    sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
+    LOCALMEM=${LOCALMEM:-max}
+    sudo bash -c "echo ${LOCALMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
+fi
+
+# Shenango i/o core
 start_iokernel() {
     set +e
     echo "starting iokerneld"
@@ -218,11 +288,6 @@ start_iokernel() {
     sleep 10    #for iokernel to be ready
 }
 start_iokernel
-
-# low localmem to trigger evict
-if [[ $EVICT ]]; then
-    LOCALMEM=$((NUM_THREADS*10000000))   # 10 MB per core
-fi
 
 # prepare shenango config
 shenango_cfg="""
@@ -245,7 +310,7 @@ cat $CFGFILE
 
 # run
 env=
-if [ "$BACKEND" == "rdma" ]; then
+if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then
     env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
 fi
 if [[ $GDB ]]; then 
@@ -254,11 +319,29 @@ else
     # prefix="env ${env} perf record -F 999 "
     prefix="env ${env}"
 fi
+
+if [[ $FASTSWAP ]]; then 
+    start_sar 1
+fi
+
 echo "running test"
-if [[ $OUTFILE ]]; then
-    sudo ${prefix} ./${BINFILE} ${CFGFILE} | tee -a $OUTFILE
+sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
+sleep 1
+
+pid=`cat main_pid`
+if [[ $pid ]]; then
+    if [[ $FASTSWAP ]]; then
+        #enforce localmem
+        sudo bash -c "echo $pid > /cgroup2/benchmarks/$APPNAME/cgroup.procs"
+        echo "added proc: "
+        sudo cat /cgroup2/benchmarks/$APPNAME/cgroup.procs
+    fi
+
+    # wait for finish
+    while ps -p $pid > /dev/null; do sleep 1; done
+    echo "success"
 else
-    sudo ${prefix} ./${BINFILE} ${CFGFILE}
+    echo "process failed to write pid; exiting"
 fi
 
 # cleanup

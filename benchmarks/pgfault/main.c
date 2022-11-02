@@ -71,7 +71,7 @@ void save_number_to_file(char* fname, unsigned long val)
 /* work for each user thread */
 void thread_main(void* arg)
 {
-    char tmp;
+    volatile char tmp;
     void *start, *addr;
     unsigned long npages;
     uint64_t now_tsc;
@@ -135,7 +135,7 @@ void thread_main(void* arg)
         switch (cur_op) {
             case FO_READ:
                 hint_read_fault_rdahead(addr, rdahead_next);
-                tmp = *(char*) addr;
+                tmp = *(char volatile*) addr;
                 break;
             case FO_WRITE:
                 hint_write_fault_rdahead(addr, rdahead_next);
@@ -171,7 +171,7 @@ void thread_main(void* arg)
 
 #ifdef DEBUG
         /* break sooner when debugging */
-        if (npages >= 1000)
+        if (npages >= 1)
             break;
 #endif
     }
@@ -212,6 +212,12 @@ void main_handler(void* arg)
     nthreads = 1;
 #endif
     log_info("running with %d worker threads", nthreads);
+
+    /* write pid */
+	save_number_to_file("main_pid", getpid());
+    /* give some time for the saved pid to be added to the cgroup to enforce 
+     * fastswap limits */
+    sleep(1);
 
     /* allocate memory */
     region = heap_alloc(MAX_MEMORY);

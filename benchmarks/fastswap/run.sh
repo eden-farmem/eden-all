@@ -28,8 +28,8 @@ DATADIR="${SCRIPT_DIR}/data/"
 BINFILE="${SCRIPT_DIR}/main.out"
 HOST_SSH="sc40"
 HOST_IP="192.168.0.40"
-MEMSERVER_SSH="sc32"
-MEMSERVER_IP="192.168.0.32"
+MEMSERVER_SSH="sc07"
+MEMSERVER_IP="192.168.0.07"
 MEMSERVER_PORT="50000"
 FASTSWAP_RECLAIM_CPU=54     # avoid scheduling on this CPU
 TMPFILE_PFX="tmp_fswap_"
@@ -152,9 +152,9 @@ CFLAGS="$CFLAGS -DFASTSWAP_RECLAIM_CPU=$FASTSWAP_RECLAIM_CPU"
 gcc main.c utils.c -lpthread ${CFLAGS} -o ${BINFILE}
 
 # setup localmem limit
-mkdir -p /cgroup2/benchmarks/$APPNAME/
+sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
 LOCALMEM=${LOCALMEM:-max}
-echo ${LOCALMEM} > /cgroup2/benchmarks/$APPNAME/memory.high
+sudo bash -c "echo ${LOCALMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
 
 # initialize run
 expdir=$EXPNAME
@@ -182,7 +182,7 @@ sleep 1
 pid=`cat ${expdir}/main_pid`
 if [[ $pid ]]; then 
     #enforce localmem
-    echo $pid > /cgroup2/benchmarks/$APPNAME/cgroup.procs
+    sudo bash -c "echo $pid > /cgroup2/benchmarks/$APPNAME/cgroup.procs"
    
     # wait for finish
     while ps -p $pid > /dev/null; do sleep 1; done
