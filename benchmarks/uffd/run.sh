@@ -77,7 +77,7 @@ done
 # build
 rm -f ${BINFILE}
 LDFLAGS="$LDFLAGS -lpthread"
-gcc measure.c region.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+gcc measure.c uffd.c utils.c parse_vdso.c ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 # run
 if [[ $OUTFILE ]]; then
