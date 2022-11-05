@@ -47,7 +47,7 @@
 /* max I could register with a single uffd region. note that this goes across 
  * numa domains which may affect the numbers */
 #define MAX_MEMORY 			(160*GIGA)
-#define MAX_MEM_PER_THREAD 	(16*GIGA)
+#define MAX_MEM_PER_THREAD 	(20*GIGA)
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready;
@@ -150,7 +150,7 @@ struct uffd_region_t *create_uffd_region(int uffd, size_t size, int writeable)
 int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
 	unsigned long page_buf, uint64_t offsets[])
 {
-	int i, x, r = 0, retries;
+	int i, j, x, r = 0, retries;
 	ssize_t ret;
 
 	/* vectored ops */
@@ -230,9 +230,9 @@ int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
 				r |= 0;
 				break;
 			case OP_ACCESS_PAGE_WHOLE:
-				for(i = 0; i < NPAGE_ACCESSES; i++) {
-					ASSERT(offsets[i] < iov[i].iov_len);
-					r = *(int*)(iov[i].iov_base + offsets[i]);
+				for(j = 0; j < NPAGE_ACCESSES; j++) {
+					ASSERT(offsets[j] < iov[i].iov_len);
+					r = *(int*)(iov[i].iov_base + offsets[j]);
 				}
 				r |= 0;
 				break;
@@ -365,13 +365,13 @@ uint64_t do_app_work(enum app_op optype, int nthreads,
 	}
 	time_secs = time_tsc / (1000000.0 * cycles_per_us);
 	xput /= time_secs;
-	pr_info("ran for %.2f secs, xput: %lu ops/sec, covered %llu gb", 
+	pr_debug("ran for %.2f secs, xput: %lu ops/sec, covered %llu gb", 
 		time_secs, xput, covered / GIGA);
 	
 	/* latency seen by any one core */
 	if (latencyns)
 		*latencyns = tdata[0].ops > 0 ?
-			duration * 1000 / (cycles_per_us * tdata[0].ops) : 0;
+			tdata[0].time_tsc * 1000 / (cycles_per_us * tdata[0].ops) : 0;
 	if (memory_covered_gb)
 		*memory_covered_gb = covered / GIGA;
 	return xput;
@@ -472,7 +472,6 @@ int main(int argc, char **argv)
 	ASSERT(nthreads + nhandlers <= MAX_THREADS);
 	// ASSERT(nthreads <= MAX_THREADS);
 	// ASSERT(nhandlers <= MAX_THREADS);
-	ASSERTZ(nthreads & (nthreads - 1));	/*power of 2*/
 	nuffd = share_uffd ? 1 : nthreads;
 	ASSERT(nuffd < MAX_UFFD);
 	ASSERT(nuffd < MAX_FDS);
@@ -538,9 +537,9 @@ int main(int argc, char **argv)
 #else
 	nregions = nthreads;
 #endif
-	size = MAX_MEM_PER_THREAD;
+	size = MAX_MEM_PER_THREAD * nthreads;
 	ASSERT(size % PAGE_SIZE == 0);
-	ASSERT(size * nthreads <= MAX_MEMORY);
+	ASSERT(size <= MAX_MEMORY);
 	struct uffd_region_t** reg = malloc(nregions*sizeof(struct uffd_region_t*));
 	for (i = 0; i < nregions; i++) {
 		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
