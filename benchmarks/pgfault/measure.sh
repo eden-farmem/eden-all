@@ -91,6 +91,9 @@ set_evict_opts() {
     "evict2")           OPTS="$OPTS --batchevict=2";;
     "evict4")           OPTS="$OPTS --batchevict=4";;
     "evict8")           OPTS="$OPTS --batchevict=8";;
+    "evict16")           OPTS="$OPTS --batchevict=16";;
+    "evict32")           OPTS="$OPTS --batchevict=32";;
+    "evict64")           OPTS="$OPTS --batchevict=64";;
     *)                  echo "Unknown evict type"; exit;;
     esac
 }
@@ -118,9 +121,10 @@ set_fault_op_opts() {
 
 measure_xput()
 {
-    for bkend in "rdma"; do
-        for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
-            for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
+    for bkend in "local"; do
+        for rmem in "hints"; do     # "hints+1" "hints+2" "hints+4"; do
+            # for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
+            for evict in "evict16" "evict32" "evict64"; do
                 for op in "read" "write"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
@@ -176,7 +180,7 @@ measure_xput()
 measure_latency()
 {
     for bkend in "local" "rdma"; do
-        for rmem in "hints" "hints+1" "hints+2" "hints+4";; do
+        for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
             for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
                 for op in "read" "write"; do
                     # reset

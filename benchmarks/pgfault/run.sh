@@ -87,7 +87,7 @@ case $i in
     -be=*|--batchevict=*)
     EVICT=1
     EVICT_BATCH_SIZE="${i#*=}"
-    SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE"
+    SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE -DVECTORED_MPROTECT"
     ;;
 
     -b=*|--bkend=*)
