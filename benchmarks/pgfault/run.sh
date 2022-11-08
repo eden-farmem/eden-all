@@ -90,6 +90,10 @@ case $i in
     SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE -DVECTORED_MPROTECT"
     ;;
 
+    -ep=*|--evictpolicy=*)
+    EVICT_POLICY=${i#*=}
+    ;;
+
     -b=*|--bkend=*)
     BACKEND=${i#*=}
     ;;
@@ -210,6 +214,11 @@ if [[ $FASTSWAP ]]; then
         exit 1
     fi
 
+    if [[ $EVICT_POLICY ]]; then
+        echo "ERROR! evict policy can't be set with fastswap"
+        exit 1
+    fi
+
     if [[ $FORCE ]]; then
         bash ${FASTSWAP_DIR}/setup.sh           \
             --memserver-ssh=${MEMSERVER_SSH}    \
@@ -219,6 +228,14 @@ if [[ $FASTSWAP ]]; then
             --host-ssh=${HOST_SSH}              \
             --backend=${BACKEND}
     fi
+fi
+
+if [[ $EVICT_POLICY ]]; then
+    if [[ $EVICT_POLICY != "SC" ]] && [[ $EVICT_POLICY != "LRU" ]]; then
+        echo "ERROR! invalid evict policy. Allowed values: SC, LRU"
+        exit 1
+    fi
+    SHEN_CFLAGS="$SHEN_CFLAGS -D${EVICT_POLICY}_EVICTION"
 fi
 
 # build shenango
@@ -316,7 +333,7 @@ fi
 if [[ $GDB ]]; then 
     prefix="gdbserver --wrapper env ${env} -- :1234 "
 else
-    # prefix="env ${env} perf record -F 999 "
+    # prefix="env ${env} perf record -F 999"
     prefix="env ${env}"
 fi
 
@@ -325,7 +342,7 @@ if [[ $FASTSWAP ]]; then
 fi
 
 echo "running test"
-sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
+sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1
 sleep 1
 
 pid=`cat main_pid`
