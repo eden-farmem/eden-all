@@ -90,8 +90,8 @@ add_data_to_plot() {
 
     datafile=${DATADIR}/${group}_${label}_pti_${PTI}.dat
     if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
-        echo "cores,xput,errors,latns" > $datafile
-        for cores in 1 2 4 8; do
+        echo "cores,xput,errors,latns,memgb" > $datafile
+        for cores in 1 2 3 4 5 6 7 8; do
             if [[ $hthr ]]; then
                 if [ "$hthr" == "EQUAL" ]; then     hflag="-th=${cores}";
                 else    hflag="-th=${hthr}";    fi
@@ -173,14 +173,14 @@ if [ "$PLOTID" == "5" ]; then
     plots=
     sharefd=1
     YMAX=1.5
-    for hthr in 1 2 4 8 12; do 
+    for hthr in 8; do 
         add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_xput_plot "fault_path_one_fd"     ${YMAX}
 
     plots=
     sharefd=0
-    for hthr in 1 2 4 8 11; do 
+    for hthr in 8; do 
         add_data_to_plot "fault_path_fd_per_core" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_xput_plot "fault_path_fd_per_core" ${YMAX}
@@ -246,24 +246,46 @@ fi
 
 ## benchmark Madvise batching (with single fd, single region)
 if [ "$PLOTID" == "9" ]; then
-    YMAX=2.5
+    YMAX=10
     LS=dashed; CMI=0;
-    add_data_to_plot "madv" "batch_1"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=1" 1
+    add_data_to_plot "madv" "no_batch"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=1"        1
     LS=solid; CMI=1;
-    add_data_to_plot "proc_madv" "batch_1"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=1" 1
-    LS=dashed; CMI=0;
-    add_data_to_plot "madv" "batch_2"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=2" 1
+    add_data_to_plot "proc_madv" "batch_1"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=1"    1
+    # LS=dashed; CMI=0;
+    # add_data_to_plot "madv" "batch_2"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=2"        1
     LS=solid; CMI=1;
-    add_data_to_plot "proc_madv" "batch_2"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=2" 1
-    LS=dashed; CMI=0;
-    add_data_to_plot "madv" "batch_4"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=4" 1
+    add_data_to_plot "proc_madv" "batch_2"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=2"    1
+    # LS=dashed; CMI=0;
+    # add_data_to_plot "madv" "batch_4"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=4"        1
     LS=solid; CMI=1;
-    add_data_to_plot "proc_madv" "batch_4"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=4" 1
-    LS=dashed; CMI=0;
-    add_data_to_plot "madv" "batch_8"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=8" 1
+    add_data_to_plot "proc_madv" "batch_4"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=4"    1
+    # LS=dashed; CMI=0;
+    # add_data_to_plot "madv" "batch_8"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=8"        1
     LS=solid; CMI=1;
-    add_data_to_plot "proc_madv" "batch_8"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=8" 1
+    add_data_to_plot "proc_madv" "batch_8"  "-DUNMAP_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=8"    1
     generate_xput_plot "madv_batching" ${YMAX}
+fi
+
+## benchmark UFFD WP batching (with single fd, single region)
+if [ "$PLOTID" == "10" ]; then
+    YMAX=10
+    LS=dashed; CMI=0;
+    add_data_to_plot "uffd_wp" "no_vec"      "-DPROTECT_PAGE -DSHARE_REGION -DBATCH_SIZE=1"        1
+    LS=solid; CMI=1;
+    add_data_to_plot "uffd_wp_vec" "batch_1"  "-DPROTECT_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=1"    1
+    # LS=dashed; CMI=0;
+    # add_data_to_plot "uffd_wp" "batch_2"      "-DPROTECT_PAGE -DSHARE_REGION -DBATCH_SIZE=2"        1
+    LS=solid; CMI=1;
+    add_data_to_plot "uffd_wp_vec" "batch_2"  "-DPROTECT_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=2"    1
+    # LS=dashed; CMI=0;
+    # add_data_to_plot "uffd_wp" "batch_4"      "-DPROTECT_PAGE -DSHARE_REGION -DBATCH_SIZE=4"        1
+    LS=solid; CMI=1;
+    add_data_to_plot "uffd_wp_vec" "batch_4"  "-DPROTECT_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=4"    1
+    # LS=dashed; CMI=0;
+    # add_data_to_plot "uffd_wp" "batch_8"      "-DPROTECT_PAGE -DSHARE_REGION -DBATCH_SIZE=8"        1
+    LS=solid; CMI=1;
+    add_data_to_plot "uffd_wp_vec" "batch_8"  "-DPROTECT_PAGE_VEC -DSHARE_REGION -DBATCH_SIZE=8"    1
+    generate_xput_plot "uffd_wp_batching" ${YMAX}
 fi
 
 ## bench

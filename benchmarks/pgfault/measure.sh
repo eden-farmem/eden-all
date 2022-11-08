@@ -88,9 +88,14 @@ set_evict_opts() {
     case $evict in
     "noevict")          ;;
     "evict")            OPTS="$OPTS --evict";;
+    "evict-sc")         OPTS="$OPTS --evict --evictpolicy=SC";;
+    "evict-lru")        OPTS="$OPTS --evict --evictpolicy=LRU";;
     "evict2")           OPTS="$OPTS --batchevict=2";;
     "evict4")           OPTS="$OPTS --batchevict=4";;
     "evict8")           OPTS="$OPTS --batchevict=8";;
+    "evict16")          OPTS="$OPTS --batchevict=16";;
+    "evict32")          OPTS="$OPTS --batchevict=32";;
+    "evict64")          OPTS="$OPTS --batchevict=64";;
     *)                  echo "Unknown evict type"; exit;;
     esac
 }
@@ -116,12 +121,14 @@ set_fault_op_opts() {
     esac
 }
 
-measure_xput()
+measure_xput_vary_cpu()
 {
-    for bkend in "rdma"; do
-        for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
-            for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
-                for op in "read" "write"; do
+    name="local_hints_evict_batching_read"
+    for bkend in "local"; do
+        for rmem in "hints"; do     # "hints+1" "hints+2" "hints+4"; do
+            for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
+                # for op in "read" "write"; do
+                for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
@@ -154,8 +161,8 @@ measure_xput()
                         done
                     fi
                     cat $datafile
-                    plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
-                    # plots="$plots -d $datafile -l ${evict} -ls $LS -cmi $CMI"
+                    # plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
+                    plots="$plots -d $datafile -l ${evict}-${op} -ls $LS -cmi $CMI"
                 done
             done
         done
@@ -163,12 +170,71 @@ measure_xput()
 
     if [[ $PLOT ]]; then
         mkdir -p ${PLOTDIR}
-        plotname=${PLOTDIR}/fault_xput.${PLOTEXT}
+        plotname=${PLOTDIR}/fault_xput_cpu_${name}.${PLOTEXT}
         python ${PLOTSRC} ${plots}                  \
             -xc cores -xl "App CPU"                 \
             -yc xput -yl "MOPS" --ymul 1e-6         \
-            --ymin 0 --ymax 2.25                    \
-            --size 4.5 3 -fs 11 -of ${PLOTEXT} -o $plotname
+            --ymin 0 --ymax 3                       \
+            --size 6 4 -fs 11 -of ${PLOTEXT} -o $plotname
+        display $plotname &
+    fi
+}
+
+measure_xput_vary_batch()
+{
+    name="local_hints_evict_read"
+    for bkend in "local"; do
+        for rmem in "hints"; do     # "hints+1" "hints+2" "hints+4"; do
+            for evict in "evict"; do
+                for op in "read" "write"; do
+                    # reset
+                    cfg=${rmem}-${evict}-${bkend}-${op}
+                    CFLAGS=${CFLAGS_BEFORE}
+                    OPTS=${OPTS_BEFORE}
+                    LS=solid
+                    CMI=1
+
+                    # set opts
+                    set_hints_opts      "$rmem"
+                    set_evict_opts      "$evict"
+                    set_backend_opts    "$bkend"
+                    set_fault_op_opts   "$op"
+
+                    # run and log result
+                    cores=8
+                    datafile=$DATADIR/xput-${cores}cores-${cfg}
+                    if [ ! -f $datafile ] || [[ $FORCE ]]; then
+                        bash run.sh --clean
+                        bash run.sh ${OPTS} -fl="""$CFLAGS""" --batchevict=1 --force --buildonly   #recompile
+                        echo "cores,batchsize,xput" > $datafile
+                        for batchsz in `seq 1 4 50`; do 
+                            rm -f result
+                            bash run.sh ${OPTS} -t=${cores}     \
+                                --batchevict=$batchsz -fl="""$CFLAGS"""
+                            xput=$(cat result 2>/dev/null)
+                            echo "$cores,$batchsz,$xput" >> $datafile   # record xput
+
+                            # clean and wait a bit
+                            bash run.sh --clean
+                            sleep 10
+                        done
+                    fi
+                    cat $datafile
+                    # plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
+                    plots="$plots -d $datafile -l ${cores}cores-${op} -ls $LS -cmi $CMI"
+                done
+            done
+        done
+    done
+
+    if [[ $PLOT ]]; then
+        mkdir -p ${PLOTDIR}
+        plotname=${PLOTDIR}/fault_xput_batch_${name}.${PLOTEXT}
+        python ${PLOTSRC} ${plots}                  \
+            -xc batchsize -xl "Batch Size"          \
+            -yc xput -yl "MOPS" --ymul 1e-6         \
+            --ymin 0 --ymax 3                       \
+            --size 6 4 -fs 11 -of ${PLOTEXT} -o $plotname
         display $plotname &
     fi
 }
@@ -176,7 +242,7 @@ measure_xput()
 measure_latency()
 {
     for bkend in "local" "rdma"; do
-        for rmem in "hints" "hints+1" "hints+2" "hints+4";; do
+        for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
             for evict in "noevict" "evict" "evict2" "evict4" "evict8"; do
                 for op in "read" "write"; do
                     # reset
@@ -243,6 +309,8 @@ test_every_config()
     hints   local   read    evict
     hints   local   write   evict
     hints+4 local   write   evict
+    hints   local   read    evict4
+    hints   local   write   evict4
     """
     rdma_configs="""
     nohints rdma    read    noevict
@@ -254,7 +322,8 @@ test_every_config()
 
     result=test_result
     rm -f $result
-    echo "$configs" "$rdma_configs" | while read line;
+    # echo "$configs" "$rdma_configs" | while read line;
+    echo "$configs" | while read line;
     do
         if [ $(echo $line | awk '{  print NF }') -ne 4 ]; then
             continue
@@ -293,7 +362,8 @@ if [[ $TEST ]]; then
 elif [[ $LATENCIES ]]; then
     measure_latency
 else
-    measure_xput
+    # measure_xput_vary_cpu
+    measure_xput_vary_batch
 fi
 
 # cleanup

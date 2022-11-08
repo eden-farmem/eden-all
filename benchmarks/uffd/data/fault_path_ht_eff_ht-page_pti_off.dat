@@ -1,5 +1,1 @@
-cores,xput,errors,latns
-1,214749,0,4656
-2,444027,0,4494
-4,800323,0,5040
-8,1252268,0,6472
+cores,xput,errors,latns,memgb

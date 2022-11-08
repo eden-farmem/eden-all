@@ -66,6 +66,7 @@ case $i in
     -rm|--rmem)
     RMEM=1
     RMEM_ENABLED=1
+    CFLAGS="$CFLAGS -DEDEN"
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
     
@@ -78,16 +79,23 @@ case $i in
 
     -fs|--fastswap)
     FASTSWAP=1
+    CFLAGS="$CFLAGS -DFASTSWAP"
     ;;
 
     -e|--evict)
     EVICT=1
+    CFLAGS="$CFLAGS -DEVICT_ON_PATH"
     ;;
 
     -be=*|--batchevict=*)
     EVICT=1
     EVICT_BATCH_SIZE="${i#*=}"
-    SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE"
+    CFLAGS="$CFLAGS -DEVICT_ON_PATH"
+    SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE -DVECTORED_MPROTECT"
+    ;;
+
+    -ep=*|--evictpolicy=*)
+    EVICT_POLICY=${i#*=}
     ;;
 
     -b=*|--bkend=*)
@@ -210,6 +218,11 @@ if [[ $FASTSWAP ]]; then
         exit 1
     fi
 
+    if [[ $EVICT_POLICY ]]; then
+        echo "ERROR! evict policy can't be set with fastswap"
+        exit 1
+    fi
+
     if [[ $FORCE ]]; then
         bash ${FASTSWAP_DIR}/setup.sh           \
             --memserver-ssh=${MEMSERVER_SSH}    \
@@ -219,6 +232,14 @@ if [[ $FASTSWAP ]]; then
             --host-ssh=${HOST_SSH}              \
             --backend=${BACKEND}
     fi
+fi
+
+if [[ $EVICT_POLICY ]]; then
+    if [[ $EVICT_POLICY != "SC" ]] && [[ $EVICT_POLICY != "LRU" ]]; then
+        echo "ERROR! invalid evict policy. Allowed values: SC, LRU"
+        exit 1
+    fi
+    SHEN_CFLAGS="$SHEN_CFLAGS -D${EVICT_POLICY}_EVICTION"
 fi
 
 # build shenango
@@ -316,7 +337,7 @@ fi
 if [[ $GDB ]]; then 
     prefix="gdbserver --wrapper env ${env} -- :1234 "
 else
-    # prefix="env ${env} perf record -F 999 "
+    # prefix="env ${env} perf record -F 999"
     prefix="env ${env}"
 fi
 
@@ -332,14 +353,14 @@ pid=`cat main_pid`
 if [[ $pid ]]; then
     if [[ $FASTSWAP ]]; then
         #enforce localmem
-        sudo bash -c "echo $pid > /cgroup2/benchmarks/$APPNAME/cgroup.procs"
-        echo "added proc: "
-        sudo cat /cgroup2/benchmarks/$APPNAME/cgroup.procs
+        CGROUP_PROCS=/cgroup2/benchmarks/$APPNAME/cgroup.procs
+        sudo bash -c "echo $pid > $CGROUP_PROCS"
+        echo "added proc $(cat $CGROUP_PROCS) to cgroup"
     fi
 
     # wait for finish
     while ps -p $pid > /dev/null; do sleep 1; done
-    echo "success"
+    echo "done"
 else
     echo "process failed to write pid; exiting"
 fi

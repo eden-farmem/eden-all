@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <ucontext.h>
 #include <unistd.h>
+#include <sys/uio.h>       /* Definition of struct iovec type */
 
 #include "utils.h"
 #include "logging.h"
@@ -243,6 +244,56 @@ int uffd_wp(int fd, unsigned long addr, size_t size, bool wrprotect,
             }
         }
     } while (r && errno == EAGAIN);
+    return r;
+}
+
+int uffd_wp_vec(int fd, struct iovec* iov, int iov_len, bool wrprotect, 
+    bool no_wake, bool retry, int *n_retries, size_t* wp_bytes) 
+{
+    int r;
+    int mode = 0;
+
+    if (wrprotect)  
+        mode |= UFFDIO_WRITEPROTECT_MODE_WP;
+    if (no_wake)    
+        mode |= UFFDIO_WRITEPROTECT_MODE_DONTWAKE;
+    struct uffdio_writeprotectv wpv = {
+        .mode = mode,
+        .iovec = iov,
+        .vlen = iov_len,
+    };
+
+    do {
+        pr_debug("uffd_wp_vec %d items mode %d nowake %d", 
+            iov_len, wrprotect, no_wake);
+        errno = 0;
+        r = ioctl(fd, UFFDIO_WRITEPROTECTV, &wpv);
+        pr_debug("uffd_wp_vec returned %d handled=%llu bytes errno=%d", 
+          r, wpv.writeprotected, errno);
+        if (r < 0) {
+            if (errno == EEXIST || errno == ENOSPC) {
+                /* This page is already write-protected OR the child process 
+                    has exited. We should drop this request. */
+                r = 0;
+                break;
+            } else if (errno == EAGAIN) {
+                /* layout change in progress; try again */
+                if (retry == false) {
+                    /* do not retry, let the caller handle it */
+                    r = EAGAIN;
+                    break;
+                }
+                (*n_retries)++;
+            } else {
+                pr_info("uffd_wp errno=%d: unhandled error", errno);
+                BUG();
+            }
+        }
+    } while (r && errno == EAGAIN);
+    if (r > 0) {
+      *wp_bytes = r;
+      r = 0;
+    }
     return r;
 }
 

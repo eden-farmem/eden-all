@@ -40,15 +40,7 @@ struct uffd_region_t {
   volatile size_t size;
   uint64_t flags;
   unsigned long addr;
-
-  atomic_char *page_flags;
-  atomic_int ref_cnt;
-  atomic_ullong current_offset;
-  SLIST_ENTRY(uffd_region_t) link;
-
-  pthread_mutex_t mapping_mutex;
 } CACHE_ALIGN;
-SLIST_HEAD(region_listhead, uffd_region_t);
 
 struct uffd_info_t {
   /* file descriptors that are used for management */
@@ -56,9 +48,6 @@ struct uffd_info_t {
   int fd_count;
   struct pollfd *evt;
   int evt_count;
-  /*regions*/
-  struct region_listhead region_list;
-  pthread_mutex_t region_mutex;
 };
 
 extern struct uffd_info_t uffd_info;
@@ -74,6 +63,8 @@ int uffd_copy_size(int fd, unsigned long dst, unsigned long src, size_t size,
                    int wpmode);
 int uffd_wp(int fd, unsigned long addr, size_t size, bool wrprotect, 
     bool no_wake, bool retry, int *n_retries);
+int uffd_wp_vec(int fd, struct iovec* iov, int iov_len, bool wrprotect, 
+    bool no_wake, bool retry, int *n_retries, size_t* wp_bytes);
 int uffd_zero(int fd, unsigned long addr, size_t size, bool retry,
               int *n_retries);
 int uffd_wake(int fd, unsigned long addr, size_t size);

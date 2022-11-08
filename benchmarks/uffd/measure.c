@@ -30,20 +30,24 @@
 #include "config.h"
 #include "ops.h"
 #include "uffd.h"
-#include "region.h"
 
 #define GIGA 				(1ULL << 30)
 #define PHY_CORES_PER_NODE 	14
-#define MAX_CORES 			(2*PHY_CORES_PER_NODE)	/*logical cores per numa node*/
+#define MAX_CORES 			(2*PHY_CORES_PER_NODE) /* cores per numa node */
 #define MAX_THREADS 		(MAX_CORES-1)
 #define MAX_FDS				MAX_THREADS
-#define MAX_MEMORY 			(160*GIGA)	/*max I could register with a single uffd region*/
 #define RUNTIME_SECS 		10
+#define NO_TIMEOUT 			-1
 #define NPAGE_ACCESSES 		10
 #ifndef BATCH_SIZE
 #define BATCH_SIZE 			1
 #endif
 #define NSTRIPS				BATCH_SIZE
+
+/* max I could register with a single uffd region. note that this goes across 
+ * numa domains which may affect the numbers */
+#define MAX_MEMORY 			(160*GIGA)
+#define MAX_MEM_PER_THREAD 	(20*GIGA)
 
 uint64_t cycles_per_us;
 pthread_barrier_t ready;
@@ -68,7 +72,9 @@ enum app_op {
 	OP_MAP_PAGE_NO_WP,
 	OP_MAP_PAGE_NO_WP_NO_WAKE,
 	OP_PROTECT_PAGE,
+	OP_PROTECT_PAGE_VEC,
 	OP_UNPROTECT_PAGE,
+	OP_UNPROTECT_PAGE_VEC,
 	OP_UNPROTECT_PAGE_NO_WAKE,
 	OP_UNMAP_PAGE,					/* madvise DONT_NEED */
 	OP_UNMAP_PAGE_VEC,				/* process_madvise DONT_NEED */
@@ -77,22 +83,23 @@ enum app_op {
 };
 
 struct thread_data {
+	int uffd;
     int tid;
 	int core;
+	enum app_op optype;
     struct rand_state rs;
 	uint64_t range_start;
 	uint64_t range_len;
 	uint64_t prev_stripe_size;
-	int xput_ops;
+	int ops;
 	int errors;
-	int uffd;
-	enum app_op optype;
+	unsigned long time_tsc;
 } CACHE_ALIGN;
 
 struct handler_data {
     int tid;
 	int core;
-	int xput_ops;
+	int ops;
 	int errors;
 	int uffds[MAX_FDS];
 	int nfds;
@@ -103,11 +110,47 @@ struct handler_data {
 	struct pollfd evt[MAX_FDS];	
 } CACHE_ALIGN;
 
+/* create and register uffd region */
+struct uffd_region_t *create_uffd_region(int uffd, size_t size, int writeable)
+{
+	void *ptr = NULL;
+	size_t page_flags_size;
+	int r;
+
+	/* allocate a new region_t object */
+	struct uffd_region_t *mr = (struct uffd_region_t *)mmap(
+		NULL, sizeof(struct uffd_region_t), PROT_READ | PROT_WRITE,
+		MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	mr->size = size;
+
+	/* mmap */
+	int mmap_flags = MAP_PRIVATE | MAP_ANONYMOUS;
+	if (writeable)
+		ptr = mmap(NULL, mr->size, PROT_READ | PROT_WRITE, mmap_flags, -1, 0);
+	else
+		ptr = mmap(NULL, mr->size, PROT_READ, mmap_flags, -1, 0);
+
+	if (ptr == MAP_FAILED) {
+		pr_debug_err("mmap failed");
+		return NULL;
+	}
+	mr->addr = (unsigned long)ptr;
+	pr_debug("mmap ptr %p addr mr %p, size %ld\n", 
+		ptr, (void *)mr->addr, mr->size);
+
+	/* register */
+	r = uffd_register(uffd, mr->addr, mr->size, writeable);
+	if (r < 0)
+		return NULL;
+
+	return mr;
+}
+
 /* perform an operation */
 int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
 	unsigned long page_buf, uint64_t offsets[])
 {
-	int i, x, r = 0, retries;
+	int i, j, x, r = 0, retries;
 	ssize_t ret;
 
 	/* vectored ops */
@@ -122,6 +165,26 @@ int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
 				BUG();
 			}
 			return 0;
+		case OP_PROTECT_PAGE_VEC:
+			r = uffd_wp_vec(uffd, iov, niov, true, false, true, 
+				&retries, &ret);
+			if (r == 0 && ret != niov * PAGE_SIZE) {
+				pr_err("uffd_wp_vec returned %ld expected %llu, errno %d", 
+					ret, niov * PAGE_SIZE, errno);
+				BUG();
+			}
+			return r;
+		case OP_UNPROTECT_PAGE_VEC:
+			r = uffd_wp_vec(uffd, iov, niov, false, false, true, 
+				&retries, &ret);
+			if (r == 0 && ret != niov * PAGE_SIZE) {
+				pr_err("uffd_wp_vec returned %ld expected %llu, errno %d", 
+					ret, niov * PAGE_SIZE, errno);
+				BUG();
+			}
+			if (r == 0)
+				*(int*) iov[0].iov_base = 0;	/* check */
+			return r;
 		default:
 			break;
 	}
@@ -156,6 +219,7 @@ int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
 			case OP_UNPROTECT_PAGE:
 				r |= uffd_wp(uffd, (unsigned long) iov[i].iov_base, 
 					iov[i].iov_len, 0, 0, true, &retries);
+				*(int*) iov[i].iov_base = 0;	/* check */
 				break;
 			case OP_UNPROTECT_PAGE_NO_WAKE:
 				r |= uffd_wp(uffd, (unsigned long) iov[i].iov_base, 
@@ -166,9 +230,9 @@ int perform_app_op(int uffd, enum app_op optype, struct iovec* iov, int niov,
 				r |= 0;
 				break;
 			case OP_ACCESS_PAGE_WHOLE:
-				for(i = 0; i < NPAGE_ACCESSES; i++) {
-					ASSERT(offsets[i] < iov[i].iov_len);
-					r = *(int*)(iov[i].iov_base + offsets[i]);
+				for(j = 0; j < NPAGE_ACCESSES; j++) {
+					ASSERT(offsets[j] < iov[i].iov_len);
+					r = *(int*)(iov[i].iov_base + offsets[j]);
 				}
 				r |= 0;
 				break;
@@ -197,6 +261,7 @@ void* app_main(void* args)
 	uint64_t offsets[NPAGE_ACCESSES];
 	size_t max_stripe_size = (tdata->prev_stripe_size != 0) ?
 		tdata->prev_stripe_size : stripe_size;
+	unsigned long start_tsc;
 	
 	/* random page accesses */
 	for (i = 0; i < NPAGE_ACCESSES; i++)
@@ -207,7 +272,9 @@ void* app_main(void* args)
     ASSERT(r != EINVAL);
 
 	while(!start_button)	cpu_relax();
-	while(!stop_button) {
+
+	start_tsc = rdtsc();
+	while(!stop_button && strip_offset < max_stripe_size) {
 		/* prepare batch */
 		npages = 0;
 		for (i = 0; i < BATCH_SIZE; i++) {
@@ -221,7 +288,6 @@ void* app_main(void* args)
 				strip_offset += PAGE_SIZE;
 			}
 			npages++;
-			BUG_ON(strip_offset >= max_stripe_size);
 		}
 
 		/* execute batch */
@@ -229,24 +295,31 @@ void* app_main(void* args)
 			(unsigned long) page_buf, offsets);
 
 		if (r)	tdata->errors++;
-		else tdata->xput_ops += npages;
+		else tdata->ops += npages;
 
 #ifdef DEBUG
-		break;
+		if (tdata->ops +  tdata->errors >= 10)
+			break;
 #endif
 	}
+
+	/* record time */
+	tdata->time_tsc = rdtscp(NULL) - start_tsc;
 
 	/* update range to where we reached for next iteration */
 	tdata->prev_stripe_size = strip_offset;
 }
 
-uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata, 
-	int starting_core, uint64_t* errors, uint64_t* latencyns, int nsecs)
+uint64_t do_app_work(enum app_op optype, int nthreads, 
+	struct thread_data* tdata, int starting_core, uint64_t* errors, 
+	uint64_t* latencyns, int* memory_covered_gb, int nsecs)
 {
 	int i, r;
-	uint64_t start, duration;
-	double duration_secs;
+	uint64_t start, duration, xput;
+	double duration_secs, time_secs;
 	int coreidx = starting_core;
+	unsigned long time_tsc;
+	unsigned long covered;
 
 	/* spawn threads */
 	pthread_t threads[MAX_THREADS];
@@ -256,7 +329,7 @@ uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata
         ASSERT(coreidx < MAX_CORES);
         tdata[i].core = CORELIST[coreidx++];
 		tdata[i].optype = optype;
-		tdata[i].xput_ops = tdata[i].errors = 0;
+		tdata[i].ops = tdata[i].errors = 0;
         pthread_create(&threads[i], NULL, app_main, (void*)&tdata[i]);
 	}
 	stop_button = 0;
@@ -266,24 +339,41 @@ uint64_t do_app_work(enum app_op optype, int nthreads, struct thread_data* tdata
 	/* start work */
 	start = rdtsc();
 	start_button = 1;
-	do {
-		duration = rdtscp(NULL) - start;
-		duration_secs = duration / (1000000.0 * cycles_per_us);
-	} while(duration_secs <= nsecs);
-	stop_button = 1;
+	if (nsecs > 0) {
+		do {
+			duration = rdtscp(NULL) - start;
+			duration_secs = duration / (1000000.0 * cycles_per_us);
+		} while(duration_secs <= nsecs);
+		stop_button = 1;
+	}
+
+	/* wait for threads to finish */
+	for(i = 0; i < nthreads; i++)
+		pthread_join(threads[i], NULL);
 
 	/* gather results */
-	uint64_t xput = 0;
+	xput = 0;
+	time_tsc = 0;
 	*errors = 0;
+	covered = 0;
 	for (i = 0; i < nthreads; i++) {
-		xput += tdata[i].xput_ops;
+		xput += tdata[i].ops;
 		*errors += tdata[i].errors;
+		covered += tdata[i].prev_stripe_size * NSTRIPS;
+		if (time_tsc < tdata[i].time_tsc)
+			time_tsc = tdata[i].time_tsc;
 	}
-	xput /= duration_secs;
+	time_secs = time_tsc / (1000000.0 * cycles_per_us);
+	xput /= time_secs;
+	pr_debug("ran for %.2f secs, xput: %lu ops/sec, covered %llu gb", 
+		time_secs, xput, covered / GIGA);
 	
-	/* latency seen by any one core */ 
-	*latencyns = tdata[0].xput_ops > 0 ?
-		duration * 1000 / (cycles_per_us * tdata[0].xput_ops) : 0;
+	/* latency seen by any one core */
+	if (latencyns)
+		*latencyns = tdata[0].ops > 0 ?
+			tdata[0].time_tsc * 1000 / (cycles_per_us * tdata[0].ops) : 0;
+	if (memory_covered_gb)
+		*memory_covered_gb = covered / GIGA;
 	return xput;
 }
 
@@ -308,7 +398,8 @@ void* handler_main(void* args) {
 		fdnow = (fdnow + 1) % hdata->nfds;
       	if (poll(&hdata->evt[fdnow], 1, 0) > 0) {
 			pr_debug("handler %d found a pending event %d:%d:%d", self, 
-				hdata->evt[fdnow].fd, hdata->evt[fdnow].events, hdata->evt[fdnow].revents);
+				hdata->evt[fdnow].fd, hdata->evt[fdnow].events,
+				hdata->evt[fdnow].revents);
 
 			/* handle unexpected poll events */
 			ASSERT((hdata->evt[fdnow].revents & POLLERR) == 0);
@@ -319,7 +410,7 @@ void* handler_main(void* args) {
 			pr_debug("handler %d read %ld bytes (errno %d) on fd %d", 
 				self, read_size, errno, hdata->evt[fdnow].fd);
 			if (read_size == -1) {
-				/* only EAGAIN is fine; another handler got to this message first */
+				/* EAGAIN is fine; another handler got to this message first */
 				ASSERT(errno == EAGAIN);
 				continue;
 			}
@@ -329,10 +420,14 @@ void* handler_main(void* args) {
 			switch (msg.event) {
 				case UFFD_EVENT_PAGEFAULT:
 					/* plugin a zero page */
-					pr_debug("handler %d resolving fault %llu", self, msg.arg.pagefault.address);
-					r = uffd_zero(hdata->evt[fdnow].fd, msg.arg.pagefault.address & PAGE_MASK, PAGE_SIZE, true, &retries);
+					pr_debug("handler %d resolving fault %llu", 
+						self, msg.arg.pagefault.address);
+					r = uffd_zero(hdata->evt[fdnow].fd, 
+						msg.arg.pagefault.address & PAGE_MASK, PAGE_SIZE, 
+						true, &retries);
 					ASSERT(r == 0);
-					pr_debug("fault ip, addr: 0x%lx 0x%llx", (long) msg.ip, msg.arg.pagefault.address);
+					pr_debug("fault ip, addr: 0x%lx 0x%llx", (long) msg.ip,
+						msg.arg.pagefault.address);
 					break;
 				case UFFD_EVENT_FORK:
 				case UFFD_EVENT_REMAP:
@@ -358,6 +453,7 @@ int main(int argc, char **argv)
 	size_t size;
 	bool share_uffd = true;
 	enum app_op op;
+	int mem_gb;
 
 	/* parse & validate args */
     if (argc > 4) {
@@ -376,7 +472,6 @@ int main(int argc, char **argv)
 	ASSERT(nthreads + nhandlers <= MAX_THREADS);
 	// ASSERT(nthreads <= MAX_THREADS);
 	// ASSERT(nhandlers <= MAX_THREADS);
-	ASSERTZ(nthreads & (nthreads - 1));	/*power of 2*/
 	nuffd = share_uffd ? 1 : nthreads;
 	ASSERT(nuffd < MAX_UFFD);
 	ASSERT(nuffd < MAX_FDS);
@@ -442,8 +537,9 @@ int main(int argc, char **argv)
 #else
 	nregions = nthreads;
 #endif
-	size = MAX_MEMORY / nregions;
+	size = MAX_MEM_PER_THREAD * nthreads;
 	ASSERT(size % PAGE_SIZE == 0);
+	ASSERT(size <= MAX_MEMORY);
 	struct uffd_region_t** reg = malloc(nregions*sizeof(struct uffd_region_t*));
 	for (i = 0; i < nregions; i++) {
 		fd = share_uffd ? uffd_info.userfault_fds[0] : uffd_info.userfault_fds[i];
@@ -473,42 +569,54 @@ int main(int argc, char **argv)
 	ASSERTZ(pthread_barrier_init(&ready, NULL, nthreads + 1));
 #if defined(MAP_PAGE)
 	xput = do_app_work(OP_MAP_PAGE_NO_WP, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, RUNTIME_SECS);
 #elif defined(MAP_PAGE_NOWAKE)
 	xput = do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, 
-		&errors, &latns, RUNTIME_SECS);
+		&errors, &latns, &mem_gb, RUNTIME_SECS);
 #elif defined(UNMAP_PAGE)
 	/* map pages before unmapping them. currently map is faster than unmap 
 	 * so we should have enough pages to unmap for a given run duration */
 	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, NO_TIMEOUT);
 	xput = do_app_work(OP_UNMAP_PAGE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, RUNTIME_SECS);
 #elif defined(UNMAP_PAGE_VEC)
 	/* map pages before unmapping them. currently map is faster than unmap 
 	 * so we should have enough pages to unmap for a given run duration */
 	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, NO_TIMEOUT);
 	xput = do_app_work(OP_UNMAP_PAGE_VEC, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, RUNTIME_SECS);
 #elif defined(PROTECT_PAGE)
-	/* map pages unprotected before protecting them. WRprotect is TODO */
+	/* map pages unprotected before protecting them */
 	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, NO_TIMEOUT);
 	xput = do_app_work(OP_PROTECT_PAGE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS/2);
+		&latns, &mem_gb, RUNTIME_SECS);
+#elif defined(PROTECT_PAGE_VEC)
+	/* map pages unprotected before protecting them */
+	do_app_work(OP_MAP_PAGE_NO_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, &mem_gb, NO_TIMEOUT);
+	xput = do_app_work(OP_PROTECT_PAGE_VEC, nthreads, tdata, coreidx, &errors, 
+		&latns, &mem_gb, RUNTIME_SECS);
 #elif defined(UNPROTECT_PAGE)
-	/* map pages protected before unprotecting them. WRprotect is TODO */
+	/* map pages protected before unprotecting them */
 	do_app_work(OP_MAP_PAGE_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, NO_TIMEOUT);
 	xput = do_app_work(OP_UNPROTECT_PAGE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS/2);
-#elif defined(UNPROTECT_PAGE_NOWAKE)
-	/* map pages protected before unprotecting them. WRprotect is TODO */
+		&latns, &mem_gb, RUNTIME_SECS);
+#elif defined(UNPROTECT_PAGE_VEC)
+	/* map pages protected before unprotecting them */
 	do_app_work(OP_MAP_PAGE_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, NO_TIMEOUT);
+	xput = do_app_work(OP_UNPROTECT_PAGE_VEC, nthreads, tdata, coreidx, &errors, 
+		&latns, &mem_gb, RUNTIME_SECS);
+#elif defined(UNPROTECT_PAGE_NOWAKE)
+	/* map pages protected before unprotecting them */
+	do_app_work(OP_MAP_PAGE_WP_NO_WAKE, nthreads, tdata, coreidx, &errors, 
+		&latns, &mem_gb, NO_TIMEOUT);
 	xput = do_app_work(OP_UNPROTECT_PAGE_NO_WAKE, nthreads, tdata, coreidx, 
-		&errors, &latns, RUNTIME_SECS/2);
+		&errors, &latns, &mem_gb, RUNTIME_SECS);
 #elif defined(ACCESS_PAGE) || defined(ACCESS_PAGE_WHOLE)
 	op = OP_ACCESS_PAGE;
 #ifdef ACCESS_PAGE_WHOLE
@@ -527,12 +635,12 @@ int main(int argc, char **argv)
 	ASSERT(app_start_core != handler_start_core + HYPERTHREAD_OFFSET);
 	#endif
 	xput = do_app_work(op, nthreads, tdata, app_start_core, &errors, 
-		&latns, RUNTIME_SECS);
+		&latns, &mem_gb, RUNTIME_SECS);
 #else
 	printf("Unknown operation\n");
 	return 1;
 #endif
 
-	printf("%d,%lu,%lu,%lu\n", nthreads, xput, errors, latns);
+	printf("%d,%lu,%lu,%lu,%d\n", nthreads, xput, errors, latns, mem_gb);
 	return 0;
 }

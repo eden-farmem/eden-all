@@ -8,21 +8,76 @@
 #include "runtime/sync.h"
 #include "runtime/pgfault.h"
 #include "runtime/timer.h"
-#include "rmem/common.h"
-#include "rmem/api.h"
 #include "utils.h"
 
+/* settings */
 #define RUNTIME_SECS        10
 #define NSAMPLES_PER_THREAD 5000
 #define MAX_XPUT_PER_THREAD 500000
-#define MAX_MEMORY	        68719476736		// 64 GB
+#define MAX_MEMORY	        (64ULL * 1024 * 1024 * 1024)    // 64 GB
+#define MIN_MEMORY	        (10ULL * 1024 * 1024)           // 10 MB
 #define BATCH_SIZE		    128
+#define FASTSWAP_CGROUP_APP "pfbenchmark"
 
-#ifdef REMOTE_MEMORY
+#ifdef EDEN
+/* eden backend */
+#include "rmem/common.h"
+#include "rmem/api.h"
 #define heap_alloc rmalloc
-#else 
+void set_local_memory_limit(unsigned long limit)
+{
+    local_memory = limit;
+}
+
+unsigned long get_memory_usage()
+{
+    return atomic64_read(&memory_used);
+}
+
+#elif defined FASTSWAP
+/* fastswap backend */
 #define heap_alloc malloc
+void set_local_memory_limit(unsigned long limit)
+{
+    int ret;
+    char buf[256];
+    sprintf(buf, "echo %lu > /cgroup2/benchmarks/%s/memory.high", 
+        limit, FASTSWAP_CGROUP_APP);
+    ret = system(buf);
+    BUG_ON(ret);
+}
+
+unsigned long get_memory_usage()
+{
+    char fname[256];
+    FILE *fp;
+    unsigned long usage;
+
+    sprintf(fname, "/cgroup2/benchmarks/%s/memory.current", FASTSWAP_CGROUP_APP);
+    fp = fopen(fname, "r");
+    if (fp == NULL) {
+        log_err("Failed to get memory usage\n" );
+        BUG();
+    }
+
+    fscanf(fp, "%lu", &usage);
+    fclose(fp);
+    return usage;
+}
+#else
+/* no backend */
+#define heap_alloc malloc
+void set_local_memory_limit(unsigned long limit)
+{
+    return;
+}
+
+unsigned long get_memory_usage()
+{
+    return MIN_MEMORY;
+}
 #endif
+
 
 enum fault_op {
     FO_READ = 0,
@@ -32,10 +87,16 @@ enum fault_op {
 };
 
 struct thread_data {
+    /* thread input */
     int tid;
+    enum fault_op op;
     void* start;
     size_t size;
     struct rand_state rs;
+    bool sample_lat;
+    int rdahead;
+
+    /* per-thread results */
     uint64_t npages;
     uint64_t start_tsc;
     uint64_t end_tsc;
@@ -43,6 +104,12 @@ struct thread_data {
     int nlatencies;
 } CACHE_ALIGN;
 typedef struct thread_data thread_data_t;
+
+struct run_result {
+    uint64_t npages;
+    double time_secs;
+    int nlatencies;
+};
 
 waitgroup_t workers;
 barrier_t barrier;
@@ -77,7 +144,7 @@ void thread_main(void* arg)
     uint64_t now_tsc;
     int rdahead, rdahead_skip, rdahead_next, samples;
     double duration_secs, sampling_rate;
-    unsigned long randomness;
+    unsigned long randomness, next_sample;
     thread_data_t* targs;
     enum fault_op op, cur_op;
 
@@ -87,20 +154,6 @@ void thread_main(void* arg)
     sampling_rate = (NSAMPLES_PER_THREAD * 1.0 / 
         (RUNTIME_SECS * MAX_XPUT_PER_THREAD));
 
-    /* figure out read ahead */
-    rdahead = rdahead_skip = rdahead_next = 0;
-#ifdef RDAHEAD
-    rdahead = RDAHEAD;
-#endif
-    assert(rdahead >= 0);
-
-    /* figure out fault kind and operation */
-    op = FO_READ;
-#ifdef FAULT_OP
-    op = (enum fault_op) FAULT_OP;
-#endif
-    cur_op = op;
-
     /* wait for all threads to init */
     log_debug("thread %d inited with op %d, rdahead %d, sampling rate %f,"
         " start %p, size %lu", targs->tid, op, rdahead, sampling_rate,
@@ -109,13 +162,15 @@ void thread_main(void* arg)
 
     samples = 0;
     npages = 0;
+    rdahead_skip = rdahead_next = 0;
+    cur_op = targs->op;
     start = targs->start;
     while(!stop && start < (targs->start + targs->size))
     {
         now_tsc = 0;
         randomness = rand_next(&targs->rs);
     
-        if (op == FO_RANDOM)
+        if (targs->op == FO_RANDOM)
             cur_op = (randomness & (1<<16)) ? FO_READ : FO_WRITE;
 
         /* point to a random offset in the page */
@@ -123,13 +178,11 @@ void thread_main(void* arg)
         addr = (void*) ((unsigned long) addr & ~0x7);	/* 64-bit align */
         log_debug("faulting on %p", addr);
 
-#ifdef LATENCY
         /* should we sample this time? */		
-        if (npages >= next_sample) {
+        if (targs->sample_lat && npages >= next_sample) {
             next_sample = npages + next_poisson_time(sampling_rate, randomness);
             now_tsc = rdtsc();
         }
-#endif
 
         /* perform access/trigger fault */
         switch (cur_op) {
@@ -150,20 +203,18 @@ void thread_main(void* arg)
                 BUG();	/* bug */
         }
 
-#ifdef LATENCY
         /* note down latency */
-        if (samples < NSAMPLES_PER_THREAD && now_tsc) {
+        if (now_tsc && samples < NSAMPLES_PER_THREAD) {
             targs->latencies[samples] = (rdtscp(NULL) - now_tsc);
             samples++;
         }
-#endif
 
         /* params for next batch */
         start += _PAGE_SIZE;
         npages++;
         if(rdahead_skip-- <= 0)
-            rdahead_skip = rdahead;
-        rdahead_next = rdahead_skip ? 0 : rdahead;
+            rdahead_skip = targs->rdahead;
+        rdahead_next = rdahead_skip ? 0 : targs->rdahead;
 
         /* yield once in a while */
         if (npages % 100 == 0)
@@ -190,47 +241,145 @@ void timeout_thread(void* arg) {
 	stop = 1;
 }
 
+struct run_result do_work(thread_data_t* targs, int nthreads, enum fault_op op,
+    int rdahead, int max_secs, bool sample_lat)
+{
+    int i, j, samples, ret;
+    uint64_t start_tsc, time_tsc;
+    uint64_t npages;
+    double time_secs;
+	unsigned long timeout_us;
+    struct run_result result;
+
+    /* start threads */
+    waitgroup_init(&workers);
+    barrier_init(&barrier, nthreads + 1);
+    for (i = 0; i < nthreads; i++) {
+        waitgroup_add(&workers, 1);
+        targs[i].op = op;
+        targs[i].rdahead = rdahead;
+        targs[i].sample_lat = sample_lat;
+        ret = thread_spawn(thread_main, &targs[i]);
+        ASSERTZ(ret);
+    }
+
+    /* start timer thread and kick off */
+	log_info("starting the run");
+	start_tsc = rdtsc();
+	stop = 0;
+    if (max_secs > 0) {
+	    timeout_us = max_secs * 1e6;
+	    ret = thread_spawn(timeout_thread, (void*) timeout_us);
+        ASSERTZ(ret);
+    }
+    barrier_wait(&barrier);
+
+    /* yield & wait until the batch is done */
+    waitgroup_wait(&workers);
+	time_tsc = rdtscp(NULL) - start_tsc;
+    time_secs = time_tsc / (1000000.0 * cycles_per_us);
+
+    /* aggregate xput */
+    npages = 0;
+    for (i = 0; i < nthreads; i++)
+        npages += targs[i].npages;
+
+    /* dump latencies to file (NOTE: this will overwrite the same file 
+     * if called multiple times) */
+    samples = 0;
+    if (sample_lat) {
+        FILE* outfile = fopen("latencies", "w");
+        ASSERT(outfile);
+        fprintf(outfile, "latency\n");
+        for (i = 0; i < BATCH_SIZE; i++)
+            for (j = 0; j < targs[i].nlatencies; j++) {
+                fprintf(outfile, "%.3lf\n", targs[i].latencies[j] * 1.0);
+                samples++;
+            }
+        fclose(outfile);
+        log_info("Wrote %d sampled latencies", samples);
+    }
+
+    log_info("worked on %lu pages for %.1lf secs", npages, time_secs);
+    result.npages = npages;
+    result.time_secs = time_secs;
+    result.nlatencies = samples;
+    return result;
+}
+
 /* main thread called into by shenango runtime */
 void main_handler(void* arg)
 {
-    int i, j, ret;
+    int i;
     void* region;
     thread_data_t* targs;
     unsigned long batch_offset, size;
-    uint64_t start_tsc, time_tsc;
-    uint64_t npages;
-    int samples;
+    unsigned long start_tsc, end_tsc;
     double time_secs;
-    int nthreads;
-	unsigned long timeout_us;
+    int nthreads, rdahead;
+    enum fault_op op;
+    bool sample_lat, evict_on_path;
+    struct run_result result;
+    unsigned long memory_start;
+    int wait_secs;
     
     ASSERT(cycles_per_us);
 
-    /* number of worker threads */
+    /* parameters */
     nthreads = BATCH_SIZE;
+
+    /* sample latencies */
+    sample_lat = false;
 #ifdef LATENCY
     nthreads = 1;
+    sample_lat = true;
 #endif
-    log_info("running with %d worker threads", nthreads);
+    
+    /* read-ahead */
+    rdahead = 0;
+#ifdef RDAHEAD
+    rdahead = RDAHEAD;
+#endif
+    assert(rdahead >= 0);
 
-    /* write pid */
+    /* fault operation */
+    op = FO_READ;
+#ifdef FAULT_OP
+    op = (enum fault_op) FAULT_OP;
+#endif
+
+    /* evict on path */
+    evict_on_path = false;
+#ifdef EVICT_ON_PATH
+    evict_on_path = true;
+#endif
+
+    log_info("running with %d worker threads, read-ahead %d op %d", 
+        nthreads, rdahead, op);
+
+    /* write pid and wait some time for the saved pid to be added to 
+     * the cgroup to enforce fastswap limits */
 	save_number_to_file("main_pid", getpid());
-    /* give some time for the saved pid to be added to the cgroup to enforce 
-     * fastswap limits */
     sleep(1);
 
     /* allocate memory */
+    start_tsc = rdtsc();
     region = heap_alloc(MAX_MEMORY);
     ASSERT(region != NULL);
-    log_info("region start at %p, size %lu", region, MAX_MEMORY);
-    BUILD_ASSERT(MAX_MEMORY % BATCH_SIZE == 0);
-    region = (void*) align_up((unsigned long) region, BATCH_SIZE);
-    size = align_down(MAX_MEMORY, CHUNK_SIZE);
-    batch_offset = align_down(size / BATCH_SIZE, CHUNK_SIZE);
+    log_info("memory alloc took %lu ns", 
+        (rdtscp(NULL) - start_tsc) * 1000 / cycles_per_us);
 
-    /* create threads */
-    targs = malloc(BATCH_SIZE * sizeof(thread_data_t));
-    for (i = 0; i < BATCH_SIZE; i++) {
+    /* alignment and offsets */
+    log_info("region start at %p, size %llu", region, MAX_MEMORY);
+    assert(MAX_MEMORY % nthreads == 0);
+    region = (void*) align_up((unsigned long) region, nthreads);
+    size = align_down(MAX_MEMORY, CHUNK_SIZE);
+    batch_offset = align_down(size / nthreads, CHUNK_SIZE);
+
+    /* init threads with segregated regions */
+    targs = malloc(nthreads * sizeof(thread_data_t));
+    memset(targs, 0, nthreads * sizeof(thread_data_t));
+    for (i = 0; i < nthreads; i++) {
         targs[i].tid = i;
         targs[i].start = region + i * batch_offset;
         targs[i].size = batch_offset;
@@ -238,57 +387,28 @@ void main_handler(void* arg)
         ASSERTZ(rand_seed(&targs[i].rs, time(NULL) ^ i));
     }
 
-    /* start threads */
-    waitgroup_init(&workers);
-    barrier_init(&barrier, BATCH_SIZE + 1);
-    for (i = 0; i < BATCH_SIZE; i++) {
-        waitgroup_add(&workers, 1);
-        ret = thread_spawn(thread_main, &targs[i]);
-        ASSERTZ(ret);
+    /* read in all memory once but with low memory */
+    set_local_memory_limit(MIN_MEMORY);
+    do_work(targs, nthreads, FO_READ, 0, 0, false);
+
+    /* wait until eviction catches up */
+    wait_secs = 0;
+    log_info("waiting for eviction to catch up");
+    while (get_memory_usage() > MIN_MEMORY) {
+        sleep(1);
+        wait_secs++;
+        BUG_ON(wait_secs > 5);  /* too longer than expected */
     }
-
-    /* start timer and kick off */
-	log_info("starting the run");
-	start_tsc = rdtsc();
-	stop = 0;
-	timeout_us = RUNTIME_SECS * 1e6;
-	ret = thread_spawn(timeout_thread, (void*) timeout_us);
-    ASSERTZ(ret);
-    barrier_wait(&barrier);
-
-    /* yield & wait until the batch is done */
-    waitgroup_wait(&workers);
-	time_tsc = rdtscp(NULL) - start_tsc;
-
-    /* collect xput */
-    npages = 0;
-    samples = 0;
-    for (i = 0; i < BATCH_SIZE; i++) {
-        npages += targs[i].npages;
-        samples += targs[i].nlatencies;
-    }
-    time_secs = time_tsc / (1000000.0 * cycles_per_us);
+    
+    /* now do the op again */
+    local_memory = evict_on_path ? MIN_MEMORY * nthreads : MAX_MEMORY;
+    result = do_work(targs, nthreads, op, rdahead, RUNTIME_SECS, sample_lat);
 
     /* write xput to file */
-    log_info("ran for %.1lf secs with %.0lf ops /sec", 
-        time_secs, npages / time_secs);
-    save_number_to_file("result", npages / time_secs);
+    log_info("ran for %.1lf secs with %.0lf ops /sec",
+        result.time_secs, result.npages / result.time_secs);
+    save_number_to_file("result", result.npages / result.time_secs);
     sleep(1);
-
-    /* dump latencies to file */
-    if (samples > 0) {
-        FILE* outfile = fopen("latencies", "w");
-        if (outfile == NULL)
-            log_warn("could not write to latencies file");
-        else {
-            fprintf(outfile, "latency\n");
-            for (i = 0; i < BATCH_SIZE; i++)
-                for (j = 0; j < targs[i].nlatencies; j++)
-                    fprintf(outfile, "%.3lf\n", targs[i].latencies[i] * 1.0);
-            fclose(outfile);
-            log_info("Wrote %d sampled latencies", samples);
-        }
-    }
 }
 
 int main(int argc, char *argv[]) {
