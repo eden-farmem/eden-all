@@ -309,6 +309,8 @@ test_every_config()
     hints   local   read    evict
     hints   local   write   evict
     hints+4 local   write   evict
+    hints   local   read    evict4
+    hints   local   write   evict4
     """
     rdma_configs="""
     nohints rdma    read    noevict
@@ -320,7 +322,8 @@ test_every_config()
 
     result=test_result
     rm -f $result
-    echo "$configs" "$rdma_configs" | while read line;
+    # echo "$configs" "$rdma_configs" | while read line;
+    echo "$configs" | while read line;
     do
         if [ $(echo $line | awk '{  print NF }') -ne 4 ]; then
             continue

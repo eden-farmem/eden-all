@@ -66,6 +66,7 @@ case $i in
     -rm|--rmem)
     RMEM=1
     RMEM_ENABLED=1
+    CFLAGS="$CFLAGS -DEDEN"
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
     ;;
     
@@ -78,15 +79,18 @@ case $i in
 
     -fs|--fastswap)
     FASTSWAP=1
+    CFLAGS="$CFLAGS -DFASTSWAP"
     ;;
 
     -e|--evict)
     EVICT=1
+    CFLAGS="$CFLAGS -DEVICT_ON_PATH"
     ;;
 
     -be=*|--batchevict=*)
     EVICT=1
     EVICT_BATCH_SIZE="${i#*=}"
+    CFLAGS="$CFLAGS -DEVICT_ON_PATH"
     SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE -DVECTORED_MPROTECT"
     ;;
 
@@ -342,21 +346,21 @@ if [[ $FASTSWAP ]]; then
 fi
 
 echo "running test"
-sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1
+sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
 sleep 1
 
 pid=`cat main_pid`
 if [[ $pid ]]; then
     if [[ $FASTSWAP ]]; then
         #enforce localmem
-        sudo bash -c "echo $pid > /cgroup2/benchmarks/$APPNAME/cgroup.procs"
-        echo "added proc: "
-        sudo cat /cgroup2/benchmarks/$APPNAME/cgroup.procs
+        CGROUP_PROCS=/cgroup2/benchmarks/$APPNAME/cgroup.procs
+        sudo bash -c "echo $pid > $CGROUP_PROCS"
+        echo "added proc $(cat $CGROUP_PROCS) to cgroup"
     fi
 
     # wait for finish
     while ps -p $pid > /dev/null; do sleep 1; done
-    echo "success"
+    echo "done"
 else
     echo "process failed to write pid; exiting"
 fi
