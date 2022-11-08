@@ -246,7 +246,7 @@ fi
 
 ## benchmark Madvise batching (with single fd, single region)
 if [ "$PLOTID" == "9" ]; then
-    YMAX=2.5
+    YMAX=10
     LS=dashed; CMI=0;
     add_data_to_plot "madv" "no_batch"       "-DUNMAP_PAGE -DSHARE_REGION -DBATCH_SIZE=1"        1
     LS=solid; CMI=1;
