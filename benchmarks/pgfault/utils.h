@@ -13,9 +13,6 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "base/log.h"
-#include "asm/ops.h"
-
 // #define DEBUG
 
 #define ASSERT(x) assert((x))
@@ -32,7 +29,57 @@
 /********************************************
 ************************************************/
 
-uint64_t time_calibrate_tsc(void);
+static inline unsigned long RDTSC(void)
+{
+	unsigned int a, d;
+	__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
+	return ((unsigned long)a) | (((unsigned long)d) << 32);
+}
+
+static inline unsigned long RDTSCP(unsigned int *auxp)
+{
+	unsigned int a, d, c;
+	__asm__ volatile("rdtscp" : "=a" (a), "=d" (d), "=c" (c));
+	if (auxp)
+		*auxp = c;
+	return ((unsigned long)a) | (((unsigned long)d) << 32);
+}
+
+/********/
+
+/**
+ * is_power_of_two - determines if an integer is a power of two
+ * @x: the value
+ *
+ * Returns true if the integer is a power of two.
+ */
+#define _is_power_of_two(x) ((x) != 0 && !((x) & ((x) - 1)))
+
+/**
+ * align_up - rounds a value up to an alignment
+ * @x: the value
+ * @align: the alignment (must be power of 2)
+ *
+ * Returns an aligned value.
+ */
+#define _align_up(x, align)			\
+	({assert(_is_power_of_two(align));	\
+	 (((x) - 1) | ((__typeof__(x))(align) - 1)) + 1;})
+
+/**
+ * align_down - rounds a value down to an alignment
+ * @x: the value
+ * @align: the alignment (must be power of 2)
+ *
+ * Returns an aligned value.
+ */
+#define _align_down(x, align)			\
+	({assert(_is_power_of_two(align));	\
+	 ((x) & ~((__typeof__(x))(align) - 1));})
+
+/********/
+
+unsigned long time_calibrate_tsc(void);
 
 static inline const void *page_align(const void *p)
 {
@@ -65,11 +112,11 @@ static int pin_thread(int core) {
 /* a fast xorshift pseudo-random generator
  * from https://prng.di.unimi.it/xoshiro256plusplus.c */
 struct rand_state {
-  uint64_t s[4];
+  unsigned long s[4];
 };
 
 /* from wikipedia: https://en.wikipedia.org/wiki/Xorshift */ 
-int rand_seed(struct rand_state* result, uint64_t seed);
-uint64_t rand_next(struct rand_state* state);
+int rand_seed(struct rand_state* result, unsigned long seed);
+unsigned long rand_next(struct rand_state* state);
 
 #endif  // __UTILS_H__

@@ -7,7 +7,7 @@
 usage="Example: bash run.sh -f\n
 -f, --force \t force recompile everything\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
--t, --threads \t number of app threads\n
+-c, --cores \t number of cpu cores\n
 -rm, --rmem \t run with remote memory\n
 -h, --hints \t enable remote memory hints\n
 -fs, --fastswap \t enable remote memory with fastswap\n
@@ -34,7 +34,7 @@ MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/eden"
 TMP_FILE_PFX="tmp_shen_"
 CFGFILE="default.config"
-NUM_THREADS=1
+NCORES=1
 OPTS=
 NO_HYPERTHREADING="-noht"
 SHEN_CFLAGS="-DNO_ZERO_PAGE"
@@ -45,6 +45,7 @@ LOCALMEM=68719476736        # 64 GB (see RDMA_SERVER_NSLABS)
 EVICT_THRESHOLD=100         # no handler eviction
 EVICT_BATCH_SIZE=1
 EXPECTED_PTI=off
+SCHEDULER=pthreads
 
 # parse cli
 for i in "$@"
@@ -59,8 +60,8 @@ case $i in
     CFLAGS="$CFLAGS ${i#*=}"
     ;;
 
-    -sc=*|--shencfg=*)
-    CFGFILE="${i#*=}"
+    -sc=*|--sched=*)
+    SCHEDULER="${i#*=}"
     ;;
 
     -rm|--rmem)
@@ -68,6 +69,7 @@ case $i in
     RMEM_ENABLED=1
     CFLAGS="$CFLAGS -DEDEN"
     CFLAGS="$CFLAGS -DREMOTE_MEMORY"
+    SCHEDULER=shenango
     ;;
     
     -h|--hints)
@@ -75,6 +77,7 @@ case $i in
     RMEM_ENABLED=1
     RMEM_HINTS_ENABLED=1
     CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
+    SCHEDULER=shenango
     ;;
 
     -fs|--fastswap)
@@ -111,7 +114,7 @@ case $i in
     ;;
 
     -t=*|--threads=*)
-    NUM_THREADS=${i#*=}
+    NCORES=${i#*=}
     ;;
     
     -l|--lat)
@@ -159,6 +162,7 @@ done
 # NUMA node1 CPU(s):   14-27,42-55
 # RNIC NUMA node = 1 (good for sc30, sc40)
 NUMA_NODE=1
+BASECORE=14             # starting core on the node 
 NIC_PCI_SLOT="0000:d8:00.1"
 RMEM_HANDLER_CORE=55
 FASTSWAP_RECLAIM_CPU=55
@@ -171,6 +175,7 @@ cleanup() {
     rm -f ${BINFILE}
     rm -f ${TMP_FILE_PFX}*
     rm -f ${CFGFILE}
+    sudo pkill ${BINFILE}
     sudo pkill iokerneld
     sudo pkill iokerneld${NO_HYPERTHREADING}
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" < /dev/null
@@ -243,31 +248,41 @@ if [[ $EVICT_POLICY ]]; then
 fi
 
 # build shenango
-pushd ${SHENANGO_DIR} 
-if [[ $FORCE ]];    then    make clean;                         fi
-if [[ $DPDK ]];     then    ./dpdk.sh;                          fi
-if [[ $RMEM ]];     then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
-if [[ $RHINTS ]];   then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
-if [[ $SAFEMODE ]]; then    OPTS="$OPTS SAFEMODE=1";            fi
-if [[ $GDB ]];      then    OPTS="$OPTS GDB=1";                 fi
-if ! [[ $NO_STATS ]]; then  OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
+if [ "$SCHEDULER" == "shenango" ]; then
+    pushd ${SHENANGO_DIR} 
+    if [[ $FORCE ]];    then    make clean;                         fi
+    if [[ $RMEM ]];     then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
+    if [[ $RHINTS ]];   then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
+    if [[ $SAFEMODE ]]; then    OPTS="$OPTS SAFEMODE=1";            fi
+    if [[ $GDB ]];      then    OPTS="$OPTS GDB=1";                 fi
+    if ! [[ $NO_STATS ]]; then  OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
+    OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
+    make all -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
 
-OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
-make all -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
-popd
+    # shim
+    pushd shim
+    make
+    popd
+    popd
+
+    INC="${INC} -I${SHENANGO_DIR}/inc"
+    LDFLAGS="${LDFLAGS} -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
+    LIBS="${LIBS} -Wl,--wrap=main ${SHENANGO_DIR}/shim/libshim.a -ldl"
+    LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a "\
+"${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
+else
+    LDFLAGS="${LDFLAGS} -lpthread -lm"
+fi
 
 # build benchmark
-LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a "\
-"${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
-INC="${INC} -I${SHENANGO_DIR}/inc"
-LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
-gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+CFLAGS="$CFLAGS -DNCORES=${NCORES}"
+gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LDFLAGS} ${LIBS} ${CFLAGS} -o ${BINFILE}
 
-if [[ $BUILD_ONLY ]]; then 
+if [[ $BUILD_ONLY ]]; then
     exit 0
 fi
 
-if [[ $LATENCIES ]] && [ $NUM_THREADS -gt 1 ]; then
+if [[ $LATENCIES ]] && [ $NCORES -gt 1 ]; then
     echo "can't do more than 1 thr with latency sampling"
     exit 1
 fi
@@ -287,7 +302,7 @@ fi
 
 # low localmem to trigger evict
 if [[ $EVICT ]]; then
-    LOCALMEM=$((NUM_THREADS*10000000))   # 10 MB per core
+    LOCALMEM=$((NCORES*10000000))   # 10 MB per core
 fi
 
 # fastswap setup already takes care of its memory server
@@ -298,26 +313,28 @@ if [[ $FASTSWAP ]]; then
     sudo bash -c "echo ${LOCALMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
 fi
 
-# Shenango i/o core
-start_iokernel() {
-    set +e
-    echo "starting iokerneld"
-    sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
-    binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
-    sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${TMP_FILE_PFX}iokernel.log &
-    echo "waiting on iokerneld"
-    sleep 10    #for iokernel to be ready
-}
-start_iokernel
+# Core allocation
+if [ "$SCHEDULER" == "shenango" ]; then
+    # For Shenango, set i/o core and shenango config
+    start_iokernel() {
+        set +e
+        echo "starting iokerneld"
+        sudo ${SHENANGO_DIR}/scripts/setup_machine.sh || true
+        binary=${SHENANGO_DIR}/iokerneld${NO_HYPERTHREADING}
+        sudo $binary $NIC_PCI_SLOT 2>&1 | ts %s > ${TMP_FILE_PFX}iokernel.log &
+        echo "waiting on iokerneld"
+        sleep 10    #for iokernel to be ready
+    }
+    start_iokernel
 
-# prepare shenango config
-shenango_cfg="""
+    # prepare shenango config
+    shenango_cfg="""
 host_addr 192.168.0.100
 host_netmask 255.255.255.0
 host_gateway 192.168.0.1
-runtime_kthreads ${NUM_THREADS}
-runtime_guaranteed_kthreads ${NUM_THREADS}
-runtime_spinning_kthreads ${NUM_THREADS}
+runtime_kthreads ${NCORES}
+runtime_guaranteed_kthreads ${NCORES}
+runtime_spinning_kthreads ${NCORES}
 host_mac 02:ba:dd:ca:ad:08
 disable_watchdog 0
 remote_memory ${RMEM_ENABLED}
@@ -326,43 +343,55 @@ rmem_backend ${BACKEND}
 rmem_local_memory ${LOCALMEM}
 rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}"""
-echo "$shenango_cfg" > $CFGFILE
-cat $CFGFILE
+    echo "$shenango_cfg" > $CFGFILE
+    cat $CFGFILE
+else
+    # Pthreads
+    if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
+    CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
+    wrapper="taskset -a -c ${CPUSTR}"
+fi
 
-# run
+
+# environment
 env=
 if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then
-    env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
+    env="env RDMA_RACK_CNTRL_IP=$RCNTRL_IP RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
+    wrapper="$wrapper $env"
 fi
+
 if [[ $GDB ]]; then 
-    prefix="gdbserver --wrapper env ${env} -- :1234 "
+    prefix="gdbserver --wrapper ${wrapper} -- :1234 "
 else
-    # prefix="env ${env} perf record -F 999"
-    prefix="env ${env}"
+    # prefix="perf record -F 999"
+    prefix="${wrapper}"
 fi
 
-if [[ $FASTSWAP ]]; then 
-    start_sar 1
-fi
-
+# run
 echo "running test"
-sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
-sleep 1
+if [[ $FASTSWAP ]]; then
+    # Fastswap
+    start_sar 1
+    sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
+    sleep 5     # wait for main_pid
+    pid=`cat main_pid`
+    if [[ $pid ]]; then
+        if [[ $FASTSWAP ]]; then
+            #enforce localmem
+            CGROUP_PROCS=/cgroup2/benchmarks/$APPNAME/cgroup.procs
+            sudo bash -c "echo $pid > $CGROUP_PROCS"
+            echo "added proc $(cat $CGROUP_PROCS) to cgroup"
+        fi
 
-pid=`cat main_pid`
-if [[ $pid ]]; then
-    if [[ $FASTSWAP ]]; then
-        #enforce localmem
-        CGROUP_PROCS=/cgroup2/benchmarks/$APPNAME/cgroup.procs
-        sudo bash -c "echo $pid > $CGROUP_PROCS"
-        echo "added proc $(cat $CGROUP_PROCS) to cgroup"
+        # wait for finish
+        while ps -p $pid > /dev/null; do sleep 1; done
+        echo "done"
+    else
+        echo "process failed to write pid; exiting"
     fi
-
-    # wait for finish
-    while ps -p $pid > /dev/null; do sleep 1; done
-    echo "done"
 else
-    echo "process failed to write pid; exiting"
+    # Eden
+    sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1
 fi
 
 # cleanup
