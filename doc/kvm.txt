@@ -1,0 +1,80 @@
+
+
+#
+# KVM VM setup for Ubuntu 20.04
+# (Useful for testing kernel changes)
+#
+
+sudo apt install qemu qemu-kvm libvirt-clients libvirt-daemon-system virtinst bridge-utils
+sudo systemctl enable libvirtd
+sudo systemctl start libvirtd
+systemctl status libvirtd
+
+# Get image from Ubuntu releases. e.g., https://releases.ubuntu.com/focal/
+# Place image in /var/lib/libvirt/images for permission issues
+sudo virt-install --name fsvm --ram=40000 --vcpus=20 --cpu host  \
+    --hvm --disk path=/var/lib/libvirt/images/fsvm-vm1,size=64  \
+    --cdrom /var/lib/libvirt/images/ubuntu-20.04.5-live-server-amd64.iso --graphics vnc
+
+# connect to it to finish install
+sudo virsh dumpxml fsvm | grep vnc      # note vnc addr and port
+Install vnc client (remmina: https://remmina.org/how-to-install-remmina/)
+Open remmina in ssh -X terminal, pick VNC and enter <addr>:<port>
+Continue installation
+
+
+# control
+sudo virsh list --all
+sudo virsh start fsvm
+sudo virsh reboot fsvm
+sudo virsh shutdown fsvm
+sudo virsh edit fsvm
+sudo virsh dominfo fsvm
+sudo virsh undefine fsvm    #remove
+
+# network
+sudo virsh net-list
+sudo virsh net-info default
+sudo virsh net-dhcp-leases default
+
+# disk resize
+sudo virsh list --all
+sudo virsh qemu-monitor-command fsvm info block --hmp
+sudo qemu-img info /var/lib/libvirt/images/fsvm-vm1
+##sudo qemu-img resize /var/lib/libvirt/images/fsvm-vm1 +30G
+sudo virsh blockresize fsvm /var/lib/libvirt/images/fsvm-vm1 40G    # (careful this is new size, not increment)
+sudo fdisk -l /var/lib/libvirt/images/fsvm-vm1
+# check in vm
+lsblk
+sudo fdisk /dev/sda (shows 40GB)
+p - prints
+d - deletes last partition
+n - add last partition with more space (don't delete signature)
+w - write changes 
+reboot
+
+lsblk # shows new partition size
+sudo lvm    # logical volumes
+pvdisplay   # shows old size
+pvresize /dev/sda3  # resize
+pvdisplay   # shows new size
+lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv # extend logical volume 
+sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv   # tell filesystem
+df -h
+
+# console
+virsh console Ubunut-20.04
+
+# build in VM
+sudo apt-get install make git exuberant-ctags bc gcc flex bison
+sudo apt-get install libelf-dev libssl-dev libncurses5-dev
+sudo apt-get install dwarves
+
+# fastswap
+cd fastswap
+
+pushd drivers
+make clean
+make BACKEND=DRAM
+sudo insmod fastswap_dram.ko
+sudo insmod fastswap.ko
