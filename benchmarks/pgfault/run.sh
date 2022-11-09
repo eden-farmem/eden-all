@@ -26,7 +26,7 @@ FASTSWAP_DIR="${ROOT_DIR}/fastswap"
 APPNAME="pfbenchmark"
 BINFILE="main.out"
 RCNTRL_SSH="sc07"
-RCNTRL_IP="192.168.0.7"
+RCNTRL_IP="192.168.100.81"
 RCNTRL_PORT="9202"
 MEMSERVER_SSH=$RCNTRL_SSH
 MEMSERVER_IP=$RCNTRL_IP
@@ -103,6 +103,10 @@ case $i in
 
     -b=*|--bkend=*)
     BACKEND=${i#*=}
+    ;;
+
+    -p|--preload)
+    CFLAGS="$CFLAGS -DPRELOAD"
     ;;
 
     -f|--force)

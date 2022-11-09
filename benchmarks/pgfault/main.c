@@ -394,6 +394,7 @@ int main(int argc, char *argv[])
         ASSERTZ(rand_seed(&targs[i].rs, time(NULL) ^ i));
     }
 
+#ifdef PRELOAD
     /* read in all memory once but with low memory */
     set_local_memory_limit(MIN_MEMORY);
     do_work(targs, nthreads, FO_READ, 0, 0, false);
@@ -406,6 +407,7 @@ int main(int argc, char *argv[])
         wait_secs++;
         _BUG_ON(wait_secs > 5);  /* too longer than expected */
     }
+#endif
     
     /* now do the op again */
     set_local_memory_limit(evict_on_path ? MIN_MEMORY : MAX_MEMORY);
