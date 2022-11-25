@@ -9,21 +9,22 @@
 #include "utils.h"
 
 /* settings */
-#define RUNTIME_SECS        10
+#define RUNTIME_SECS        30
 #define NSAMPLES_PER_THREAD 5000
 #define MAX_XPUT_PER_THREAD 500000
-#define MAX_MEMORY	        (64ULL * 1024 * 1024 * 1024)    // 64 GB
-#define MIN_MEMORY	        (10ULL * 1024 * 1024)           // 10 MB
+#define MAX_MEMORY	        (24ULL * 1024 * 1024 * 1024)    // 32 GB
+#define MIN_MEMORY	        (200ULL * 1024 * 1024)   // 200 MB
 #define FASTSWAP_CGROUP_APP "pfbenchmark"
 
 #ifdef EDEN
 /* eden backend */
-#define NTHREADS		                128
+#define NTHREADS		                CORES
 #include "runtime/pgfault.h"
 #include "runtime/timer.h"
 #include "rmem/common.h"
 #include "rmem/api.h"
 #define heap_alloc rmalloc
+
 void set_local_memory_limit(unsigned long limit)
 {
     local_memory = limit;
@@ -34,16 +35,24 @@ unsigned long get_memory_usage()
     return atomic64_read(&memory_used);
 }
 
+void set_page_rdahead(int rdahead)
+{
+    /* nothing to do, we set rdahead in Eden with hints */
+}
+
 #elif defined FASTSWAP
 /* fastswap backend */
-#define NTHREADS		                NCORES
-#define heap_alloc                      malloc
+#define NTHREADS		                CORES
+#define heap_alloc(size)                aligned_alloc(_PAGE_SIZE,size)
 #define hint_read_fault_rdahead(a,r)    {}
 #define hint_write_fault_rdahead(a,r)   {}
+
 void set_local_memory_limit(unsigned long limit)
 {
     int ret;
     char buf[256];
+
+    pr_info("Setting memory limit to %lu bytes", limit);
     sprintf(buf, "echo %lu > /cgroup2/benchmarks/%s/memory.high", 
         limit, FASTSWAP_CGROUP_APP);
     ret = system(buf);
@@ -67,21 +76,31 @@ unsigned long get_memory_usage()
     fclose(fp);
     return usage;
 }
+
+void set_page_rdahead(int rdahead)
+{
+    int ret, rdahead_power;
+    char buf[256];
+
+    /* only supports batches (1 + rdahead) that are powers of two */
+    _BUG_ON(rdahead >= 0 && !_is_power_of_two(rdahead + 1));
+    rdahead_power = 0;
+    while(rdahead >>= 1) rdahead_power++;
+    pr_info("Setting rdahead to %d, power %d", rdahead, rdahead_power);
+    sprintf(buf, "echo %d > /proc/sys/vm/page-cluster", rdahead_power);
+    ret = system(buf);
+    _BUG_ON(ret);
+}
 #else
 /* no backend */
-#define NTHREADS		                NCORES
-#define heap_alloc                      malloc
+#define NTHREADS		                CORES
+#define heap_alloc(size)                aligned_alloc(_PAGE_SIZE,size)
 #define hint_read_fault_rdahead(a,r)    {}
 #define hint_write_fault_rdahead(a,r)   {}
-void set_local_memory_limit(unsigned long limit)
-{
-    return;
-}
 
-unsigned long get_memory_usage()
-{
-    return MIN_MEMORY;
-}
+void set_local_memory_limit(unsigned long limit) {}
+unsigned long get_memory_usage() { return MIN_MEMORY; }
+void set_page_rdahead(int rdahead) {}
 #endif
 
 unsigned long CYCLES_PER_US;
@@ -140,7 +159,6 @@ void save_number_to_file(char* fname, unsigned long val)
 /* work for each user thread */
 void* thread_main(void* arg)
 {
-    volatile char tmp;
     void *start, *addr;
     unsigned long npages;
     unsigned long now_tsc;
@@ -148,18 +166,21 @@ void* thread_main(void* arg)
     double duration_secs, sampling_rate;
     unsigned long randomness, next_sample;
     thread_data_t* targs;
-    enum fault_op op, cur_op;
+    enum fault_op cur_op;
+    int tmp;
+    int tid;
 
     targs = (thread_data_t*) arg;
+    tid = targs->tid;
 
     /* latency sampling rate per thread */
     sampling_rate = (NSAMPLES_PER_THREAD * 1.0 / 
         (RUNTIME_SECS * MAX_XPUT_PER_THREAD));
 
     /* wait for all threads to init */
-    pr_debug("thread %d inited with op %d, rdahead %d, sampling rate %f,"
-        " start %p, size %lu", targs->tid, op, rdahead, sampling_rate,
-        targs->start, targs->size);
+    pr_info("thread %d running with op %d, rdahead %d, start %p, size %lu, "
+        "pages: %llu", targs->tid, targs->op, rdahead, targs->start, targs->size,
+        targs->size / _PAGE_SIZE);
     pthread_barrier_wait(&barrier);
 
     samples = 0;
@@ -167,7 +188,7 @@ void* thread_main(void* arg)
     rdahead_skip = rdahead_next = 0;
     cur_op = targs->op;
     start = targs->start;
-    while(!stop && start < (targs->start + targs->size))
+    while(!stop && (start < (targs->start + targs->size)))
     {
         now_tsc = 0;
         randomness = rand_next(&targs->rs);
@@ -222,16 +243,21 @@ void* thread_main(void* arg)
         if (npages % 100 == 0)
             pthread_yield();
 
-#ifdef DE_BUG
+        /* if this is not the first run, only cover the pages the 
+         * previous run has covered */
+        if (targs->npages && npages >= targs->npages)
+            break;
+
+#ifdef DEBUG
         /* break sooner when debugging */
-        if (npages >= 1)
+        if (npages >= 1000)
             break;
 #endif
     }
 
     targs->npages = npages;
     targs->nlatencies = samples;
-    pr_debug("thread %d done", targs->tid);
+    pr_info("thread %d done. npages: %lu", targs->tid, npages);
     return NULL;
 }
 
@@ -255,6 +281,9 @@ struct run_result do_work(thread_data_t* targs, int nthreads, enum fault_op op,
     struct run_result result;
     pthread_t pthreads[nthreads];
     pthread_t timer;
+
+    /* set common rdahead (for fastswap) */
+    set_page_rdahead(rdahead);
 
     /* start threads */
     pthread_barrier_init(&barrier, NULL, nthreads + 1);
@@ -316,7 +345,6 @@ int main(int argc, char *argv[])
 {
     int i;
     void* region;
-    thread_data_t* targs;
     pthread_t* pthreads;
     pthread_t timer;
     unsigned long batch_offset, size;
@@ -326,8 +354,9 @@ int main(int argc, char *argv[])
     enum fault_op op;
     bool sample_lat, evict_on_path;
     struct run_result result;
-    unsigned long memory_start;
+    unsigned long start;
     int wait_secs;
+    thread_data_t targs[NTHREADS];
     
     /* time calibration (provided by Eden) */
     CYCLES_PER_US = time_calibrate_tsc();
@@ -368,45 +397,55 @@ int main(int argc, char *argv[])
     /* write pid and wait some time for the saved pid to be added to 
      * the cgroup to enforce fastswap limits */
 	save_number_to_file("main_pid", getpid());
-    sleep(1);
+    sleep(5);
 
     /* allocate memory */
     start_tsc = RDTSC();
     region = heap_alloc(MAX_MEMORY);
-    ASSERT(region != NULL);
     pr_info("memory alloc took %lu ns", 
         (RDTSCP(NULL) - start_tsc) * 1000 / CYCLES_PER_US);
+    pr_info("region allocated at %p, size %llu", region, MAX_MEMORY);
 
     /* alignment and offsets */
-    pr_info("region start at %p, size %llu", region, MAX_MEMORY);
-    region = (void*) _align_up((unsigned long) region, _PAGE_SIZE);
-    size = _align_down((MAX_MEMORY - _PAGE_SIZE), _PAGE_SIZE);
-    batch_offset = _align_down(size / nthreads, _PAGE_SIZE);
+    ASSERT(region != NULL);
+    ASSERT((unsigned long) region % _PAGE_SIZE == 0);
+    ASSERT(MAX_MEMORY % _PAGE_SIZE == 0);
+    size = (MAX_MEMORY / _PAGE_SIZE / nthreads) * nthreads * _PAGE_SIZE;
+    batch_offset = size / nthreads;
+    ASSERT(size % _PAGE_SIZE == 0);
+    ASSERT(batch_offset % _PAGE_SIZE == 0);
+    pr_info("region start at %p, size %lu, per-thread %lu", 
+        region, size, batch_offset);
 
     /* init threads with segregated regions */
-    targs = malloc(nthreads * sizeof(thread_data_t));
-    memset(targs, 0, nthreads * sizeof(thread_data_t));
+    memset(targs, 0, NTHREADS * sizeof(thread_data_t));
+    ASSERT(nthreads <= NTHREADS);
     for (i = 0; i < nthreads; i++) {
         targs[i].tid = i;
-        targs[i].start = region + i * batch_offset;
+        start = (unsigned long) region + i * batch_offset;
+        targs[i].start = (void*) _align_up(start, _PAGE_SIZE);
         targs[i].size = batch_offset;
+        targs[i].npages = 0;
         assert((targs[i].start + targs[i].size) <= (region + size));
         ASSERTZ(rand_seed(&targs[i].rs, time(NULL) ^ i));
     }
 
 #ifdef PRELOAD
     /* read in all memory once but with low memory */
+    pr_info("preloading memory with %d threads", nthreads);
     set_local_memory_limit(MIN_MEMORY);
-    do_work(targs, nthreads, FO_READ, 0, 0, false);
+    do_work(targs, nthreads, FO_WRITE, 0, 0, false);
 
     /* wait until eviction catches up */
     wait_secs = 0;
-    pr_info("waiting for eviction to catch up");
-    while (get_memory_usage() > MIN_MEMORY) {
+    do {
+        pr_info("waiting for eviction to catch up. mem usage: %lu", 
+            get_memory_usage());
         sleep(1);
         wait_secs++;
         _BUG_ON(wait_secs > 5);  /* too longer than expected */
-    }
+    } while(get_memory_usage() > MIN_MEMORY);
+    sleep(5);
 #endif
     
     /* now do the op again */

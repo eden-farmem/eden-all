@@ -79,7 +79,21 @@ set_hints_opts() {
     "hints+1")          LS=dashed;      OPTS="$OPTS --rmem --hints --rdahead=1";;
     "hints+2")          LS=dashdot;     OPTS="$OPTS --rmem --hints --rdahead=2";;
     "hints+4")          LS=dashdotdot;  OPTS="$OPTS --rmem --hints --rdahead=4";;
+    "fswap")            LS=solid;       OPTS="$OPTS --fastswap";;
+    "fswap+1")          LS=solid;       OPTS="$OPTS --fastswap --rdahead=1";;
+    "fswap+3")          LS=dashed;      OPTS="$OPTS --fastswap --rdahead=3";;
+    "fswap+7")          LS=dashdot;     OPTS="$OPTS --fastswap --rdahead=7";;
     *)                  echo "Unknown rmem type"; exit;;
+    esac
+}
+
+set_scheduler() {
+    sc=$1
+    case $sc in
+    "")                 ;;
+    "pthreads")         OPTS="$OPTS --sched=pthreads";;
+    "shenango")         OPTS="$OPTS --sched=shenango";;
+    *)                  echo "Unknown scheduler"; exit;;
     esac
 }
 
@@ -123,12 +137,14 @@ set_fault_op_opts() {
 
 measure_xput_vary_cpu()
 {
-    name="local_hints_evict_batching_read"
-    for bkend in "local"; do
-        for rmem in "hints"; do     # "hints+1" "hints+2" "hints+4"; do
-            for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
-                # for op in "read" "write"; do
-                for op in "read"; do
+    name="fswap_rdma"
+    # sc="shenango"
+    for bkend in "rdma"; do
+        # for rmem in "hints"; do       # "hints+1" "hints+2" "hints+4"; do
+        for rmem in "fswap"; do         # "fswap+1" "fswap+3" "fswap+7" ; do
+            for evict in "noevict" "evict"; do  # ""evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
+                for op in "write"; do
+                # for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
@@ -141,12 +157,14 @@ measure_xput_vary_cpu()
                     set_evict_opts      "$evict"
                     set_backend_opts    "$bkend"
                     set_fault_op_opts   "$op"
+                    set_scheduler       "$sc"
 
                     # run and log result
                     datafile=$DATADIR/xput-${cfg}
                     if [ ! -f $datafile ] || [[ $FORCE ]]; then
                         bash run.sh --clean
-                        bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
+                        # reloading fastswap everytime takes time
+                        # bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
                         echo "cores,xput" > $datafile
                         for cores in `seq 1 1 12`; do 
                         # for cores in 1; do 
@@ -161,8 +179,8 @@ measure_xput_vary_cpu()
                         done
                     fi
                     cat $datafile
-                    # plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
-                    plots="$plots -d $datafile -l ${evict}-${op} -ls $LS -cmi $CMI"
+                    plots="$plots -d $datafile -l ${rmem}-${bkend} -ls $LS -cmi $CMI"
+                    # plots="$plots -d $datafile -l ${evict}-${op} -ls $LS -cmi $CMI"
                 done
             done
         done
@@ -362,8 +380,8 @@ if [[ $TEST ]]; then
 elif [[ $LATENCIES ]]; then
     measure_latency
 else
-    # measure_xput_vary_cpu
-    measure_xput_vary_batch
+    measure_xput_vary_cpu
+    # measure_xput_vary_batch
 fi
 
 # cleanup
