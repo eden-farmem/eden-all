@@ -32,7 +32,7 @@
     printf(RESET);          \
   } while (0)
 
-#ifdef DE_BUG
+#ifdef DEBUG
 #define pr_debug(fmt, ...)                                                   \
   do {                                                                       \
     fprintf(stderr, "[%lx][%s][%s:%d]: " fmt "\n", pthread_self(), __FILE__, \
@@ -44,7 +44,7 @@
   } while (0)
 #endif
 
-#ifndef DE_BUG
+#ifndef DEBUG
 #define pr_info(fmt, ...)                                                    \
   do {                                                                       \
     fprintf(stderr, KGRN "++[" __FILE__ "] " fmt "\n" RESET, ##__VA_ARGS__); \

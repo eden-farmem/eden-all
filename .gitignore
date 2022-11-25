@@ -11,6 +11,7 @@ data
 out
 __running__
 result
+main_pid
 
 ~$*.ppt*
 .DS_Store

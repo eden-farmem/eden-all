@@ -25,8 +25,11 @@ ROOT_DIR="${SCRIPT_DIR}/../.."
 FASTSWAP_DIR="${ROOT_DIR}/fastswap"
 APPNAME="pfbenchmark"
 BINFILE="main.out"
+HOST_SSH="sc40"
+HOST_IP="192.168.0.40"
 RCNTRL_SSH="sc07"
-RCNTRL_IP="192.168.100.81"
+# RCNTRL_IP="192.168.100.81"
+RCNTRL_IP="192.168.0.7"
 RCNTRL_PORT="9202"
 MEMSERVER_SSH=$RCNTRL_SSH
 MEMSERVER_IP=$RCNTRL_IP
@@ -83,6 +86,7 @@ case $i in
     -fs|--fastswap)
     FASTSWAP=1
     CFLAGS="$CFLAGS -DFASTSWAP"
+    # SCHEDULER=shenango
     ;;
 
     -e|--evict)
@@ -141,7 +145,7 @@ case $i in
 
     -g|--gdb)
     GDB=1
-    CFLAGS="$CFLAGS -g -ggdb"
+    CFLAGS="$CFLAGS -O0 -g -ggdb"
     ;;
 
     -bo|--buildonly)
@@ -184,7 +188,10 @@ cleanup() {
     sudo pkill iokerneld${NO_HYPERTHREADING}
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" < /dev/null
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver" < /dev/null
-    pkill sar
+    stop_memory_stat
+    stop_vmstat
+    stop_fsstat
+    stop_sar
     rm -f *.sar
     rm -f main_pid
     sleep 1     #to unbind port
@@ -199,6 +206,33 @@ start_sar() {
 }
 stop_sar() {
     pkill sar
+}
+start_memory_stat() {
+    rm -f memory-stat.out
+    nohup bash ${SCRIPT_DIR}/memory-stat.sh ${APPNAME} 2>&1 &
+}
+stop_memory_stat() {
+    local pid
+    pid=$(pgrep -f "[m]emory-stat.sh")
+    if [[ $pid ]]; then  kill ${pid}; fi
+}
+start_vmstat() {
+    rm -f vmstat.out
+    nohup bash ${SCRIPT_DIR}/vmstat.sh ${APPNAME} > vmstat.out &
+}
+stop_vmstat() {
+    local pid
+    pid=$(pgrep -f "[v]mstat.sh")
+    if [[ $pid ]]; then  kill ${pid}; fi
+}
+start_fsstat() {
+    rm -f fstat.out
+    nohup sudo bash ${SCRIPT_DIR}/fswap-stat.sh ${APPNAME} > fstat.out &
+}
+stop_fsstat() {
+    local pid
+    pid=$(pgrep -f "[f]swap-stat.sh")
+    if [[ $pid ]]; then  sudo kill ${pid}; fi
 }
 
 #start clean
@@ -219,8 +253,7 @@ if [ "$EXPECTED_PTI" != "$PTI" ]; then
     echo "Expected: ${EXPECTED_PTI}, Found: ${PTI}"
 fi
 
-
-# setup fastswap
+# fastswap
 if [[ $FASTSWAP ]]; then
     if [[ $RMEM ]] || [[ $RHINTS ]]; then
         echo "ERROR! rmem or hints can't be enabled with fastswap"
@@ -232,6 +265,7 @@ if [[ $FASTSWAP ]]; then
         exit 1
     fi
 
+    # setup fastswap
     if [[ $FORCE ]]; then
         bash ${FASTSWAP_DIR}/setup.sh           \
             --memserver-ssh=${MEMSERVER_SSH}    \
@@ -241,6 +275,16 @@ if [[ $FASTSWAP ]]; then
             --host-ssh=${HOST_SSH}              \
             --backend=${BACKEND}
     fi
+
+    # setup cgroups
+    pushd ${FASTSWAP_DIR}
+    sudo mkdir -p /cgroup2
+    sudo ./init_bench_cgroups.sh
+    sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
+    popd
+
+    # have to preload memory first for fastswap
+    CFLAGS="$CFLAGS -DPRELOAD"
 fi
 
 if [[ $EVICT_POLICY ]]; then
@@ -279,7 +323,7 @@ else
 fi
 
 # build benchmark
-CFLAGS="$CFLAGS -DNCORES=${NCORES}"
+CFLAGS="$CFLAGS -DCORES=${NCORES}"
 gcc main.c utils.c -D_GNU_SOURCE ${INC} ${LDFLAGS} ${LIBS} ${CFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then
@@ -309,13 +353,6 @@ if [[ $EVICT ]]; then
     LOCALMEM=$((NCORES*10000000))   # 10 MB per core
 fi
 
-# fastswap setup already takes care of its memory server
-# but we need to setup local mem limit in advance
-if [[ $FASTSWAP ]]; then
-    sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
-    LOCALMEM=${LOCALMEM:-max}
-    sudo bash -c "echo ${LOCALMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
-fi
 
 # Core allocation
 if [ "$SCHEDULER" == "shenango" ]; then
@@ -364,8 +401,13 @@ if [[ $RMEM ]] && [ "$BACKEND" == "rdma" ]; then
     wrapper="$wrapper $env"
 fi
 
-if [[ $GDB ]]; then 
-    prefix="gdbserver --wrapper ${wrapper} -- :1234 "
+# run in gdb server if requested
+if [[ $GDB ]]; then
+    if [ -z "$wrapper" ]; then
+        prefix="gdbserver :1234 "
+    else
+        prefix="gdbserver --wrapper $wrapper -- :1234 "
+    fi
 else
     # prefix="perf record -F 999"
     prefix="${wrapper}"
@@ -376,8 +418,16 @@ echo "running test"
 if [[ $FASTSWAP ]]; then
     # Fastswap
     start_sar 1
+    start_memory_stat
+    start_vmstat
+    start_fsstat
     sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
-    sleep 5     # wait for main_pid
+    tries=0
+    while [ ! -f main_pid ] && [ $tries -lt 30 ]; do
+        sleep 1
+        tries=$((tries+1))
+        echo "waiting for main_pid for $tries seconds"
+    done
     pid=`cat main_pid`
     if [[ $pid ]]; then
         if [[ $FASTSWAP ]]; then
@@ -388,7 +438,16 @@ if [[ $FASTSWAP ]]; then
         fi
 
         # wait for finish
-        while ps -p $pid > /dev/null; do sleep 1; done
+        tries=0
+        while ps -p $pid > /dev/null; do
+            sleep 1
+            tries=$((tries+1))
+            if [[ $tries -gt 120 ]]; then
+                echo "ran too long"
+                sudo kill -9 $pid
+                break
+            fi
+        done
         echo "done"
     else
         echo "process failed to write pid; exiting"
