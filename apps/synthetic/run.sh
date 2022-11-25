@@ -9,22 +9,18 @@ usage="bash run.sh
 -n, --name \t optional exp name (becomes folder name)\n
 -d, --readme \t optional exp description\n
 -f, --force \t force recompile everything\n
--wk,--with-kona \t include kona backend
--kc,--kconfig \t kona build configuration (CONFIG_NO_DIRTY_TRACK/CONFIG_WP)\n
--ko,--kopts \t C flags passed to gcc when compiling kona\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
 -pf,--pgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
--kpc,--kona-page-checks \t use kona-provided page status checks instead of the VDSO calls\n
 -t, --threads \t number of shenango worker threads (defaults to --cores)\n
 -c, --cores \t number of CPU cores (defaults to 1)\n
 -zs, --zipfs \t S param of zipf workload\n
 -nk, --nkeys \t number of keys in the hash table\n
 -nb, --nblobs \t number of items in the blob array\n
--lm, --localmem \t local memory with kona (in bytes)\n
+-lm, --localmem \t local memory (in bytes)\n
 -lmp, --lmemper \t local memory percentage compared to max rss (only for logging)\n
 -w, --warmup \t run warmup for a few seconds before taking measurement\n
 -o, --out \t output file for any results\n
--s, --safemode \t build kona with safe mode on\n
+-s, --safemode \t build eden with safe mode on\n
 -c, --clean \t run only the cleanup part\n
 -d, --debug \t build debug\n
 -g, --gdb \t run with a gdb server (on port :1234) to attach to\n
@@ -38,28 +34,36 @@ SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 DATADIR="${SCRIPT_DIR}/data/"
 ROOT_DIR="${SCRIPT_DIR}/../../"
 BINFILE="${SCRIPT_DIR}/main.out"
-KONA_CFG="PBMEM_CONFIG=CONFIG_WP"
-KONA_OPTS="-DNO_ZEROPAGE_OPT"
-KONA_DIR="${ROOT_DIR}/backends/kona"
-KONA_BIN="${KONA_DIR}/pbmem"
-KONA_RCNTRL_SSH="sc07"
-KONA_RCNTRL_IP="192.168.0.7"
-KONA_RCNTRL_PORT="9202"
-KONA_MEMSERVER_SSH=$KONA_RCNTRL_SSH
-KONA_MEMSERVER_IP=$KONA_RCNTRL_IP
-KONA_MEMSERVER_PORT="9200"
-SHENANGO_DIR="${ROOT_DIR}/scheduler"
+RCNTRL_SSH="sc07"
+RCNTRL_IP="192.168.100.81"
+RCNTRL_PORT="9202"
+MEMSERVER_SSH=$RCNTRL_SSH
+MEMSERVER_IP=$RCNTRL_IP
+MEMSERVER_PORT="9200"
+SHENANGO_DIR="${ROOT_DIR}/eden"
 SNAPPY_DIR="${SCRIPT_DIR}/snappy-c"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
 TMP_FILE_PFX="tmp_syn_"
 CFGFILE="shenango.config"
+
+NO_HYPERTHREADING="-noht"
+# SHEN_CFLAGS="-DNO_ZERO_PAGE"
+EDEN=
+HINTS=
+BACKEND=local
+EVICT_THRESHOLD=100     # no handler eviction
+EVICT_BATCH_SIZE=1
+EXPECTED_PTI=off
+SCHEDULER=pthreads
+RMEM=none
+RDAHEAD=no
+EVICT_GENS=1
+
 NCORES=1
 ZIPFS="0.1"
 NKEYS=1000
 NBLOBS=1000
 LMEM=1000000000    # 1GB
-NO_HYPERTHREADING="-noht"
-PAGE_CHECKS=vdso
 
 # save settings
 CFGSTORE=
@@ -84,7 +88,6 @@ case $i in
     -d|--debug)
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
-    NKEYS=10
     ;;
 
     -fl=*|--cflags=*)
@@ -95,28 +98,36 @@ case $i in
     SHENANGO=1
     ;;
 
-    -wk|--with-kona)
-    WITH_KONA=1
-    ;;
-
-    -kc=*|--kconfig=*)
-    KONA_CFG="PBMEM_CONFIG=${i#*=}"
-    ;;
-
-    -ko=*|--kopts=*)
-    KONA_OPTS="$KONA_OPTS ${i#*=}"
-    ;;
-        
-    -pf=*|--pgfaults=*)
-    PAGE_FAULTS="${i#*=}"
+    -e|--eden)
+    EDEN=1
     SHENANGO=1
-    WITH_KONA=1
-    CFLAGS="$CFLAGS -DWITH_KONA -DANNOTATE_FAULTS"
+    ;;
+    
+    -h|--hints)
+    EDEN=1
+    HINTS=1
+    SHENANGO=1
     ;;
 
-    -kpc|--kona-page-checks)
-    WITH_KONA_PAGE_CHECKS=1
-    PAGE_CHECKS=kona
+    -be=*|--batchevict=*)
+    EVICT_BATCH_SIZE="${i#*=}"
+    SHEN_CFLAGS="$SHEN_CFLAGS -DVECTORED_MADVISE -DVECTORED_MPROTECT"
+    ;;
+
+    -ep=*|--evictpolicy=*)
+    EVICT_POLICY=${i#*=}
+    ;;
+
+    -eg=*|--evictgens=*)
+    EVICT_GENS=${i#*=}
+    ;;
+
+    -se|--sampleepochs)
+    SHEN_CFLAGS="$SHEN_CFLAGS -DEPOCH_SAMPLER"
+    ;;
+
+    -b=*|--bkend=*)
+    BACKEND=${i#*=}
     ;;
 
     -sc=*|--shencfg=*)
@@ -164,27 +175,22 @@ case $i in
     CFLAGS="$CFLAGS -DWARMUP"
     ;;
 
+    -rd|--rdahead)
+    RDAHEAD=yes
+    CFLAGS="$CFLAGS -DUSE_READAHEAD"
+    ;;
+
     -o=*|--out=*)
     OUTFILE=${i#*=}
     ;;
 
-    -s|--safemode)
-    kona_cflags="$kona_cflags -DSAFE_MODE"
+    -sf|--safemode)
+    SAFEMODE=1
     ;;
 
     -g|--gdb)
     GDB=1
-    DEBUG="DEBUG=1"
-    CFLAGS="$CFLAGS -DDEBUG -g -ggdb"
-    ;;
-
-    -np|--nopie)
-    KEEPBIN=1
-    NOPIE=1
-    CFLAGS="$CFLAGS -g"                 #for symbols
-    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE
-    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
-    KONA_OPTS="$KONA_OPTS -DSAMPLE_KERNEL_FAULTS"  #turn on logging in kona
+    CFLAGS="$CFLAGS -g -ggdb"
     ;;
 
     -bo|--buildonly)
@@ -210,14 +216,11 @@ done
 # RNIC NUMA node = 1
 NUMA_NODE=1
 BASECORE=14
-KONA_POLLER_CORE=53
-KONA_EVICTION_CORE=54
-KONA_FAULT_HANDLER_CORE=55
-KONA_ACCOUNTING_CORE=52
-SHENANGO_STATS_CORE=51
-SHENANGO_EXCLUDE=${KONA_POLLER_CORE},${KONA_EVICTION_CORE},\
-${KONA_FAULT_HANDLER_CORE},${KONA_ACCOUNTING_CORE},${SHENANGO_STATS_CORE}
 NIC_PCI_SLOT="0000:d8:00.1"
+RMEM_HANDLER_CORE=55
+FASTSWAP_RECLAIM_CPU=55
+SHENANGO_STATS_CORE=54
+SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
 NTHREADS=${NTHREADS:-$NCORES}
 
 # helpers
@@ -236,8 +239,9 @@ stop_sar() {
 }
 kill_remnants() {
     sudo pkill iokerneld || true
-    ssh ${KONA_RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl" 
-    ssh ${KONA_MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"
+    ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"            # eden memcontrol
+    ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"   # eden memserver
+    ssh ${MEMSERVER_SSH} "pkill rmserver; rm -f ~/scratch/rmserver"     # fastswap server
 }
 cleanup() {
     if [ -z "$KEEPBIN" ]; then
@@ -252,39 +256,52 @@ if [[ $CLEANUP ]]; then
     exit 0
 fi
 
-echo ${SCRIPT_DIR}
+# check pti state
+# PTI status
+PTI=on
+pti_msg=$(sudo dmesg | grep 'page tables isolation: enabled' || true)
+if [ -z "$pti_msg" ]; then  PTI=off; fi
+if [ "$EXPECTED_PTI" != "$PTI" ]; then
+    echo "Warning! Page table isolation feature is not in expected state"
+    echo "Expected: ${EXPECTED_PTI}, Found: ${PTI}"
+fi
 
-# build kona
-if [[ $FORCE ]] && [[ $WITH_KONA ]]; then 
-    pushd ${KONA_BIN}
-    make clean
-    OPTS=
-    OPTS="$OPTS POLLER_CORE=$KONA_POLLER_CORE"
-    OPTS="$OPTS FAULT_HANDLER_CORE=$KONA_FAULT_HANDLER_CORE"
-    OPTS="$OPTS EVICTION_CORE=$KONA_EVICTION_CORE"
-    OPTS="$OPTS ACCOUNTING_CORE=${KONA_ACCOUNTING_CORE}"
-    KONA_OPTS="$KONA_OPTS -DSERVE_APP_FAULTS"
-    make all -j $KONA_CFG $OPTS PROVIDED_CFLAGS="""$KONA_OPTS""" ${DEBUG}
-    sudo sysctl -w vm.unprivileged_userfaultfd=1   
-    echo 0 | sudo tee /proc/sys/kernel/numa_balancing   # to avoid numa hint faults 
-    popd
+# eden flags
+if [[ $EDEN ]]; then
+    RMEM="eden-nh"
+    CFLAGS="$CFLAGS -DEDEN -DREMOTE_MEMORY"
+
+    # hints
+    if [[ $HINTS ]]; then
+        RMEM="eden"
+        CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
+    fi
+
+    # eviction policy
+    if [[ $EVICT_POLICY ]]; then
+        if [[ $EVICT_POLICY != "SC" ]] && [[ $EVICT_POLICY != "LRU" ]]; then
+            echo "ERROR! invalid evict policy. Allowed values: SC, LRU"
+            exit 1
+        fi
+        # we need to set c-flags for both app and shenango cflags 
+        # because eviction-specific hints are defined in a header file 
+        CFLAGS="$CFLAGS -D${EVICT_POLICY}_EVICTION"
+        SHEN_CFLAGS="$SHEN_CFLAGS -D${EVICT_POLICY}_EVICTION"
+    fi
 fi
 
 # rebuild shenango
 if [[ $FORCE ]] && [[ $SHENANGO ]]; then
-    pushd ${SHENANGO_DIR}
-    make clean
-    OPTS=
-    if [[ $DPDK ]]; then    ./dpdk.sh;  fi
-    if [[ $WITH_KONA ]]; then               OPTS="$OPTS WITH_KONA=1";               fi
-    if [[ $WITH_KONA_PAGE_CHECKS ]]; then   OPTS="$OPTS WITH_KONA_PAGE_CHECKS=1";   fi
-    if [[ $PAGE_FAULTS ]]; then             OPTS="$OPTS PAGE_FAULTS=$PAGE_FAULTS";  fi
-    OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"    # for runtime stats
-    echo make all-but-tests -j ${DEBUG} ${OPTS} NUMA_NODE=${NUMA_NODE} \
-        EXCLUDE_CORES=${SHENANGO_EXCLUDE}
-    make all-but-tests -j ${DEBUG} ${OPTS} NUMA_NODE=${NUMA_NODE} \
-        EXCLUDE_CORES=${SHENANGO_EXCLUDE}
-    popd 
+    pushd ${SHENANGO_DIR} 
+    if [[ $FORCE ]];        then    make clean;                         fi
+    if [[ $EDEN ]];         then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
+    if [[ $HINTS ]];        then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
+    if [[ $SAFEMODE ]];     then    OPTS="$OPTS SAFEMODE=1";            fi
+    if [[ $GDB ]];          then    OPTS="$OPTS GDB=1";                 fi
+    if ! [[ $NO_STATS ]];   then    OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
+    OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
+    make all -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
+    popd
 fi
 
 # rebuild snappy
@@ -292,16 +309,7 @@ if [[ $FORCE ]]; then
     pushd ${SNAPPY_DIR} 
     make clean
     make PROVIDED_CFLAGS="""$CFLAGS"""
-    popd 
-fi
-
-# link kona
-if [[ $WITH_KONA ]]; then 
-    BACKEND="kona"
-	CFLAGS="${CFLAGS} -DWITH_KONA"
-    INC="${INC} -I${KONA_DIR}/liburing/src/include -I${KONA_BIN}"
-    LIBS="${LIBS} -L${KONA_BIN}"
-    LDFLAGS="${LDFLAGS} -lkona -lrdmacm -libverbs -lpthread -lstdc++ -lm -ldl -luring"
+    popd
 fi
 
 # link shenango
@@ -309,7 +317,7 @@ if [[ $SHENANGO ]]; then
 	SCHEDULER="shenango"
 	CFLAGS="${CFLAGS} -DSHENANGO"
     INC="${INC} -I${SHENANGO_DIR}/inc"
-    LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a"
+    LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
     LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
 fi
 
@@ -319,6 +327,7 @@ LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
 
 # compile
 LIBS="${LIBS} -lpthread -lm"
+CFLAGS="$CFLAGS -O0 -g -ggdb"
 gcc main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
     ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
@@ -332,22 +341,29 @@ mkdir -p $expdir
 
 pushd $expdir
 echo "running ${EXPNAME}"
-save_cfg "cores"    $NCORES
-save_cfg "threads"  $NTHREADS
-save_cfg "keys"     $NKEYS
-save_cfg "blobs"    $NBLOBS
-save_cfg "zipfs"    $ZIPFS
-save_cfg "warmup"   $WARMUP
-save_cfg "scheduler" $SCHEDULER
-save_cfg "backend"  $BACKEND
-save_cfg "localmem" $LMEM
-save_cfg "lmemper"  $LMEMPER
-save_cfg "pgfaults" $PAGE_FAULTS
-save_cfg "pgchecks" $PAGE_CHECKS
-save_cfg "desc"     $README
+save_cfg "cores"        $NCORES
+save_cfg "threads"      $NTHREADS
+save_cfg "keys"         $NKEYS
+save_cfg "blobs"        $NBLOBS
+save_cfg "zipfs"        $ZIPFS
+save_cfg "warmup"       $WARMUP
+save_cfg "scheduler"    $SCHEDULER
+save_cfg "rmem"         $RMEM
+save_cfg "backend"      $BACKEND
+save_cfg "localmem"     $LMEM
+save_cfg "lmemper"      $LMEMPER
+save_cfg "rdahead"      $RDAHEAD
+save_cfg "evictbatch"   $EVICT_BATCH_SIZE
+save_cfg "evictpolicy"  $EVICT_POLICY
+save_cfg "evictgens"    $EVICT_GENS
+save_cfg "desc"         $README
 echo -e "$CFGSTORE" > settings
 
 # write shenango config
+__RMEM_OPT=0
+__HINTS_OPT=0
+if [[ $EDEN ]]; then    __RMEM_OPT=1;   fi
+if [[ $HINTS ]]; then   __HINTS_OPT=1;  fi
 shenango_cfg="""
 host_addr 192.168.0.100
 host_netmask 255.255.255.0
@@ -356,7 +372,14 @@ runtime_kthreads ${NCORES}
 runtime_guaranteed_kthreads ${NCORES}
 runtime_spinning_kthreads ${NCORES}
 host_mac 02:ba:dd:ca:ad:08
-disable_watchdog true"""
+disable_watchdog 0
+remote_memory ${__RMEM_OPT}
+rmem_hints ${__HINTS_OPT}
+rmem_backend ${BACKEND}
+rmem_local_memory ${LMEM}
+rmem_evict_threshold ${EVICT_THRESHOLD}
+rmem_evict_batch_size ${EVICT_BATCH_SIZE}
+rmem_evict_ngens ${EVICT_GENS}"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
@@ -365,18 +388,17 @@ for retry in 1; do
     # prepare for run
     kill_remnants
 
-    # prepare kona memory server
-    if [[ $WITH_KONA ]]; then 
-        echo "starting kona servers"
-        # starting kona controller
-        scp ${KONA_BIN}/rcntrl ${KONA_RCNTRL_SSH}:~/scratch
-        ssh ${KONA_RCNTRL_SSH} "~/scratch/rcntrl -s $KONA_RCNTRL_IP -p $KONA_RCNTRL_PORT" &
+    # prepare remote memory servers for the run
+    if [[ $EDEN ]] && [ "$BACKEND" == "rdma" ]; then
+        echo "starting rmem servers"
+        # starting controller
+        scp ${SHENANGO_DIR}/rcntrl ${RCNTRL_SSH}:~/scratch
+        ssh ${RCNTRL_SSH} "nohup ~/scratch/rcntrl -s $RCNTRL_IP -p $RCNTRL_PORT" < /dev/null &
         sleep 2
         # starting mem server
-        scp ${KONA_BIN}/memserver ${KONA_MEMSERVER_SSH}:~/scratch
-        ssh ${KONA_MEMSERVER_SSH} "~/scratch/memserver -s $KONA_MEMSERVER_IP -p $KONA_MEMSERVER_PORT \
-            -c $KONA_RCNTRL_IP -r $KONA_RCNTRL_PORT" &
-        sleep 30
+        scp ${SHENANGO_DIR}/memserver ${MEMSERVER_SSH}:~/scratch
+        ssh ${MEMSERVER_SSH} "nohup ~/scratch/memserver -s $MEMSERVER_IP -p $MEMSERVER_PORT -c $RCNTRL_IP -r $RCNTRL_PORT" < /dev/null &
+        sleep 40
     fi
 
     # setup shenango runtime
@@ -392,11 +414,11 @@ for retry in 1; do
         start_iokernel
     fi
 
-    # run
+    # env
     pushd $expdir
-    if [[ $WITH_KONA ]]; then
-        env="RDMA_RACK_CNTRL_IP=$KONA_RCNTRL_IP"
-        env="$env RDMA_RACK_CNTRL_PORT=$KONA_RCNTRL_PORT"
+    if [[ $EDEN ]] && [ "$BACKEND" == "rdma" ]; then
+        env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP"
+        env="$env RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
         env="$env EVICTION_THRESHOLD=0.99"
         env="$env EVICTION_DONE_THRESHOLD=0.99"
         env="$env MEMORY_LIMIT=$LMEM"
@@ -420,21 +442,61 @@ for retry in 1; do
         start_sar 1 "." ${CPUSTR}
     fi 
 
-    if [[ $GDB ]]; then 
-        wrapper="gdbserver :1234 --wrapper $wrapper --";
+    # run in gdb server if requested
+    if [[ $GDB ]]; then
+        if [ -z "$wrapper" ]; then
+            wrapper="gdbserver :1234 "
+        else
+            wrapper="gdbserver --wrapper $wrapper -- :1234 "
+        fi
     fi
-    args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
-    echo sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 
-    sudo ${wrapper} ${gdbcmd} ${BINFILE} ${args} 2>&1 | tee app.out
-    popd
 
-    # if we're here, the run has mostly succeeded
-    # only retry if we have silenty failed because of kona server
-    res=$(grep "Unknown event: is server running?" ${expdir}/app.out || true)
-    if [ -z "$res" ]; then 
-        echo "no error; moving on"
-        mv ${expdir} $DATADIR/
-        break
+    # run
+    args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
+    echo sudo ${wrapper} ${BINFILE} ${args} 
+    nohup sudo ${wrapper} ${BINFILE} ${args} 2>&1 | tee app.out &
+
+    # wait for run to finish
+    tries=0
+    while [ ! -f main_pid ] && [ $tries -lt 30 ]; do
+        sleep 1
+        tries=$((tries+1))
+        echo "waiting for main_pid for $tries seconds"
+    done
+    pid=`cat main_pid`
+    if [[ $pid ]]; then
+        if [[ $FASTSWAP ]]; then
+            #enforce localmem
+            CGROUP_PROCS=/cgroup2/benchmarks/$APPNAME/cgroup.procs
+            sudo bash -c "echo $pid > $CGROUP_PROCS"
+            echo "added proc $(cat $CGROUP_PROCS) to cgroup"
+        fi
+
+        # wait for finish
+        tries=0
+        while ps -p $pid > /dev/null; do
+            sleep 1
+            tries=$((tries+1))
+            if [[ $tries -gt 500 ]]; then
+                echo "ran too long"
+                sudo kill -9 $pid
+                break
+            fi
+        done
+        popd
+
+        # if we're here, the run has mostly succeeded
+        # only retry if we have silenty failed because of rmem server
+        res=$(grep "Unknown event: is server running?" ${expdir}/app.out || true)
+        if [ -z "$res" ]; then 
+            echo "no error; moving on"
+            mv ${expdir} $DATADIR/
+            echo "final results at $DATADIR/${expdir}"
+            break
+        fi
+    else
+        echo "process failed to write pid; try again or exit"
+        popd
     fi
 done
 

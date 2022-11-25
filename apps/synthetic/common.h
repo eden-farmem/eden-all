@@ -24,11 +24,6 @@
 #include "asm/atomic.h"
 #endif
 
-/* for kona */
-#ifdef WITH_KONA
-#include "klib.h"
-#endif
-
 /* thread/sync primitives from various platforms */
 /* thread/sync primitives from various platforms */
 #ifdef SHENANGO
@@ -72,7 +67,7 @@
 #define MUTEX_UNLOCK(m)                 pthread_mutex_unlock(m)
 #define MUTEX_DESTROY(m)                pthread_mutex_destroy(m)
 #define SPINLOCK_T                      pthread_spinlock_t
-#define SPIN_LOCK_INIT(s)                pthread_spin_init(s, 0)
+#define SPIN_LOCK_INIT(s)               pthread_spin_init(s, 0)
 #define SPIN_LOCK(s)                    pthread_spin_lock(s)
 #define SPIN_UNLOCK(s)                  pthread_spin_unlock(s)
 #define SPIN_LOCK_DESTROY(s)            pthread_spin_destroy(s)
@@ -80,21 +75,27 @@
 #endif
 
 /* remote memory primitives */
-#ifdef WITH_KONA
+#if defined(EDEN)
+#include "rmem/api.h"
+#include "rmem/common.h"
 #define RMALLOC		rmalloc
-#define RFREE		  rfree
+#define RFREE		  rmfree
 #else
 #define RMALLOC		malloc
 #define RFREE		  free
 #endif
 
 /* fault annotations */
-#if defined(SHENANGO) && defined(ANNOTATE_FAULTS)
-#define HINT_READ_FAULT_AT      possible_read_fault_on
-#define HINT_WRITE_FAULT_AT     possible_write_fault_on
+#if defined(EDEN)
+#define HINT_READ_FAULT             hint_read_fault
+#define HINT_WRITE_FAULT            hint_write_fault
+#define HINT_READ_FAULT_RDAHEAD     hint_read_fault_rdahead
+#define HINT_WRITE_FAULT_RDAHEAD    hint_write_fault_rdahead
 #else
-#define HINT_READ_FAULT_AT(a)	  {}
-#define HINT_WRITE_FAULT_AT(a)	{}
+#define HINT_READ_FAULT             {}
+#define HINT_WRITE_FAULT            {}
+#define HINT_READ_FAULT_RDAHEAD     {}
+#define HINT_WRITE_FAULT_RDAHEAD    {}
 #endif
 
 /* page size parameters */

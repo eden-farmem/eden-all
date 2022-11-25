@@ -88,12 +88,12 @@ static inline double poisson_event(double rate, unsigned long rnd)
 
 /* a fast xorshift pseudo-random generator
  * from https://prng.di.unimi.it/xoshiro256plusplus.c */
-struct rand_state {
+struct syn_rand_state {
   uint64_t s[4];
 };
 
 /* from wikipedia: https://en.wikipedia.org/wiki/Xorshift */ 
-int rand_seed(struct rand_state* result, uint64_t seed);
-uint64_t rand_next(struct rand_state* state);
+int syn_rand_seed(struct syn_rand_state* result, uint64_t seed);
+uint64_t syn_rand_next(struct syn_rand_state* state);
 
 #endif  // __UTILS_H__

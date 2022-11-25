@@ -86,80 +86,64 @@ if [ "$PLOTID" == "1" ]; then
     files=
 
     ## data
-    # pattern="05-\(09-23\|10-0[01234]\|10-05-[012]\)";  bkend=kona; pgf=none;   zipfs=0.1;  tperc=1;
-    # pattern="05-\(09-23\|10-0[01234]\|10-05-[012]\)";  bkend=kona; pgf=SYNC;   zipfs=0.1;  tperc=1;
-    # pattern="05-\(09-23\|10-0[01234]\|10-05-[012]\)";  bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=1;
-    # pattern="05-10-\(09\|10\)";    bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=10;
-    # pattern="05-10-\(09\|1\)";     bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=60;
-    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=60;
-    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=110;
-    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=160;
-    # pattern="05-11";               bkend=kona; pgf=ASYNC;  zipfs=0.1;  tperc=210;
-    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=none;   zipfs=0.5;  tperc=100;
-    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=ASYNC;  zipfs=0.5;  tperc=100;
-    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=none;   zipfs=1;    tperc=100;
-    # pattern="05-\(11-23\|12\)";    bkend=kona; pgf=ASYNC;  zipfs=1;    tperc=100;
+    # pattern="11-\(\09-\|10-\)"; backend=local; cores=1; zipfs=1; tperc=1; desc="eden-first"
+    pattern="11-1[34]"; backend=local; cores=1; zipfs=1; tperc=1; desc="nowaitsteals"
 
-    cfg=be${bkend}_pgf${pgf}_zs${zipfs}_tperc${tperc}
-    for cores in 1 2 3 4 5; do
-        label=$cores
-        datafile=$plotdir/data_${cores}cores_${cfg}
-        thr=$((cores*tperc))
-        if [[ $desc ]]; then descopt="-d=$desc"; fi
-        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
-            bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -pf=$pgf     \
-                -c=$cores -of=$datafile -t=${thr} -zs=${zipfs} ${descopt}
-        fi
-        plots="$plots -d $datafile -l $label"
-        cat $datafile
+    for cores in 1 2 3 4; do 
+        files=
+        for tperc in 1 5; do 
+            plots=
+            cfg=be${bkend}_cores${cores}_zs${zipfs}_tperc${tperc}
+            for rmem in "eden-nh" "eden"; do
+                for bkend in "local" "rdma"; do
+                    label=$rmem
+                    LS=dashed
+                    CMI=0
+                    if [ "$bkend" == "rdma" ]; then
+                        label=$label"(rdma)"
+                        LS=solid
+                        CMI=1
+                    fi
+                    datafile=$plotdir/data_${rmem}_${bkend}_${cfg}
+                    thr=$((cores*tperc))
+                    if [[ $desc ]]; then descopt="-d=$desc"; fi
+                    if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+                        bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -r=$rmem \
+                            -c=$cores -of=$datafile -t=${thr} -zs=${zipfs} -be=${bkend} ${descopt}
+                    fi
+                    plots="$plots -d $datafile -l $label -ls $LS -cmi $CMI"
+                    cat $datafile
+                done
+            done
+
+            #plot xput
+            YLIMS="--ymin 0 --ymax $((50+150*cores))"
+            plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
+            if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+                python3 ${ROOTDIR}/scripts/plot.py ${plots}         \
+                    -yc Xput -yl "Xput KOPS" --ymul 1e-3 ${YLIMS}   \
+                    -xc "LMem%" -xl "Local Mem (%)"                 \
+                    --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+            fi
+            files="$files $plotname"
+
+            #plot faults
+            YLIMS="--ymin 0 --ymax $((100*cores))"
+            plotname=${plotdir}/rfaults_${cfg}.${PLOTEXT}
+            if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+                python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+                    -yc "Faults" -yl "Faults KOPS" --ymul 1e-3 ${YLIMS}         \
+                    -xc "LMem%" -xl "Local Mem (%)"                             \
+                    --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+            fi
+            files="$files $plotname"
+        done
+
+        # # Combine
+        plotname=${plotdir}/all_${cfg}.$PLOTEXT
+        montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
+        display ${plotname} &
     done
-
-    #plot xput
-    YLIMS="--ymin 0 --ymax 1000"
-    plotname=${plotdir}/xput_${cfg}.${PLOTEXT}
-    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${plots}   \
-            -yc Xput -yl "Xput KOPS" --ymul 1e-3 ${YLIMS}   \
-            -xc Local_MB -xl "Local Memo MB)"               \
-            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
-    fi
-    files="$files $plotname"
-
-    #plot faults
-    YLIMS="--ymin 0 --ymax 150"
-    plotname=${plotdir}/rfaults_${cfg}.${PLOTEXT}
-    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${plots}               \
-            -yc "ReadPF" -yl "Read Faults KOPS" --ymul 1e-3 ${YLIMS}    \
-            -xc Local_MB -xl "Local Mem (MB)"                           \
-            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
-    fi
-    files="$files $plotname"
-
-    #plot faults
-    plotname=${plotdir}/rafaults_${cfg}.${PLOTEXT}
-    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${plots}               \
-            -yc "ReadAPF" -yl "Read App Faults" --ymul 1e-3 ${YLIMS}     \
-            -xc Local_MB -xl "Local Mem (MB)"                           \
-            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
-    fi
-    files="$files $plotname"
-
-    # #plot faults
-    # plotname=${plotdir}/wpfaults_${cfg}.${PLOTEXT}
-    # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-    #     python3 ${ROOTDIR}/scripts/plot.py ${plots}               \
-    #         -yc "WPFaults" -yl "WP Faults KOPS" --ymul 1e-3 ${YLIMS}    \
-    #         -xc Local_MB -xl "Local Mem (MB)"                           \
-    #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname -lt "CPU"
-    # fi
-    # files="$files $plotname"
-
-    # # Combine
-    plotname=${plotdir}/all_${cfg}.$PLOTEXT
-    montage -tile 3x0 -geometry +5+5 -border 5 $files ${plotname}
-    display ${plotname} &
 fi
 
 

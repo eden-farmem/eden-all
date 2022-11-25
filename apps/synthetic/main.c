@@ -28,7 +28,7 @@
 #define WARMUP_SECS 		30	
 #define MIN_RUNTIME_SECS 	5	
 #define MAX_RUNTIME_SECS 	30
-#ifdef DEBUG
+#ifdef DEBUG2
 #undef MAX_OPS_PER_CORE
 #define MAX_OPS_PER_CORE	10	
 #endif
@@ -55,7 +55,7 @@ struct main_args {
 	double zparams;
 };
 
-uint64_t cycles_per_us;
+uint64_t CYCLES_PER_US;
 WAITGROUP_T workers_wg;
 BARRIER_T ready, warmup, warmedup, start;
 int stop_button = 0;
@@ -76,12 +76,17 @@ BYTE aes_key[32] = {
 	0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
 };
 
-/* save unix timestamp of a checkpoint */
-void save_checkpoint(char* name) {
+/* save a number to a file */
+void fwrite_number(char* name, unsigned long number) {
 	FILE* fp = fopen(name, "w");
-	fprintf(fp, "%lu", time(NULL));
+	fprintf(fp, "%lu", number);
 	fflush(fp);
 	fclose(fp);
+}
+
+/* save unix timestamp of a checkpoint */
+void save_checkpoint(char* name) {
+	fwrite_number(name, time(NULL));
 }
 
 /* prepare hash table */
@@ -94,8 +99,8 @@ setup_table(void* arg) {
 	int ret, i;
 	unsigned long key, val;
 	thread_args_t* targs = (thread_args_t*)arg;
-	struct rand_state rand;
-	ASSERTZ(rand_seed(&rand, time(NULL) ^ targs->tid));
+	struct syn_rand_state rand;
+	ASSERTZ(syn_rand_seed(&rand, time(NULL) ^ targs->tid));
 
 	/* TODO: should I make the keys more complicated? */
     uint8_t key_template[KEY_LEN] = {
@@ -108,7 +113,7 @@ setup_table(void* arg) {
 	for (i = 0; i < targs->len; i++)	{
 		key = targs->start + i;
 		*(uint32_t*)key_template = key;
-		val = rand_next(&rand) % targs->nblobs;
+		val = syn_rand_next(&rand) % targs->nblobs;
 		// val = key % targs->nblobs;		/* for easy verification */
 		pr_debug("worker %d adding key %lu value %lu", targs->tid, key, val);
 		ret = hopscotch_insert(ht, key_template, (void*) val);
@@ -129,8 +134,8 @@ setup_blobs(void* arg) {
 	unsigned long key, offset;
 	uint64_t rand_num, repeat = 0;
 	thread_args_t* targs = (thread_args_t*)arg;
-	struct rand_state rand;
-	ASSERTZ(rand_seed(&rand, time(NULL) ^ targs->tid));
+	struct syn_rand_state rand;
+	ASSERTZ(syn_rand_seed(&rand, time(NULL) ^ targs->tid));
 
 	ASSERT(targs->start + targs->len <= targs->nblobs);
 	for (i = 0; i < targs->len; i++)	{
@@ -139,8 +144,8 @@ setup_blobs(void* arg) {
 		for (j = 0; j < BLOB_SIZE / sizeof(uint64_t); j++) {
 			if (repeat == 0){
 				/* random patterns for varying compression */
-				repeat = rand_next(&rand) % 100;
-				rand_num = rand_next(&rand);
+				repeat = syn_rand_next(&rand) % 100;
+				rand_num = syn_rand_next(&rand);
 			}
 			offset = (targs->start + i) * BLOB_SIZE + j*sizeof(uint64_t);
 			*(uint64_t*)(blobdata + offset) = rand_num;
@@ -158,7 +163,7 @@ setup_blobs(void* arg) {
 static inline void thread_yield_after(int time_us, unsigned long* state) {
 #ifdef SHENANGO
 	unsigned long duration_tsc = rdtsc() - *state;
-	if (duration_tsc / cycles_per_us >= time_us) {
+	if (duration_tsc / CYCLES_PER_US >= time_us) {
 		thread_yield();
 		*state = rdtsc();
 	}
@@ -183,7 +188,7 @@ prepare_workload(void* arg) {
 		ret = zipfian_gen(z);
 		ASSERT(0 <= ret && ret < targs->nkeys);
 		*(zipf_sequence + targs->start + i) = ret;
-#ifdef DEBUG
+#ifdef DEBUG2
 		zipf_counts[ret]++;
 #endif
 	}
@@ -216,8 +221,12 @@ static inline void process_request(int key, int nblobs,
 	nextin = blobdata + value * BLOB_SIZE;
 
 	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
-	HINT_READ_FAULT_AT(nextin);
-	HINT_READ_FAULT_AT(nextin + PAGE_SIZE);
+#ifdef USE_READAHEAD
+	HINT_READ_FAULT_RDAHEAD(nextin, 1);
+#else
+	HINT_READ_FAULT(nextin);
+	HINT_READ_FAULT(nextin + PAGE_SIZE);
+#endif
 
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */
@@ -253,8 +262,8 @@ run(void* arg) {
 		0x00, 0x00, 0x00, 0x00,
 		0xff, 0xff, 0xff, 0xff,
 		0xff, 0xff, 0xff, 0xff };
-	struct rand_state rand;
-	ASSERTZ(rand_seed(&rand, time(NULL) ^ targs->tid));
+	struct syn_rand_state rand;
+	ASSERTZ(syn_rand_seed(&rand, time(NULL) ^ targs->tid));
 
 	/* crypto init */
 	char* encbuffer = malloc(BLOB_SIZE);
@@ -281,7 +290,7 @@ run(void* arg) {
 	BARRIER_WAIT(&warmup);
 	while(!stop_button) {
 		/* pick a random key */
-		key = rand_next(&rand) % targs->nkeys;
+		key = syn_rand_next(&rand) % targs->nkeys;
 		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
 		thread_yield_after(1000 /* µs */, &ystate);
 	}
@@ -300,7 +309,7 @@ run(void* arg) {
 		thread_yield_after(1000 /* µs */, &ystate);
 	}
 
-	pr_debug("worker %d done at %ld ops", targs->tid, targs->xput);
+	pr_info("worker %d done at %ld ops", targs->tid, targs->xput);
 	WAITGROUP_ADD(workers_wg, -1);	/* signal done */
 }
 
@@ -335,6 +344,12 @@ void main_thread(void* arg) {
 	double duration_secs;
 	THREAD_T* workers;
 	THREAD_T timer1, timer2;
+
+	/* write pid and wait some time for the saved pid to be added to 
+     * the cgroup to enforce fastswap limits */
+	pr_info("writing out pid %d", getpid());
+	fwrite_number("main_pid", getpid());
+    sleep(1);
 
 	/* core data stuctures: these go in remote memory */
     ht = hopscotch_init(NULL, next_power_of_two(nkeys) + 1);
@@ -377,7 +392,7 @@ void main_thread(void* arg) {
 	WAITGROUP_WAIT(workers_wg);
 	pr_info("blob data setup done");
 
-#ifdef DEBUG
+#ifdef DEBUG2
 	/* print table */
 	void* data;
 	printf("Table: ");
@@ -395,7 +410,7 @@ void main_thread(void* arg) {
 	/* prepare zipf request sequence  */	
 	zparams = margs->zparams;
 	zipf_sequence = (uint64_t*) malloc (nreqs * sizeof(uint64_t));
-#ifdef DEBUG
+#ifdef DEBUG2
 	zipf_counts = (uint32_t*)calloc(nkeys, sizeof(uint32_t));
 #endif
 	WAITGROUP_INIT(workers_wg);
@@ -413,7 +428,7 @@ void main_thread(void* arg) {
 	}
 	WAITGROUP_WAIT(workers_wg);
 	pr_info("generated zipf sequence of length: %lu", nreqs);
-#ifdef DEBUG
+#ifdef DEBUG2
 	// printf("zipf seq: ");
 	// for (j = 0; j < nreqs; j++)	printf("%lu ", zipf_sequence[j]);
 	printf("\ncounts: ");
@@ -459,6 +474,9 @@ void main_thread(void* arg) {
 
 	/* start the run (with timeout) */
 	pr_info("starting the run");
+#ifdef USE_READAHEAD
+	pr_info("with readahead hints");
+#endif
 	save_checkpoint("run_start");
 	start_tsc = rdtsc();
 	stop_button = 0;
@@ -470,10 +488,16 @@ void main_thread(void* arg) {
 	duration_tsc = rdtscp(NULL) - start_tsc;
 	save_checkpoint("run_end");
 
+#ifdef EDEN
+	/* print memory used */
+	pr_info("memory used at finish: %lu", atomic64_read(&memory_used));
+#endif
+
 	/* write result */
-	duration_secs = duration_tsc * 1.0 / (MILLION * cycles_per_us);
+	duration_secs = duration_tsc * 1.0 / (MILLION * CYCLES_PER_US);
 	for (j = 0; j < nworkers; j++) xput += targs[j].xput;
-	pr_info("ran for %.1lf secs with %.0lf ops /sec", duration_secs, xput/duration_secs);
+	pr_info("ran for %.1lf secs with %.0lf ops /sec",
+		duration_secs, xput/duration_secs);
 	printf("result:%.0lf\n", xput / duration_secs);
 
 	/* we must run for at least a few secs
@@ -488,11 +512,12 @@ int main(int argc, char *argv[]) {
 	int ret;
 
 	if (argc < 4) {
-		pr_err("USAGE: %s <config-file> <ncores> <nworkers> [<nkeys>] [<nblobs>] [<zipfparamS>]\n", argv[0]);
+		pr_err("USAGE: %s <config-file> <ncores> <nworkers> [<nkeys>] "
+			"[<nblobs>] [<zipfparamS>]\n", argv[0]);
 		return -EINVAL;
 	}
-	cycles_per_us = time_calibrate_tsc();
-	printf("time calibration - cycles per µs: %lu\n", cycles_per_us);
+	CYCLES_PER_US = time_calibrate_tsc();
+	printf("time calibration - cycles per µs: %lu\n", CYCLES_PER_US);
 
 	struct main_args margs;
 	margs.ncores = atoi(argv[2]);
@@ -508,10 +533,6 @@ int main(int argc, char *argv[]) {
 	ret = runtime_init(argv[1], main_thread, &margs);
 	ASSERTZ(ret);
 #else
-#ifdef WITH_KONA
-	/* initialize kona. in case of shenango, it is taken care of. */
-	rinit();
-#endif
 	pr_info("running with pthreads");
 	main_thread(&margs);
 #endif

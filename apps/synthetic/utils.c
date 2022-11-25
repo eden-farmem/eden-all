@@ -78,7 +78,7 @@ uint64_t splitmix64(uint64_t* state) {
 }
 
 /* from wikipedia: https://en.wikipedia.org/wiki/Xorshift */ 
-int rand_seed(struct rand_state* result, uint64_t seed) {
+int syn_rand_seed(struct syn_rand_state* result, uint64_t seed) {
 	uint64_t smx_state = seed;
 	uint64_t tmp = splitmix64(&smx_state);
 	result->s[0] = (uint32_t)tmp;
@@ -93,7 +93,7 @@ int rand_seed(struct rand_state* result, uint64_t seed) {
 	return 0;
 }
 
-uint64_t rand_next(struct rand_state* state) {
+uint64_t syn_rand_next(struct syn_rand_state* state) {
   uint64_t* s = state->s;
 	const uint64_t result = rotl(s[0] + s[3], 23) + s[0];
 	const uint64_t t = s[1] << 17;

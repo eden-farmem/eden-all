@@ -76,11 +76,19 @@ configure_for_fault_kind() {
     case $kind in
     "pthr")             ;;
     "uthr")             OPTS="$OPTS --shenango";;
-    "kona-pthr")        OPTS="$OPTS --with-kona";;
-    "kona-uthr")        OPTS="$OPTS --shenango --with-kona";;
-    "sync")             OPTS="$OPTS --shenango --with-kona --pgfaults=SYNC";;
-    "async")            OPTS="$OPTS --shenango --with-kona --pgfaults=ASYNC";;
+    "eden-nh")          OPTS="$OPTS --eden";;
+    "eden")             OPTS="$OPTS --eden --hints";;
     *)                  echo "Unknown fault kind"; exit;;
+    esac
+}
+
+configure_for_backend() {
+    local bkend=$1
+    case $bkend in
+    "")                 OPTS="$OPTS --shenango";;
+    "local")            OPTS="$OPTS --bkend=local";;
+    "rdma")             OPTS="$OPTS --bkend=rdma";;
+    *)                  echo "Unknown backend"; exit;;
     esac
 }
 
@@ -98,59 +106,72 @@ configure_for_request_op() {
     esac
 }
 
-configure_for_pgchecks_type() {
-    local pgchecks=$1
-    case $pgchecks in
-    "vdso")             ;;
-    "kona")             OPTS="$OPTS --kona-page-checks";;
-    *)                  echo "Unknown page check type"; exit;;
-    esac
-}
-
 configure_max_local_mem() {
     local kind=$1
     case $kind in
-    "pthr")             MAXRSS=;;
-    "uthr")             MAXRSS=;;
-    "kona-pthr")        MAXRSS=6200;;
-    "kona-uthr")        MAXRSS=5700;;
-    "sync")             MAXRSS=5700;;
-    "async")            MAXRSS=5700;;
+    "pthr")             MAXRSS=6200;;
+    "uthr")             MAXRSS=5700;;
+    "eden-nh")          MAXRSS=5700;;
+    "eden")             MAXRSS=5700;;
     *)                  echo "Unknown fault kind"; exit;;
     esac
 }
 
+configure_for_evict_policy() {
+    local evp=$1
+    case $evp in
+    "")                 ;;
+    "NONE")             ;;
+    "LRU")              OPTS="$OPTS --evictpolicy=LRU";;
+    "SC")               OPTS="$OPTS --evictpolicy=SC";;
+    *)                  echo "Unknown evict policy"; exit;;
+    esac
+}
+
 rebuild_with_current_config() {
-    bash run.sh ${OPTS} -fl="""$CFLAGS""" -ko=${KCFLAGS} ${WFLAG}   \
-        --force --buildonly ${NOPIE}
+    bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG} --force --buildonly ${NOPIE}
 }
 
 run_vary_lmem() {
     local kind=$1
-    local op=$2
-    local cores=$3
-    local threads=$4
-    local zparams=$5
-    local pgchecks=$6
+    local bkend=$2
+    local op=$3
+    local cores=$4
+    local threads=$5
+    local zparams=$6
+    local rdahead=$7
+    local evictbs=$8
+    local evp=$9
+    local evgens=${10}
 
     # build 
     CFLAGS=
     OPTS=
     configure_for_fault_kind "$kind"
     configure_for_request_op "$op"
-    configure_for_pgchecks_type "$pgchecks"
+    configure_for_backend "$bkend"
+    configure_for_evict_policy "$evp"
+    if [ "$rdahead" == "1" ];   then  OPTS="$OPTS --rdahead"; fi
+    if [[ $evictbs ]];          then  OPTS="$OPTS --batchevict=${evictbs}"; fi
+    if [[ $evgens ]];           then  OPTS="$OPTS --evictgens=${evgens}"; fi
+    # OPTS="$OPTS --sampleepochs"
+    # OPTS="$OPTS --safemode"
     rebuild_with_current_config
+    echo $OPTS
     
     # run
     configure_max_local_mem "$kind"
-    for memp in `seq 20 10 100`; do 
+    for memp in `seq 20 10 100`; do
     # for memp in 50; do
         check_for_stop
         lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
         lmem=$((lmem_mb*1024*1024))
-        bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG} -ko=${KCFLAGS}   \
-                -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}    \
-                -lm=${lmem} -lmp=${memp} -zs=${zparams} ${NOPIE} -d="""${desc}"""
+        echo bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
+            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
+            -lm=${lmem} -lmp=${memp} -zs=${zparams} ${NOPIE} -d="""${desc}"""
+        bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
+            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
+            -lm=${lmem} -lmp=${memp} -zs=${zparams} ${NOPIE} -d="""${desc}"""
     done
 }
 
@@ -168,8 +189,7 @@ run_vary_cores() {
     rebuild_with_current_config
 
     # run
-    # for cores in 1 2 3 4 5; do 
-    for cores in 1; do 
+    for cores in 1 2 3 4 5; do 
         check_for_stop
         threads=$((cores*thrpc))
         bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG} -c=${cores} -t=${threads}    \
@@ -200,43 +220,31 @@ run_vary_thr_per_core() {
     done
 }
 
-# kona runs
-c=1
+# eden runs
+rd=0        # use read-ahead hints
+ebs=1       # set eviction batch size
+evp=NONE    # set eviction policy
+evg=2       # set eviction gens
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
-    for zs in 0.1 1; do 
-        # for c in `seq 1 1 2`; do
-        # for try in 1; do
-        for tpc in 5 20; do
-            desc="secondchance"
-            KCFLAGS="-DSECOND_CHANCE_EVICTION"
-            t=$((c*tpc))
-            kt=$((c*tpc))
-            # run_vary_lmem "kona-pthr"       $op $c $kt $zs "vdso"
-            # run_vary_lmem "kona-uthr"       $op $c $t $zs "vdso"
-            # run_vary_lmem "async"           $op $c $t $zs "vdso"
-            run_vary_lmem "async"           $op $c $t $zs "kona"
+    for zs in 1; do
+        for c in 12; do
+            for tpc in 1; do
+                desc="12coresO0"
+                t=$((c*tpc))
+                # run_vary_lmem "eden-nh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg"
+                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "8" "NONE" "$evg"
+                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "SC" "$evg"
+                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "LRU" "$evg"
+                # run_vary_lmem "eden-nh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "10" "$zs" "$rd" "$ebs" "NONE" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "$ebs" "NONE" "$evg"
+                run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "8" "NONE" "$evg"
+            done
         done
     done
 done
 
-# # no-kona runs with varying cores
-# tpc=10
-# for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
-#     for zs in 1; do 
-#         desc="${op}-vanilla"
-#         # run_vary_cores "pthr" $op $zs $tpc
-#         run_vary_cores "uthr"   $op $zs $tpc
-#     done
-# done
-
-# # no-kona runs with different concur
-# cores=4
-# op="zip"    # "zip5" "zip50" "zip500"    
-# desc="varyconcur-${op}"
-# for zs in 0.1 1; do
-#     run_vary_thr_per_core "pthr" $op $zs $cores
-#     run_vary_thr_per_core "uthr" $op $zs $cores
-# done
 
 # cleanup
 rm -f ${TEMP_PFX}*

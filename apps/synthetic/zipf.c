@@ -29,17 +29,17 @@ struct zipfian {
     long int (*randomfun)(void);
     struct zpair pairs[NPAIRS]; 
 #ifdef USE_MYRANDOM
-	struct rand_state rs;
+	struct syn_rand_state rs;
 #endif
 };
 
 #ifdef USE_MYRANDOM
 static inline void random_seed(struct zipfian* z, unsigned long seed) {
-	ASSERTZ(rand_seed(&z->rs, seed));
+	ASSERTZ(syn_rand_seed(&z->rs, seed));
 }
 
 static inline long random_gen(struct zipfian* z) {
-	return rand_next(&z->rs) % RAND_MAX;
+	return syn_rand_next(&z->rs) % RAND_MAX;
 }
 #else
 static inline void random_seed(struct zipfian* z, unsigned long seed) {
