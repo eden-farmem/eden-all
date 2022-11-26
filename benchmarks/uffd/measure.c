@@ -393,8 +393,7 @@ void* handler_main(void* args) {
 	struct uffd_msg msg;
 	unsigned long ip;
 
-	while(!start_button)	cpu_relax();
-	while(!stop_button) {
+	while (true) {
 		fdnow = (fdnow + 1) % hdata->nfds;
       	if (poll(&hdata->evt[fdnow], 1, 0) > 0) {
 			pr_debug("handler %d found a pending event %d:%d:%d", self, 
@@ -502,6 +501,7 @@ int main(int argc, char **argv)
 #if defined(ACCESS_PAGE) || defined(ACCESS_PAGE_WHOLE)
 	/* start fault handler threads. don't access pages without enabling handlers */
     struct handler_data hdata[MAX_THREADS] CACHE_ALIGN = {0};
+	int hcoreidx = 0;
 	handler_start_core = coreidx;
 	for(i = 0; i < nhandlers; i++) {
 		hdata[i].tid = i;
@@ -623,7 +623,7 @@ int main(int argc, char **argv)
 	op = OP_ACCESS_PAGE_WHOLE;
 #endif
 	int app_start_core;
-	#if HT_HANDLERS
+	#ifdef HT_HANDLERS
 	ASSERT(nthreads == nhandlers);	/* only supported for this case */
 	ASSERT(coreidx < HYPERTHREAD_OFFSET);	/* handlers should not spill over into hyperthreads */
 	app_start_core = handler_start_core + HYPERTHREAD_OFFSET;

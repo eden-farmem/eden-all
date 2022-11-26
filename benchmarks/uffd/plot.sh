@@ -173,14 +173,14 @@ if [ "$PLOTID" == "5" ]; then
     plots=
     sharefd=1
     YMAX=1.5
-    for hthr in 8; do 
-        add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
+    for hthr in 1 2 4; do 
+        add_data_to_plot "fault_path_one_fd" "hthr_$hthr" "-DACCESS_PAGE -DSHARE_REGION" $sharefd $hthr
     done
     generate_xput_plot "fault_path_one_fd"     ${YMAX}
 
     plots=
     sharefd=0
-    for hthr in 8; do 
+    for hthr in 1 2 4; do 
         add_data_to_plot "fault_path_fd_per_core" "hthr_$hthr" "-DACCESS_PAGE" $sharefd $hthr
     done
     generate_xput_plot "fault_path_fd_per_core" ${YMAX}
