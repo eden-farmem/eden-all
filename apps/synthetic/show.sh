@@ -188,33 +188,51 @@ for exp in $LS_CMD; do
         fi
 
         # RMEM
-        edenout=${exp}/eden_rmem_parsed
-        edenin=${exp}/rmem-stats.out 
-        if [ ! -f $edenout ] && [ -f $edenin ] && [[ $rstart ]] && [[ $rend ]]; then 
-            python ${ROOT_SCRIPTS_DIR}/parse_eden_rmem.py -i ${edenin}   \
-                -o ${edenout} -st ${rstart} -et ${rend}
+        if [ "$rmem" == "eden" ]; then
+            edenout=${exp}/eden_rmem_parsed
+            edenin=${exp}/rmem-stats.out 
+            if [ ! -f $edenout ] && [ -f $edenin ] && [[ $rstart ]] && [[ $rend ]]; then 
+                python3 ${ROOT_SCRIPTS_DIR}/parse_eden_rmem.py -i ${edenin}   \
+                    -o ${edenout} -st ${rstart} -et ${rend}
+            fi
+            faultsr=$(csv_column_mean "$edenout" "faults_r")
+            faultsw=$(csv_column_mean "$edenout" "faults_w")
+            faultswp=$(csv_column_mean "$edenout" "faults_wp")
+            # faults=$(csv_column_mean "$edenout" "faults")
+            faults=$((faultsr+faultsw+faultswp))
+            kfaultsr=$(csv_column_mean "$edenout" "faults_r_h")
+            kfaultsw=$(csv_column_mean "$edenout" "faults_w_h")
+            kfaultswp=$(csv_column_mean "$edenout" "faults_wp_h")
+            # kfaults=$(csv_column_mean "$edenout" "faults_h")
+            kfaults=$((kfaultsr+kfaultsw+kfaultswp))
+            evicts=$(csv_column_mean "$edenout" "evict_pages_done")
+            kevicts=$(csv_column_mean "$edenout" "evict_pages_done_h")
+            evpopped=$(csv_column_mean "$edenout" "evict_pages_popped")
+            netreads=$(csv_column_mean "$edenout" "net_reads")
+            netwrite=$(csv_column_mean "$edenout" "net_writes")
+            mallocd=$(csv_column_max "$edenout" "rmalloc_size")
+            steals=$(csv_column_mean "$edenout" "steals")
+            hsteals=$(csv_column_mean "$edenout" "steals_h")
+            waitretries=$(csv_column_mean "$edenout" "wait_retries")
+            hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
+            # madvd=$(csv_column_max "$edenout" "rmadv_size")
+        elif [ "$rmem" == "fastswap" ]; then
+            fstat_out=${exp}/fstat_parsed
+            fstat_in=${exp}/fstat.out 
+            if [ ! -f $fstat_out ] && [ -f $fstat_in ] && [[ $rstart ]] && [[ $rend ]]; then 
+                python3 ${ROOT_SCRIPTS_DIR}/parse_fstat.py -i ${fstat_in} \
+                    -o ${fstat_out} -st ${rstart} -et ${rend}
+            fi
+            vmstat_out=${exp}/vmstat_parsed
+            vmstat_in=${exp}/vmstat.out 
+            if [ ! -f $vmstat_out ] && [ -f $vmstat_in ] && [[ $rstart ]] && [[ $rend ]]; then 
+                python3 ${ROOT_SCRIPTS_DIR}/parse_vmstat.py -i ${vmstat_in} \
+                    -o ${vmstat_out} -st ${rstart} -et ${rend}
+            fi
+            faults=$(csv_column_mean "$vmstat_out" "pgmajfault")
+            netreads=$(csv_column_mean "$fstat_out" "loads")
+            netwrite=$(csv_column_mean "$fstat_out" "succ_stores")
         fi
-        faultsr=$(csv_column_mean "$edenout" "faults_r")
-        faultsw=$(csv_column_mean "$edenout" "faults_w")
-        faultswp=$(csv_column_mean "$edenout" "faults_wp")
-        # faults=$(csv_column_mean "$edenout" "faults")
-        faults=$((faultsr+faultsw+faultswp))
-        kfaultsr=$(csv_column_mean "$edenout" "faults_r_h")
-        kfaultsw=$(csv_column_mean "$edenout" "faults_w_h")
-        kfaultswp=$(csv_column_mean "$edenout" "faults_wp_h")
-        # kfaults=$(csv_column_mean "$edenout" "faults_h")
-        kfaults=$((kfaultsr+kfaultsw+kfaultswp))
-        evicts=$(csv_column_mean "$edenout" "evict_pages_done")
-        kevicts=$(csv_column_mean "$edenout" "evict_pages_done_h")
-        evpopped=$(csv_column_mean "$edenout" "evict_pages_popped")
-        netreads=$(csv_column_mean "$edenout" "net_reads")
-        netwrite=$(csv_column_mean "$edenout" "net_writes")
-        mallocd=$(csv_column_max "$edenout" "rmalloc_size")
-        steals=$(csv_column_mean "$edenout" "steals")
-        hsteals=$(csv_column_mean "$edenout" "steals_h")
-        waitretries=$(csv_column_mean "$edenout" "wait_retries")
-        hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
-        # madvd=$(csv_column_max "$edenout" "rmadv_size")
 
         # SHENANGO
         # shenangoout=${exp}/runtime_parsed
@@ -269,13 +287,13 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,FaultsR";       LINE="$LINE,${faultsr}";
         # HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
         # HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
-        HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
-        HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
-        HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
-        HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
+        # HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
+        # HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
+        # HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
+        # HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
 
-        # HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
-        # HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
+        HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
+        HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
         # HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
         # HEADER="$HEADER,MaxRSS";      LINE="$LINE,$((mempressure/1048576))M";
         # HEADER="$HEADER,Steals";      LINE="$LINE,${steals}";

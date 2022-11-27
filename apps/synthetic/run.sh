@@ -10,7 +10,9 @@ usage="bash run.sh
 -d, --readme \t optional exp description\n
 -f, --force \t force recompile everything\n
 -fl,--cflags \t C flags passed to gcc when compiling the app/test\n
--pf,--pgfaults \t build shenango with page faults feature. allowed values: SYNC, ASYNC\n
+-e, --eden \t run with Eden's remote memory\n
+-h, --hints \t enable Eden's remote memory hints\n
+-fs, --fastswap \t enable remote memory with fastswap\n
 -t, --threads \t number of shenango worker threads (defaults to --cores)\n
 -c, --cores \t number of CPU cores (defaults to 1)\n
 -zs, --zipfs \t S param of zipf workload\n
@@ -29,10 +31,13 @@ usage="bash run.sh
 -h, --help \t this usage information message\n"
 
 # settings
+APPNAME="synthetic"
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 DATADIR="${SCRIPT_DIR}/data/"
 ROOT_DIR="${SCRIPT_DIR}/../../"
+ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
+FASTSWAP_DIR="${ROOT_DIR}/fastswap"
 BINFILE="${SCRIPT_DIR}/main.out"
 RCNTRL_SSH="sc07"
 RCNTRL_IP="192.168.100.81"
@@ -46,8 +51,15 @@ EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
 TMP_FILE_PFX="tmp_syn_"
 CFGFILE="shenango.config"
 
+if [ "`hostname`" == "sc2-hs2-b1640" ];
+then
+    # fastswap
+    HOST_SSH="sc40"
+    HOST_IP="192.168.0.40"
+    RCNTRL_IP="192.168.0.7"
+fi
+
 NO_HYPERTHREADING="-noht"
-# SHEN_CFLAGS="-DNO_ZERO_PAGE"
 EDEN=
 HINTS=
 BACKEND=local
@@ -107,6 +119,11 @@ case $i in
     EDEN=1
     HINTS=1
     SHENANGO=1
+    ;;
+
+    -fs|--fastswap)
+    FASTSWAP=1
+    #SHENANGO=1
     ;;
 
     -be=*|--batchevict=*)
@@ -237,11 +254,38 @@ start_sar() {
 stop_sar() {
     pkill sar || true
 }
+start_memory_stat() {
+    rm -f memory-stat.out
+    nohup bash ${ROOT_SCRIPTS_DIR}/memory-stat.sh ${APPNAME} 2>&1 &
+}
+stop_memory_stat() {
+    local pid
+    pid=$(pgrep -f "[m]emory-stat.sh" || true)
+    if [[ $pid ]]; then  kill ${pid}; fi
+}
+start_vmstat() {
+    rm -f vmstat.out
+    nohup bash ${ROOT_SCRIPTS_DIR}/vmstat.sh ${APPNAME} > vmstat.out &
+}
+stop_vmstat() {
+    local pid
+    pid=$(pgrep -f "[v]mstat.sh" || true)
+    if [[ $pid ]]; then  kill ${pid}; fi
+}
+start_fsstat() {
+    rm -f fstat.out
+    nohup sudo bash ${ROOT_SCRIPTS_DIR}/fswap-stat.sh ${APPNAME} > fstat.out &
+}
+stop_fsstat() {
+    local pid
+    pid=$(pgrep -f "[f]swap-stat.sh" || true)
+    if [[ $pid ]]; then  sudo kill ${pid}; fi
+}
 kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"            # eden memcontrol
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"   # eden memserver
-    ssh ${MEMSERVER_SSH} "pkill rmserver; rm -f ~/scratch/rmserver"     # fastswap server
+    # ssh ${MEMSERVER_SSH} "pkill rmserver; rm -f ~/scratch/rmserver"     # fastswap server
 }
 cleanup() {
     if [ -z "$KEEPBIN" ]; then
@@ -249,6 +293,9 @@ cleanup() {
     fi
     rm -f ${TMP_FILE_PFX}*
     kill_remnants
+    stop_memory_stat
+    stop_vmstat
+    stop_fsstat
     stop_sar
 }
 cleanup     #start clean
@@ -288,6 +335,40 @@ if [[ $EDEN ]]; then
         CFLAGS="$CFLAGS -D${EVICT_POLICY}_EVICTION"
         SHEN_CFLAGS="$SHEN_CFLAGS -D${EVICT_POLICY}_EVICTION"
     fi
+fi
+
+# Fastswap
+if [[ $FASTSWAP ]]; then
+    RMEM="fastswap"
+    CFLAGS="$CFLAGS -DFASTSWAP"
+
+    if [[ $EDEN ]] || [[ $RHINTS ]]; then
+        echo "ERROR! Eden or hints can't be enabled with fastswap"
+        exit 1
+    fi
+
+    if [[ $EVICT_POLICY ]]; then
+        echo "ERROR! evict policy can't be set with fastswap"
+        exit 1
+    fi
+
+    # setup fastswap
+    if [[ $FORCE ]]; then
+        bash ${FASTSWAP_DIR}/setup.sh           \
+            --memserver-ssh=${MEMSERVER_SSH}    \
+            --memserver-ip=${MEMSERVER_IP}      \
+            --memserver-port=${MEMSERVER_PORT}  \
+            --host-ip=${HOST_IP}                \
+            --host-ssh=${HOST_SSH}              \
+            --backend=${BACKEND}
+    fi
+
+    # setup cgroups
+    pushd ${FASTSWAP_DIR}
+    sudo mkdir -p /cgroup2
+    sudo ./init_bench_cgroups.sh
+    sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
+    popd
 fi
 
 # rebuild shenango
@@ -382,6 +463,13 @@ rmem_evict_ngens ${EVICT_GENS}"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
+# set localmem for fastswap
+if [[ $FASTSWAP ]]; then
+    sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
+    LOCALMEM=${LOCALMEM:-max}
+    sudo bash -c "echo ${LMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
+fi
+
 # for retry in {1..3}; do
 for retry in 1; do
     # prepare for run
@@ -450,6 +538,13 @@ for retry in 1; do
         fi
     fi
 
+    # start memory stats for fastswap
+    if [[ $FASTSWAP ]]; then
+        start_memory_stat
+        start_vmstat
+        start_fsstat
+    fi
+
     # run
     args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
     echo sudo ${wrapper} ${BINFILE} ${args} 
@@ -476,7 +571,7 @@ for retry in 1; do
         while ps -p $pid > /dev/null; do
             sleep 1
             tries=$((tries+1))
-            if [[ $tries -gt 500 ]]; then
+            if [[ $tries -gt 1000 ]]; then
                 echo "ran too long"
                 sudo kill -9 $pid
                 break
