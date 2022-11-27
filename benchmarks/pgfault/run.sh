@@ -22,6 +22,7 @@ usage="Example: bash run.sh -f\n
 # settings
 SCRIPT_DIR=`dirname "$0"`
 ROOT_DIR="${SCRIPT_DIR}/../.."
+ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
 FASTSWAP_DIR="${ROOT_DIR}/fastswap"
 APPNAME="pfbenchmark"
 BINFILE="main.out"
@@ -209,7 +210,7 @@ stop_sar() {
 }
 start_memory_stat() {
     rm -f memory-stat.out
-    nohup bash ${SCRIPT_DIR}/memory-stat.sh ${APPNAME} 2>&1 &
+    nohup bash ${ROOT_SCRIPTS_DIR}/memory-stat.sh ${APPNAME} 2>&1 &
 }
 stop_memory_stat() {
     local pid
@@ -218,7 +219,7 @@ stop_memory_stat() {
 }
 start_vmstat() {
     rm -f vmstat.out
-    nohup bash ${SCRIPT_DIR}/vmstat.sh ${APPNAME} > vmstat.out &
+    nohup bash ${ROOT_SCRIPTS_DIR}/vmstat.sh ${APPNAME} > vmstat.out &
 }
 stop_vmstat() {
     local pid
@@ -227,7 +228,7 @@ stop_vmstat() {
 }
 start_fsstat() {
     rm -f fstat.out
-    nohup sudo bash ${SCRIPT_DIR}/fswap-stat.sh ${APPNAME} > fstat.out &
+    nohup sudo bash ${ROOT_SCRIPTS_DIR}/fswap-stat.sh ${APPNAME} > fstat.out &
 }
 stop_fsstat() {
     local pid

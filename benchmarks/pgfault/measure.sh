@@ -143,8 +143,7 @@ measure_xput_vary_cpu()
         # for rmem in "hints"; do       # "hints+1" "hints+2" "hints+4"; do
         for rmem in "fswap"; do         # "fswap+1" "fswap+3" "fswap+7" ; do
             for evict in "noevict" "evict"; do  # ""evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
-                for op in "write"; do
-                # for op in "read"; do
+                for op in "read" "write"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}

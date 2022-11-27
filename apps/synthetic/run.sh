@@ -327,8 +327,7 @@ LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
 
 # compile
 LIBS="${LIBS} -lpthread -lm"
-CFLAGS="$CFLAGS -O0 -g -ggdb"
-gcc main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
+gcc -O0 -g -ggdb main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
     ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then 
