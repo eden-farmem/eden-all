@@ -81,7 +81,7 @@ class LegendLoc(Enum):
 LINESTYLE_TUPLES = {
     'solid':               (0, ()),
     'dashed':              (0, (3, 2)),
-    'dotted':              (0, (1, 5)),
+    'dotted':              (0, (1, 1)),
     'dashdot':             (0, (3, 2, 1, 2)),
     'dashdotdot':          (0, (3, 2, 1, 2, 1, 2)),
     'loosedash':           (0, (5, 10)),

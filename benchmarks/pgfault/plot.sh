@@ -1,37 +1,112 @@
 #!/bin/bash
 set -e
 
+#
+# Plots for the paper
+#
+
 #Defaults
-SCRIPT_DIR=`dirname "$0"`
-TEMP_PFX=tmp_kona_
-PLOTSRC=${SCRIPT_DIR}/../../scripts/plot.py
-PLOTDIR=plots 
-DATADIR=data
-PLOTEXT=png
-CFGFILE=${TEMP_PFX}shenango.config
-LATFILE=latencies
+PLOTEXT=pdf
+SCRIPT_PATH=`realpath $0`
+SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
+ROOTDIR="${SCRIPT_DIR}/../../"
+ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
+PLOTDIR=${SCRIPT_DIR}/plots/paper/
+DATADIR=${SCRIPT_DIR}/data
 
-# plot xput
-plotname=${PLOTDIR}/fastswap_v_eden.${PLOTEXT}
-python3 ${PLOTSRC}   \
-    -d data/xput-hints-noevict-local-read   -l "eden-read"      -ls dashed  -cmi 1  \
-    -d data/xput-fswap-noevict-local-read   -l "fswap-read"     -ls dashed  -cmi 1  \
-    -d data/xput-fswap+3-noevict-local-write  -l "fswap-write"  -ls solid   -cmi 1  \
-    -xc cores -xl "App CPU"  -yc xput -yl "MOPS" --ymul 1e-6  --ymin 0 --ymax 2.5   \
-    --size 5 3.5 -fs 11 -of ${PLOTEXT} -o $plotname
-display $plotname &
+usage="\n
+-id,  --plotid \t pick one of the many charts this script can generate\n
+-h, --help \t\t this usage information message\n"
 
-# # plot xput
-# plotname=${PLOTDIR}/fastswap_v_eden_rdahead.${PLOTEXT}
-# python3 ${PLOTSRC}   \
-#     -d data/xput-hints-noevict-local-read       -l "eden"      -ls dashed  -cmi 0   \
-#     -d data/xput-hints+1-noevict-local-read     -l "eden+1"    -ls solid   -cmi 0   \
-#     -d data/xput-hints+2-noevict-local-read     -l "eden+2"    -ls dotted  -cmi 0   \
-#     -d data/xput-hints+4-noevict-local-read     -l "eden+4"    -ls dashdot -cmi 1   \
-#     -d data/xput-fswap-noevict-local-read       -l "fswap"     -ls dashed  -cmi 0   \
-#     -d data/xput-fswap+1-noevict-local-read     -l "fswap+1"   -ls solid   -cmi 0   \
-#     -d data/xput-fswap+3-noevict-local-read     -l "fswap+3"   -ls dotted  -cmi 0   \
-#     -d data/xput-fswap+7-noevict-local-read     -l "fswap+7"   -ls dashdot -cmi 1   \
-#     -xc cores -xl "App CPU"  -yc xput -yl "MOPS" --ymul 1e-6  --ymin 0 --ymax 2.5   \
-#     --size 5 3.5 -fs 11 -of ${PLOTEXT} -o $plotname
-# display $plotname &
+for i in "$@"
+do
+case $i in
+    -id=*|--fig=*|--plotid=*)
+    PLOTID="${i#*=}"
+    ;;
+
+    *)          # unknown option
+    echo "Unknown Option: $i"
+    echo -e $usage
+    exit
+    ;;
+esac
+done
+
+# point to last chart if not provided
+if [ -z "$PLOTID" ]; then 
+    PLOTID=`grep '"$PLOTID" == "."' $0 | wc -l`
+    PLOTID=$((PLOTID-1))
+fi
+
+mkdir -p $PLOTDIR
+
+# Raw fault benchmark: no eviction, local
+if [ "$PLOTID" == "1" ]; then
+    cfg=noevict-local-read
+    plotname=${PLOTDIR}/micro-noevict-local.${PLOTEXT}
+    python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
+        -d ${DATADIR}/xput-fswap-${cfg}     -l "Fastswap"       -ls solid   -cmi 1      \
+        -d ${DATADIR}/xput-nohints-${cfg}   -l "Eden (NH)"      -ls dashed  -cmi 0      \
+        -d ${DATADIR}/xput-hints-${cfg}     -l "Eden"           -ls solid   -cmi 1      \
+        -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax 2.5  -xc cores -xl "CPU Cores"           \
+        --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
+    display ${plotname} &
+fi
+
+# Raw fault benchmark: no eviction, rdma
+if [ "$PLOTID" == "2" ]; then
+    cfg=noevict-rdma-read
+    plotname=${PLOTDIR}/micro-noevict-rdma.${PLOTEXT}
+    python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
+        -d ${DATADIR}/xput-fswap-${cfg}     -l "Fastswap"       -ls solid   -cmi 1      \
+        -d ${DATADIR}/xput-nohints-${cfg}   -l "Eden (NH)"      -ls dashed  -cmi 0      \
+        -d ${DATADIR}/xput-bhints-${cfg}    -l "Eden (BH)"      -ls dashdot -cmi 0      \
+        -d ${DATADIR}/xput-hints-${cfg}     -l "Eden"           -ls solid   -cmi 1      \
+        -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax 2.5  -xc cores -xl "CPU Cores"           \
+        --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
+    display ${plotname} &
+fi
+
+# Raw fault benchmark with read-ahead, local
+if [ "$PLOTID" == "3" ]; then
+    cfg=noevict-local-read
+    plotname=${PLOTDIR}/micro-rdahead-local.${PLOTEXT}
+    python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
+        -d ${DATADIR}/xput-hints-${cfg}     -l "0"   -ls solid      -cmi 0  \
+        -d ${DATADIR}/xput-hints+1-${cfg}   -l "1"   -ls dotted     -cmi 0  \
+        -d ${DATADIR}/xput-hints+2-${cfg}   -l "2"   -ls dashdot    -cmi 0  \
+        -d ${DATADIR}/xput-hints+4-${cfg}   -l "4"   -ls dashed     -cmi 0  \
+        -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax 3.2 -xc cores -xl "CPU Cores"  \
+        --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname -lt "RdAhead"
+    display ${plotname} &
+fi
+
+# Raw fault benchmark: with eviction, local
+if [ "$PLOTID" == "4" ]; then
+    cfg=local-read
+    plotname=${PLOTDIR}/micro-evict-local.${PLOTEXT}
+    python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
+        -d ${DATADIR}/xput-fswap-evict-${cfg}      -l "Fastswap"   -ls solid   -cmi 1  \
+        -d ${DATADIR}/xput-hints-evict-${cfg}      -l "Eden (1)"   -ls dashed  -cmi 0  \
+        -d ${DATADIR}/xput-hints-evict8-${cfg}     -l "Eden (8)"   -ls dashdot -cmi 0  \
+        -d ${DATADIR}/xput-hints-evict16-${cfg}    -l "Eden (16)"  -ls solid   -cmi 1  \
+        -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax 2.5  -xc cores -xl "CPU Cores"          \
+        --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
+    display ${plotname} &
+fi
+
+# Raw fault benchmark: with dirty eviction, local
+if [ "$PLOTID" == "5" ]; then
+    cfg=local-write
+    plotname=${PLOTDIR}/micro-evict-dirty-local.${PLOTEXT}
+    python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
+        -d ${DATADIR}/xput-fswap-evict-${cfg}      -l "Fastswap"   -ls solid   -cmi 1  \
+        -d ${DATADIR}/xput-hints-evict-${cfg}      -l "Eden (1)"   -ls dashed  -cmi 0  \
+        -d ${DATADIR}/xput-hints-evict8-${cfg}     -l "Eden (8)"   -ls dashdot -cmi 0  \
+        -d ${DATADIR}/xput-hints-evict16-${cfg}    -l "Eden (16)"  -ls solid   -cmi 1  \
+        -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax 2.5  -xc cores -xl "CPU Cores"          \
+        --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
+    display ${plotname} &
+fi
+
