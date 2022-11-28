@@ -68,10 +68,11 @@ if [ "$PLOTID" == "2" ]; then
     display ${plotname} &
 fi
 
-# Raw fault benchmark with read-ahead, local
+# Raw fault benchmark with read-ahead
 if [ "$PLOTID" == "3" ]; then
-    cfg=noevict-local-read
-    plotname=${PLOTDIR}/micro-rdahead-local.${PLOTEXT}
+    BACKEND=rdma
+    cfg=noevict-${BACKEND}-read
+    plotname=${PLOTDIR}/micro-rdahead-${BACKEND}.${PLOTEXT}
     python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
         -d ${DATADIR}/xput-hints-${cfg}     -l "0"   -ls solid      -cmi 0  \
         -d ${DATADIR}/xput-hints+1-${cfg}   -l "1"   -ls dotted     -cmi 0  \
@@ -82,10 +83,11 @@ if [ "$PLOTID" == "3" ]; then
     display ${plotname} &
 fi
 
-# Raw fault benchmark: with eviction, local
+# Raw fault benchmark: with eviction
 if [ "$PLOTID" == "4" ]; then
-    cfg=local-read
-    plotname=${PLOTDIR}/micro-evict-local.${PLOTEXT}
+    BACKEND=local
+    cfg=${BACKEND}-read
+    plotname=${PLOTDIR}/micro-evict-${BACKEND}.${PLOTEXT}
     python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
         -d ${DATADIR}/xput-fswap-evict-${cfg}      -l "Fastswap"   -ls solid   -cmi 1  \
         -d ${DATADIR}/xput-hints-evict-${cfg}      -l "Eden (1)"   -ls dashed  -cmi 0  \
@@ -96,10 +98,11 @@ if [ "$PLOTID" == "4" ]; then
     display ${plotname} &
 fi
 
-# Raw fault benchmark: with dirty eviction, local
+# Raw fault benchmark: with dirty eviction
 if [ "$PLOTID" == "5" ]; then
-    cfg=local-write
-    plotname=${PLOTDIR}/micro-evict-dirty-local.${PLOTEXT}
+    BACKEND=local
+    cfg=${BACKEND}-write
+    plotname=${PLOTDIR}/micro-evict-dirty-${BACKEND}.${PLOTEXT}
     python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"     \
         -d ${DATADIR}/xput-fswap-evict-${cfg}      -l "Fastswap"   -ls solid   -cmi 1  \
         -d ${DATADIR}/xput-hints-evict-${cfg}      -l "Eden (1)"   -ls dashed  -cmi 0  \

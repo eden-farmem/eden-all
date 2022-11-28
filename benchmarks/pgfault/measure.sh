@@ -157,7 +157,7 @@ measure_xput_vary_cpu()
 
                     # set opts
                     set_hints_opts      "$rmem"
-                    set_evict_opts      "$evict"
+                    set_evict_opts      "$evictc"
                     set_backend_opts    "$bkend"
                     set_fault_op_opts   "$op"
                     set_scheduler       "$sc"
