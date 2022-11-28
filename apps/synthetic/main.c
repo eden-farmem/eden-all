@@ -410,6 +410,13 @@ void main_thread(void* arg) {
 	/* prepare zipf request sequence  */	
 	zparams = margs->zparams;
 	zipf_sequence = (uint64_t*) malloc (nreqs * sizeof(uint64_t));
+	ASSERT(zipf_sequence);
+
+	/* for fastswap, we don't have control over what goes in remote memory.
+	 * so we pin this request data and count this out of local memory  */
+	LOCK_MEMORY(zipf_sequence, nreqs * sizeof(uint64_t));
+    pr_info("memory for req data: %lu MB", nreqs * sizeof(uint64_t) / (1<<20));
+
 #ifdef DEBUG2
 	zipf_counts = (uint32_t*)calloc(nkeys, sizeof(uint32_t));
 #endif

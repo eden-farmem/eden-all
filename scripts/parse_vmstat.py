@@ -55,7 +55,7 @@ def main():
 
     # conversion
     for field in PAGE_FIELDS:
-        df[field] = (df[field] * 4 / 1024).astype(int)
+        df[field + "_mb"] = (df[field] * 4 / 1024).astype(int)
 
     # accumulated cols
     if not df.empty:

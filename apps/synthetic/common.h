@@ -1,6 +1,3 @@
-// Copyright © 2018-2021 VMware, Inc. All Rights Reserved.
-// SPDX-License-Identifier: BSD-2-Clause
-
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
@@ -96,6 +93,27 @@
 #define HINT_WRITE_FAULT            {}
 #define HINT_READ_FAULT_RDAHEAD     {}
 #define HINT_WRITE_FAULT_RDAHEAD    {}
+#endif
+
+/* remote memory configuration helpers */
+#if defined(EDEN)
+#include "rmem/common.h"
+#define SET_MAX_LOCAL_MEM(limit)    { local_memory = limit; }
+#define GET_CURRENT_LOCAL_MEM()     (atomic64_read(&memory_used))
+#define LOCK_MEMORY(addr,len)       {}
+#define UNLOCK_MEMORY(addr,len)     {}
+#elif defined(FASTSWAP)
+#include "fastswap.h"
+#include "sys/mman.h"
+#define SET_MAX_LOCAL_MEM(limit)    set_local_memory_limit(limit)
+#define GET_CURRENT_LOCAL_MEM()     get_memory_usage()
+#define LOCK_MEMORY(addr,len)       mlock(addr,len)
+#define UNLOCK_MEMORY(addr,len)     munlock(addr,len)
+#else
+#define SET_MAX_LOCAL_MEM(limit)    {}
+#define GET_CURRENT_LOCAL_MEM()     0
+#define LOCK_MEMORY(addr,len)       {}
+#define UNLOCK_MEMORY(addr,len)     {}
 #endif
 
 /* page size parameters */

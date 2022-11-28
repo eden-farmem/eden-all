@@ -78,6 +78,8 @@ configure_for_fault_kind() {
     "uthr")             OPTS="$OPTS --shenango";;
     "eden-nh")          OPTS="$OPTS --eden";;
     "eden")             OPTS="$OPTS --eden --hints";;
+    "fswap")            OPTS="$OPTS --fastswap";;
+    "fswap-uthr")       OPTS="$OPTS --fastswap --shenango";;
     *)                  echo "Unknown fault kind"; exit;;
     esac
 }
@@ -85,7 +87,7 @@ configure_for_fault_kind() {
 configure_for_backend() {
     local bkend=$1
     case $bkend in
-    "")                 OPTS="$OPTS --shenango";;
+    "")                 ;;
     "local")            OPTS="$OPTS --bkend=local";;
     "rdma")             OPTS="$OPTS --bkend=rdma";;
     *)                  echo "Unknown backend"; exit;;
@@ -108,11 +110,14 @@ configure_for_request_op() {
 
 configure_max_local_mem() {
     local kind=$1
+    local cores=$2
     case $kind in
     "pthr")             MAXRSS=6200;;
     "uthr")             MAXRSS=5700;;
     "eden-nh")          MAXRSS=5700;;
     "eden")             MAXRSS=5700;;
+    "fswap")            MAXRSS=6150;    PINNED=$((cores*381));;
+    "fswap-uthr")       MAXRSS=6150;    PINNED=$((cores*381));;
     *)                  echo "Unknown fault kind"; exit;;
     esac
 }
@@ -160,14 +165,15 @@ run_vary_lmem() {
     echo $OPTS
     
     # run
-    configure_max_local_mem "$kind"
+    configure_max_local_mem "$kind" "$cores"
     for memp in `seq 20 10 100`; do
-    # for memp in 50; do
+    # for memp in 100; do
         check_for_stop
         lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
+        if [[ $PINNED ]]; then lmem_mb=$((lmem_mb+PINNED)); fi
         lmem=$((lmem_mb*1024*1024))
         echo bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
-            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
+            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}            \
             -lm=${lmem} -lmp=${memp} -zs=${zparams} ${NOPIE} -d="""${desc}"""
         bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
             -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
@@ -221,15 +227,15 @@ run_vary_thr_per_core() {
 }
 
 # eden runs
-rd=0        # use read-ahead hints
-ebs=1       # set eviction batch size
-evp=NONE    # set eviction policy
-evg=2       # set eviction gens
+rd=         # use read-ahead hints
+ebs=        # set eviction batch size
+evp=        # set eviction policy
+evg=        # set eviction gens
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do
-        for c in 12; do
+        for c in 1 5 12; do
             for tpc in 1; do
-                desc="12coresO0"
+                desc="rdma"
                 t=$((c*tpc))
                 # run_vary_lmem "eden-nh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
                 # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg"
@@ -239,12 +245,16 @@ for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
                 # run_vary_lmem "eden-nh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
                 # run_vary_lmem "eden"    "rdma"  "$op" "$c" "10" "$zs" "$rd" "$ebs" "NONE" "$evg"
                 # run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "$ebs" "NONE" "$evg"
-                run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "8" "NONE" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "8" "NONE" "$evg"
+
+                # run_vary_lmem "fswap"    "local"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                run_vary_lmem "fswap"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
             done
         done
     done
 done
 
+# Fastswap runs
 
 # cleanup
 rm -f ${TEMP_PFX}*
