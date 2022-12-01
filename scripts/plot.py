@@ -664,7 +664,6 @@ def main():
                 bottom=base_dataset, label=plot.label, color=COLORS[cidx],
                 hatch=str(args.barhatchstyle[plot_num]) \
                     if args.barhatchstyle is not None else None)
-            # ax.set_xticklabels(xcol, rotation='15' if args.xstr else 0)
 
             if args.stacknextbar and args.stacknextbar[plot_num] == 1:
                 if base_dataset is None:    base_dataset = ycol
@@ -677,7 +676,7 @@ def main():
             if plot_num == len(plots) - 1:
                 xticks = xstart + total_width / 2
                 axes.set_xticks(xticks)
-                axes.set_xticklabels(xcol)
+                axes.set_xticklabels(xcol, rotation='15' if args.xstr else 0)
 
         elif args.ptype == PlotType.CDF:
             if args.pdfdata:

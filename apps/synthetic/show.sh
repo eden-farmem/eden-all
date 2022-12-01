@@ -90,6 +90,14 @@ case $i in
     RDAHEAD="${i#*=}"
     ;;
 
+    -evp=*|--evpolicy=*)
+    EVPOL="${i#*=}"
+    ;;
+
+    -evb=*|--evbatch=*)
+    EVBATCH="${i#*=}"
+    ;;
+
     -d=*|--desc=*)
     DESC="${i#*=}"
     ;;
@@ -152,6 +160,7 @@ for exp in $LS_CMD; do
     sched=${sched:-none}
     backend=${backend:-none}
     rmem=${rmem:-none}
+    evictpol=${evictpol:-NONE}
 
     # apply filters
     if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];      then    continue;   fi
@@ -163,6 +172,8 @@ for exp in $LS_CMD; do
     if [[ $SCHEDULER ]] && [ "$SCHEDULER" != "$sched" ];    then    continue;   fi
     if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];            then    continue;   fi
     if [[ $RDAHEAD ]] && [ "$RDAHEAD" != "$rdahead" ];      then    continue;   fi
+    if [[ $EVPOL ]] && [ "$EVPOL" != "$evictpol" ];         then    continue;   fi
+    if [[ $EVBATCH ]] && [ "$EVBATCH" != "$evictbs" ];      then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
     
     if [ -z "$BASIC" ]; then
@@ -188,7 +199,19 @@ for exp in $LS_CMD; do
         fi
 
         # RMEM
-        if [ "$rmem" == "eden" ]; then
+        faults=
+        faultsr=
+        faultsw=
+        faultswp=
+        kfaultsr=
+        kfaultsw=
+        kfaultswp=
+        kfaults=
+        evicts=
+        kevicts=
+        evpopped=
+        hitr=
+        if [[ "$rmem" == *"eden"* ]]; then
             edenout=${exp}/eden_rmem_parsed
             edenin=${exp}/rmem-stats.out 
             if [ ! -f $edenout ] && [ -f $edenin ] && [[ $rstart ]] && [[ $rend ]]; then 
@@ -198,8 +221,7 @@ for exp in $LS_CMD; do
             faultsr=$(csv_column_mean "$edenout" "faults_r")
             faultsw=$(csv_column_mean "$edenout" "faults_w")
             faultswp=$(csv_column_mean "$edenout" "faults_wp")
-            # faults=$(csv_column_mean "$edenout" "faults")
-            faults=$((faultsr+faultsw+faultswp))
+            faults=$(csv_column_mean "$edenout" "faults")
             kfaultsr=$(csv_column_mean "$edenout" "faults_r_h")
             kfaultsw=$(csv_column_mean "$edenout" "faults_w_h")
             kfaultswp=$(csv_column_mean "$edenout" "faults_wp_h")
@@ -216,6 +238,11 @@ for exp in $LS_CMD; do
             waitretries=$(csv_column_mean "$edenout" "wait_retries")
             hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
             # madvd=$(csv_column_max "$edenout" "rmadv_size")
+            annothits=$(csv_column_mean "$edenout" "annot_hits")
+            hitr=
+            if [[ $annothits ]] && [[ $faults ]]; then 
+                hitr=$(percentage "$((annothits-faults))" "$annothits" | ftoi)
+            fi
         elif [ "$rmem" == "fastswap" ]; then
             fstat_out=${exp}/fstat_parsed
             fstat_in=${exp}/fstat.out 
@@ -274,7 +301,7 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
     HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
     HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs}";
-    # HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
+    HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
     HEADER="$HEADER,EvB";           LINE="$LINE,${evictbs}";
     HEADER="$HEADER,EvP";           LINE="$LINE,${evictpol}";
     # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
@@ -286,14 +313,15 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
         HEADER="$HEADER,FaultsR";       LINE="$LINE,${faultsr}";
         # HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
-        # HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
-        # HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
-        # HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
-        # HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
-        # HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
+        HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
+        HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
+        HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
+        HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
+        HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
+        HEADER="$HEADER,HitR";          LINE="$LINE,${hitr}";
 
-        HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
-        HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
+        # HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
+        # HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
         # HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
         # HEADER="$HEADER,MaxRSS";      LINE="$LINE,$((mempressure/1048576))M";
         # HEADER="$HEADER,Steals";      LINE="$LINE,${steals}";
