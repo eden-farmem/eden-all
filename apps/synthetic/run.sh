@@ -57,6 +57,7 @@ then
     HOST_SSH="sc40"
     HOST_IP="192.168.0.40"
     RCNTRL_IP="192.168.0.7"
+    MEMSERVER_IP=$RCNTRL_IP
 fi
 
 NO_HYPERTHREADING="-noht"
@@ -463,6 +464,9 @@ rmem_evict_ngens ${EVICT_GENS}"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
+# run machine setup
+sudo bash ${ROOT_SCRIPTS_DIR}/machine_config.sh
+
 # set localmem for fastswap
 if [[ $FASTSWAP ]]; then
     sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
@@ -525,7 +529,6 @@ for retry in 1; do
         if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
         CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
         wrapper="$wrapper taskset -a -c ${CPUSTR}"
-        echo "sar ${CPUSTR}"
         start_sar 1 "." ${CPUSTR}
     fi 
 

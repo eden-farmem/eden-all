@@ -208,8 +208,8 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Exp";           LINE="$LINE,$name";
     HEADER="$HEADER,Scheduler";     LINE="$LINE,${sched}";
     HEADER="$HEADER,RMem";          LINE="$LINE,${rmem}";
-    # HEADER="$HEADER,Backend";     LINE="$LINE,${backend}";
-    HEADER="$HEADER,Tag";           LINE="$LINE,${tag}";
+    HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
+    # HEADER="$HEADER,Tag";           LINE="$LINE,${tag}";
     # HEADER="$HEADER,Keys";        LINE="$LINE,$((nkeys/1000000))M";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Thr";           LINE="$LINE,${threads}";
