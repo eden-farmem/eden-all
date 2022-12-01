@@ -24,6 +24,7 @@ DATADIR=data
 PLOTEXT=png
 CFGFILE=${TEMP_PFX}shenango.config
 LATFILE=latencies
+# PRELOAD="--preload"
 
 # parse cli
 for i in "$@"
@@ -75,6 +76,7 @@ set_hints_opts() {
     case $rmem in
     "normem")           ;;
     "nohints")          LS=dotted;      OPTS="$OPTS --rmem";;
+    "bhints")           LS=solid;       OPTS="$OPTS --rmem --bhints";;
     "hints")            LS=solid;       OPTS="$OPTS --rmem --hints";;
     "hints+1")          LS=dashed;      OPTS="$OPTS --rmem --hints --rdahead=1";;
     "hints+2")          LS=dashdot;     OPTS="$OPTS --rmem --hints --rdahead=2";;
@@ -137,13 +139,16 @@ set_fault_op_opts() {
 
 measure_xput_vary_cpu()
 {
-    name="fswap_rdma"
+    name="nohints"
     # sc="shenango"
     for bkend in "rdma"; do
-        # for rmem in "hints"; do       # "hints+1" "hints+2" "hints+4"; do
-        for rmem in "fswap"; do         # "fswap+1" "fswap+3" "fswap+7" ; do
-            for evict in "noevict" "evict"; do  # ""evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
+        for rmem in "hints"; do
+        # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
+        # for rmem in "fswap"; do       # "fswap+1" "fswap+3" "fswap+7" ; do
+            # for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
+            for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16"; do
                 for op in "read" "write"; do
+                # for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
@@ -163,12 +168,12 @@ measure_xput_vary_cpu()
                     if [ ! -f $datafile ] || [[ $FORCE ]]; then
                         bash run.sh --clean
                         # reloading fastswap everytime takes time
-                        # bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
+                        bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
                         echo "cores,xput" > $datafile
                         for cores in `seq 1 1 12`; do 
                         # for cores in 1; do 
                             rm -f result
-                            bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS"""
+                            bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" ${PRELOAD}
                             xput=$(cat result 2>/dev/null)
                             echo "$cores,$xput" >> $datafile        # record xput
 
@@ -226,7 +231,7 @@ measure_xput_vary_batch()
                         echo "cores,batchsize,xput" > $datafile
                         for batchsz in `seq 1 4 50`; do 
                             rm -f result
-                            bash run.sh ${OPTS} -t=${cores}     \
+                            bash run.sh ${OPTS} -t=${cores} ${PRELOAD}      \
                                 --batchevict=$batchsz -fl="""$CFLAGS"""
                             xput=$(cat result 2>/dev/null)
                             echo "$cores,$batchsz,$xput" >> $datafile   # record xput

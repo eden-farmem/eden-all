@@ -10,7 +10,7 @@ ACCUMULATED_FIELDS = ["faults", "faults_r", "faults_w", "faults_wp",
     "evict_pages_popped", "evict_no_candidates", "evict_incomplete_batch", 
     "evict_writes", "evict_wp_retries", "evict_madv", "evict_ops_done", 
     "evict_pages_done", "net_reads", "net_writes", "steals_ready", 
-    "steals_wait", "wait_retries" ]
+    "steals_wait", "wait_retries", "annot_hits"]
 TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size"]
 
 def append_row(df, row):
@@ -47,14 +47,14 @@ def main():
         # evict_writes:0,evict_wp_retries:0,evict_madv:0,evict_ops_done:0,
         # evict_pages_done:0,net_reads:212251,net_writes:0,steals_ready:0,
         # steals_wait:0,wait_retries:0,rmalloc_size:4294967296,rmunmap_size:0,
-        # rmadv_size:0
+        # rmadv_size:0,annot_hits:0
         assert(line)
         time = int(line.split()[0])
         rest = line.split()[1]
         type = rest.split('-', 1)[0]
         vals = rest.split('-', 1)[1]
         fields = [x.strip() for x in vals.split(',') if len(x.strip()) > 0]
-        assert len(fields) == 29, "in {}".format(args.input)
+        # assert len(fields) == 29, "in {}".format(args.input)
         if not header:
             header = ["time"] + [x.split(":")[0] for x in fields]
         assert type in ["total", "handler"]

@@ -225,8 +225,8 @@ static inline void process_request(int key, int nblobs,
 	HINT_READ_FAULT_RDAHEAD(nextin, 1);
 #else
 	HINT_READ_FAULT(nextin);
-	HINT_READ_FAULT(nextin + PAGE_SIZE);
 #endif
+	HINT_READ_FAULT(nextin + PAGE_SIZE);
 
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */

@@ -1,0 +1,10 @@
+Exp,RMem,Backend,CPU,Threads,Local_MB,LMem%,ZipfS,EvB,EvP,Xput,Faults,FaultsR,KFaults,Evicts,KEvicts,EvPopped,Desc
+run-11-16-09-27-47,eden,rdma,5,5,1140,20,1,,,261364,245384,245377,1463,245372,177000,,nowaitsteals
+run-11-16-09-31-29,eden,rdma,5,5,1710,30,1,,,301416,227652,227649,1384,227645,170326,,nowaitsteals
+run-11-16-09-34-47,eden,rdma,5,5,2280,40,1,,,336202,204544,204543,1284,204541,158685,,nowaitsteals
+run-11-16-09-37-39,eden,rdma,5,5,2850,50,1,,,387116,184681,184680,1192,184679,148318,,nowaitsteals
+run-11-16-09-40-19,eden,rdma,5,5,3420,60,1,,,436334,156259,156259,1049,156258,132180,,nowaitsteals
+run-11-16-09-42-58,eden,rdma,5,5,3990,70,1,,,506642,132526,132526,906,132525,116027,,nowaitsteals
+run-11-16-09-45-36,eden,rdma,5,5,4560,80,1,,,579203,97351,97351,694,97349,88724,,nowaitsteals
+run-11-16-09-48-13,eden,rdma,5,5,5130,90,1,,,657603,51272,51272,366,51271,49005,,nowaitsteals
+run-11-16-09-50-50,eden,rdma,5,5,5700,100,1,,,752117,0,0,0,0,0,,nowaitsteals

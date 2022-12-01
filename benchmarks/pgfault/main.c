@@ -12,13 +12,14 @@
 #define RUNTIME_SECS        30
 #define NSAMPLES_PER_THREAD 5000
 #define MAX_XPUT_PER_THREAD 500000
-#define MAX_MEMORY	        (24ULL * 1024 * 1024 * 1024)    // 32 GB
-#define MIN_MEMORY	        (200ULL * 1024 * 1024)   // 200 MB
+#define MAX_MEMORY	        (48ULL * 1024 * 1024 * 1024)    // 48 GB (eden)
+// #define MAX_MEMORY	        (24ULL * 1024 * 1024 * 1024)    // 24 GB (fastswap)
+#define MIN_MEMORY	        (200ULL * 1024 * 1024)          // 200 MB
 #define FASTSWAP_CGROUP_APP "pfbenchmark"
 
 #ifdef EDEN
 /* eden backend */
-#define NTHREADS		                CORES
+#define NTHREADS		                64
 #include "runtime/pgfault.h"
 #include "runtime/timer.h"
 #include "rmem/common.h"
@@ -121,6 +122,7 @@ struct thread_data {
     struct rand_state rs;
     bool sample_lat;
     int rdahead;
+    int round;
 
     /* per-thread results */
     unsigned long npages;
@@ -167,8 +169,7 @@ void* thread_main(void* arg)
     unsigned long randomness, next_sample;
     thread_data_t* targs;
     enum fault_op cur_op;
-    int tmp;
-    int tid;
+    int tmp, tid, i;
 
     targs = (thread_data_t*) arg;
     tid = targs->tid;
@@ -200,6 +201,25 @@ void* thread_main(void* arg)
         addr = start + (randomness & _PAGE_OFFSET_MASK);
         addr = (void*) ((unsigned long) addr & ~0x7);	/* 64-bit align */
         pr_debug("faulting on %p", addr);
+
+#ifdef CHECK_DATA
+        /* check data */
+        ASSERT(((unsigned long) start & _PAGE_OFFSET_MASK) == 0);
+        if (targs->round == 0) {
+            /* write data in the first round */
+            for (i = 0; i < _PAGE_SIZE; i += sizeof(unsigned long)) {
+                *(unsigned long*) (start + i) = (unsigned long) start;
+                pr_debug("wrote %lx at %d", *(unsigned long*) (start + i), i);
+            }
+        }
+        else {
+            /* check data in the every other round */
+            for (i = 0; i < _PAGE_SIZE; i += sizeof(unsigned long)) {
+                pr_debug("read %lx at %d", *(unsigned long*) (start + i), i);
+                BUG_ON(*(unsigned long*) (start + i) != (unsigned long) start);
+            }
+        }
+#endif
 
         /* should we sample this time? */		
         if (targs->sample_lat && npages >= next_sample) {
@@ -243,21 +263,23 @@ void* thread_main(void* arg)
         if (npages % 100 == 0)
             pthread_yield();
 
-        /* if this is not the first run, only cover the pages the 
+        /* if this is not the first round, only cover the pages the 
          * previous run has covered */
-        if (targs->npages && npages >= targs->npages)
+        if (targs->round > 0 && npages >= targs->npages)
             break;
 
 #ifdef DEBUG
         /* break sooner when debugging */
-        if (npages >= 1000)
+        if (npages >= 100)
             break;
 #endif
     }
 
     targs->npages = npages;
     targs->nlatencies = samples;
-    pr_info("thread %d done. npages: %lu", targs->tid, npages);
+    targs->round++;
+    pr_info("thread %d round %d done. npages: %lu", 
+        targs->tid, targs->round, npages);
     return NULL;
 }
 
@@ -356,7 +378,7 @@ int main(int argc, char *argv[])
     struct run_result result;
     unsigned long start;
     int wait_secs;
-    thread_data_t targs[NTHREADS];
+    thread_data_t* targs;
     
     /* time calibration (provided by Eden) */
     CYCLES_PER_US = time_calibrate_tsc();
@@ -377,7 +399,7 @@ int main(int argc, char *argv[])
 #ifdef RDAHEAD
     rdahead = RDAHEAD;
 #endif
-    assert(rdahead >= 0);
+    ASSERT(rdahead >= 0);
 
     /* fault operation */
     op = FO_READ;
@@ -418,6 +440,7 @@ int main(int argc, char *argv[])
         region, size, batch_offset);
 
     /* init threads with segregated regions */
+    targs = malloc(NTHREADS * sizeof(thread_data_t));
     memset(targs, 0, NTHREADS * sizeof(thread_data_t));
     ASSERT(nthreads <= NTHREADS);
     for (i = 0; i < nthreads; i++) {
@@ -426,7 +449,7 @@ int main(int argc, char *argv[])
         targs[i].start = (void*) _align_up(start, _PAGE_SIZE);
         targs[i].size = batch_offset;
         targs[i].npages = 0;
-        assert((targs[i].start + targs[i].size) <= (region + size));
+        ASSERT((targs[i].start + targs[i].size) <= (region + size));
         ASSERTZ(rand_seed(&targs[i].rs, time(NULL) ^ i));
     }
 

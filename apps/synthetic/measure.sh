@@ -77,6 +77,7 @@ configure_for_fault_kind() {
     "pthr")             ;;
     "uthr")             OPTS="$OPTS --shenango";;
     "eden-nh")          OPTS="$OPTS --eden";;
+    "eden-bh")          OPTS="$OPTS --eden --bhints";;
     "eden")             OPTS="$OPTS --eden --hints";;
     "fswap")            OPTS="$OPTS --fastswap";;
     "fswap-uthr")       OPTS="$OPTS --fastswap --shenango";;
@@ -115,6 +116,7 @@ configure_max_local_mem() {
     "pthr")             MAXRSS=6200;;
     "uthr")             MAXRSS=5700;;
     "eden-nh")          MAXRSS=5700;;
+    "eden-bh")          MAXRSS=5700;;
     "eden")             MAXRSS=5700;;
     "fswap")            MAXRSS=6150;    PINNED=$((cores*381));;
     "fswap-uthr")       MAXRSS=6150;    PINNED=$((cores*381));;
@@ -167,7 +169,7 @@ run_vary_lmem() {
     # run
     configure_max_local_mem "$kind" "$cores"
     for memp in `seq 20 10 100`; do
-    # for memp in 100; do
+    # for memp in 20; do
         check_for_stop
         lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
         if [[ $PINNED ]]; then lmem_mb=$((lmem_mb+PINNED)); fi
@@ -230,25 +232,31 @@ run_vary_thr_per_core() {
 rd=         # use read-ahead hints
 ebs=        # set eviction batch size
 evp=        # set eviction policy
-evg=        # set eviction gens
+evg=4       # set eviction gens
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do
-        for c in 1 5 12; do
+        for c in 5; do
             for tpc in 1; do
-                desc="rdma"
+                desc="lru"
                 t=$((c*tpc))
+                # run_vary_lmem "pthr"    "local"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                # run_vary_lmem "uthr"    "local"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
                 # run_vary_lmem "eden-nh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
                 # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg"
-                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "8" "NONE" "$evg"
                 # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "SC" "$evg"
                 # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "LRU" "$evg"
                 # run_vary_lmem "eden-nh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "10" "$zs" "$rd" "$ebs" "NONE" "$evg"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "$ebs" "NONE" "$evg"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "50" "$zs" "$rd" "8" "NONE" "$evg"
-
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "0" "$ebs" "NONE" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1" "$ebs" "NONE" "$evg"
                 # run_vary_lmem "fswap"    "local"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
-                run_vary_lmem "fswap"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                # run_vary_lmem "fswap"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg"
+                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "$evp" "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "SC"   "$evg"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "LRU"  "$evg"
             done
         done
     done

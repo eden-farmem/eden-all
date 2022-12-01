@@ -122,6 +122,13 @@ case $i in
     SHENANGO=1
     ;;
 
+    -bh|--bhints)
+    EDEN=1
+    HINTS=1
+    BHINTS=1
+    SHENANGO=1
+    ;;
+
     -fs|--fastswap)
     FASTSWAP=1
     #SHENANGO=1
@@ -323,6 +330,11 @@ if [[ $EDEN ]]; then
     if [[ $HINTS ]]; then
         RMEM="eden"
         CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
+    fi
+
+    if [[ $BHINTS ]]; then
+        RMEM="eden-bh"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
     fi
 
     # eviction policy

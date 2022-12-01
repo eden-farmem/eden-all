@@ -109,14 +109,4 @@ static int pin_thread(int core) {
   return retcode;
 }
 
-/* a fast xorshift pseudo-random generator
- * from https://prng.di.unimi.it/xoshiro256plusplus.c */
-struct rand_state {
-  unsigned long s[4];
-};
-
-/* from wikipedia: https://en.wikipedia.org/wiki/Xorshift */ 
-int rand_seed(struct rand_state* result, unsigned long seed);
-unsigned long rand_next(struct rand_state* state);
-
 #endif  // __UTILS_H__
