@@ -1,0 +1,10 @@
+Exp,RMem,Backend,CPU,Threads,Local_MB,LMem%,ZipfS,EvB,EvP,Xput,Faults,FaultsR,KFaults,Evicts,KEvicts,EvPopped,Desc,XputNorm
+run-11-26-14-45-11,fastswap,local,5,5,3135,20,1,1,NONE,398760,483401,,,,,,nordahead,0.463201
+run-11-26-14-46-46,fastswap,local,5,5,3750,30,1,1,NONE,435987,413611,,,,,,nordahead,0.506444
+run-11-26-14-48-21,fastswap,local,5,5,4365,40,1,1,NONE,488383,348299,,,,,,nordahead,0.567307
+run-11-26-14-49-56,fastswap,local,5,5,4980,50,1,1,NONE,532575,297396,,,,,,nordahead,0.618641
+run-11-26-14-51-33,fastswap,local,5,5,5595,60,1,1,NONE,588518,235955,,,,,,nordahead,0.683625
+run-11-26-14-53-09,fastswap,local,5,5,6210,70,1,1,NONE,642526,172478,,,,,,nordahead,0.74636
+run-11-26-14-54-46,fastswap,local,5,5,6825,80,1,1,NONE,709207,110144,,,,,,nordahead,0.823817
+run-11-26-14-56-23,fastswap,local,5,5,7440,90,1,1,NONE,776985,46687,,,,,,nordahead,0.902548
+run-11-26-14-58-00,fastswap,local,5,5,8055,100,1,1,NONE,860879,4886,,,,,,nordahead,1
