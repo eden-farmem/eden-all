@@ -54,51 +54,6 @@ uint64_t time_calibrate_tsc(void)
 	return 0;
 }
 
-/* a fast xorshift pseudo-random generator
- * from https://prng.di.unimi.it/xoshiro256plusplus.c */
-static inline uint64_t rotl(const uint64_t x, int k) {
-	return (x << k) | (x >> (64 - k));
-}
-
-uint64_t splitmix64(uint64_t* state) {
-	uint64_t result = ((*state) += 0x9E3779B97f4A7C15);
-	result = (result ^ (result >> 30)) * 0xBF58476D1CE4E5B9;
-	result = (result ^ (result >> 27)) * 0x94D049BB133111EB;
-	return result ^ (result >> 31);
-}
-
-/* from wikipedia: https://en.wikipedia.org/wiki/Xorshift */ 
-int rand_seed(struct rand_state* result, uint64_t seed) {
-	uint64_t smx_state = seed;
-	uint64_t tmp = splitmix64(&smx_state);
-	result->s[0] = (uint32_t)tmp;
-	result->s[1] = (uint32_t)(tmp >> 32);
-
-	tmp = splitmix64(&smx_state);
-	result->s[2] = (uint32_t)tmp;
-	result->s[3] = (uint32_t)(tmp >> 32);
-	if (result->s[0] == 0 && result->s[1] == 0 && 
-		result->s[2] == 0 && result->s[3] == 0)
-			return 1;	/*bad seed*/
-	return 0;
-}
-
-uint64_t rand_next(struct rand_state* state) {
-  uint64_t* s = state->s;
-	const uint64_t result = rotl(s[0] + s[3], 23) + s[0];
-	const uint64_t t = s[1] << 17;
-
-	s[2] ^= s[0];
-	s[3] ^= s[1];
-	s[1] ^= s[2];
-	s[0] ^= s[3];
-
-	s[2] ^= t;
-
-	s[3] = rotl(s[3], 45);
-	return result;
-}
-
 void dump_stack() {
   void *trace[16];
   char **messages = (char **)NULL;

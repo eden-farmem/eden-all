@@ -141,12 +141,13 @@ measure_xput_vary_cpu()
 {
     name="nohints"
     # sc="shenango"
-    for bkend in "local" "rdma"; do
-        for rmem in "bhints"; do
+    for bkend in "rdma"; do
+        for rmem in "hints"; do
         # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
         # for rmem in "fswap"; do       # "fswap+1" "fswap+3" "fswap+7" ; do
-            for evict in "noevict"; do  # ""evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
-                for op in "read"; do
+            # for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
+            for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16"; do
+                for op in "read" "write"; do
                 # for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
@@ -157,7 +158,7 @@ measure_xput_vary_cpu()
 
                     # set opts
                     set_hints_opts      "$rmem"
-                    set_evict_opts      "$evictc"
+                    set_evict_opts      "$evict"
                     set_backend_opts    "$bkend"
                     set_fault_op_opts   "$op"
                     set_scheduler       "$sc"
