@@ -23,8 +23,9 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
             addr = &base[i];
             if (((unsigned long)addr & _PAGE_OFFSET_MASK) == (_PAGE_SIZE - sizeof(qelement_t))) {
 #ifndef NO_QSORT_ANNOTS
-                POSSIBLE_READ_FAULT_AT(addr);   /* redundant */
-                POSSIBLE_WRITE_FAULT_AT(addr);
+                // HINT_READ_FAULT(addr);   /* redundant */
+                // HINT_WRITE_FAULT(addr);
+                HINT_WRITE_FAULT_OPT_RDAHEAD(addr);
 #endif
             }
         } while (*addr <= pivot && i <= r);
@@ -35,8 +36,9 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
             addr = &base[j];
             if (((unsigned long)addr & _PAGE_OFFSET_MASK) == (_PAGE_SIZE - sizeof(qelement_t))) {
 #ifndef NO_QSORT_ANNOTS
-                POSSIBLE_READ_FAULT_AT(addr);   /* redundant */
-                POSSIBLE_WRITE_FAULT_AT(addr);
+                // HINT_READ_FAULT(addr);   /* redundant */
+                // HINT_WRITE_FAULT(addr);
+                HINT_WRITE_FAULT_OPT_RDAHEAD(addr);
 #endif
             }
         } while (*addr > pivot && j >= l);

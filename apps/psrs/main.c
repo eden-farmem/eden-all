@@ -72,6 +72,7 @@ struct timeval* get_time();
 long int end_timing(struct timeval* start);
 int* generate_array_of_size(size_t size);
 void print_array(int* array, size_t size);
+void fwrite_number(char* name, unsigned long number);
 void checkpoint(char* name);
 
 /*
@@ -124,7 +125,7 @@ void phase3(struct thread_data* data) {
 	partitions[id*(t+1)+t] = end;
 	for (size_t i = start; i < end && pi != t-1; i++) {
 		if (((unsigned long)&input[i] & _PAGE_OFFSET_MASK) == 0)
-			POSSIBLE_READ_FAULT_AT(&input[i]);
+			HINT_READ_FAULT(&input[i]);
 		if (pivots[pi] < input[i]) {
 			partitions[id*(t+1) + pc] = i;
 			pc++;
@@ -139,9 +140,9 @@ void phase3(struct thread_data* data) {
 void copyback(element_t* data, size_t start_pos, size_t len) {
 	for (size_t i = start_pos; i < start_pos + len; i++) {
 		if (((unsigned long)&data[i] & _PAGE_OFFSET_MASK) == 0)
-			POSSIBLE_READ_FAULT_AT(&data[i]);
+			HINT_READ_FAULT_OPT_RDAHEAD(&data[i]);
 		if (((unsigned long)&input[i] & _PAGE_OFFSET_MASK) == 0)
-			POSSIBLE_WRITE_FAULT_AT(&input[i]);
+			HINT_WRITE_FAULT_OPT_RDAHEAD(&input[i]);
 		input[i] = data[i];
 	}
 }
@@ -191,7 +192,7 @@ void phase4(struct thread_data* data) {
 			if (exchange_indices[i] != exchange_indices[i+1]) {
 				addr = &input[exchange_indices[i]];
 				if (((unsigned long) addr & _PAGE_OFFSET_MASK) == 0)
-					POSSIBLE_READ_FAULT_AT(addr);
+					HINT_READ_FAULT_OPT_RDAHEAD(addr);
 				if (!found) {
 					min = *addr;
 					min_pos = i;
@@ -213,7 +214,7 @@ void phase4(struct thread_data* data) {
 		// save the minimum to the final array
 		addr = &merged_values[start_pos + mi];
 		if (((unsigned long) addr & _PAGE_OFFSET_MASK) == 0)
-			POSSIBLE_WRITE_FAULT_AT(addr);
+			HINT_WRITE_FAULT_OPT_RDAHEAD(addr);
 		*addr = min;
 		// increase the counter of the range that 
 		// the minimum value belongs to
@@ -365,16 +366,19 @@ int main(int argc, char *argv[]){
 	ro 	= t / 2;
 	printf("size: %lu\n", size);
 
+	/* write pid and wait some time for the saved pid to be added to 
+     * the cgroup to enforce fastswap limits */
+	pr_info("writing out pid %d", getpid());
+	fwrite_number("main_pid", getpid());
+    sleep(1);
+
 #ifdef SHENANGO
 	/* initialize shenango */
-	char shenangocfg[] = "shenango.config"; /* ensure this file exists  */
-	int ret = runtime_init(shenangocfg, main_thread, NULL);
-	assert(ret != 0);
+	pr_info("running with shenango");
+	ret = runtime_init("shenango.config", main_thread, NULL);
+	ASSERTZ(ret);
 #else
-#ifdef WITH_KONA
-	/* initialize kona. in case of shenango, it is taken care of. */
-	rinit();
-#endif
+	pr_info("running with pthreads");
 	main_thread(NULL);
 #endif
 
@@ -411,7 +415,7 @@ int* generate_array_of_size(size_t size) {
 	srandom(15);
 	int* randoms = RMALLOC(sizeof(element_t) * size);
 	for (size_t i = 0; i < size; i++) {
-		POSSIBLE_WRITE_FAULT_AT(&randoms[i]);
+		HINT_WRITE_FAULT(&randoms[i]);
 		randoms[i] = (element_t) random();
 	}
 	pr_info("input buffer: start: %p size %lu", randoms, size);
@@ -426,12 +430,17 @@ void print_array(int* array, size_t size) {
 	printf("\n");
 }
 
-/* save unix timestamp of a checkpoint */
-void checkpoint(char* name) {
+/* save a number to a file */
+void fwrite_number(char* name, unsigned long number) {
 	FILE* fp = fopen(name, "w");
-	fprintf(fp, "%lu", time(NULL));
+	fprintf(fp, "%lu", number);
 	fflush(fp);
 	fclose(fp);
+}
+
+/* save unix timestamp of a checkpoint */
+void checkpoint(char* name) {
+	fwrite_number(name, time(NULL));
 }
 
 // reference: https://stackoverflow.com/a/27284318/9985287

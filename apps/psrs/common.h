@@ -19,11 +19,9 @@
 #include "runtime/thread.h"
 #include "runtime/sync.h"
 #include "runtime/pgfault.h"
-#endif
-
-/* for kona */
-#ifdef WITH_KONA
-#include "klib.h"
+#include "runtime/timer.h"
+#include "base/atomic.h"
+#include "asm/atomic.h"
 #endif
 
 /* for custom qsort */
@@ -38,43 +36,105 @@ typedef int element_t;
 
 /* thread/sync primitives from various platforms */
 #ifdef SHENANGO
-#define THREAD_T						unsigned long
-#define THREAD_CREATE(id,routine,arg)	thread_spawn(routine,arg)
-#define THREAD_EXIT(ret)				thread_exit()
-#define BARRIER_T		 				barrier_t
-#define BARRIER_INIT(b,c)				barrier_init(b, c)
-#define BARRIER_WAIT 					barrier_wait
-#define BARRIER_DESTROY(b)				{}
+#define THREAD_T						            unsigned long
+#define THREAD_CREATE(id,routine,arg)	  thread_spawn(routine,arg)
+#define THREAD_EXIT(ret)				        thread_exit()
+#define BARRIER_T		 				            barrier_t
+#define BARRIER_INIT(b,c)				        barrier_init(b, c)
+#define BARRIER_WAIT 					          barrier_wait
+#define BARRIER_DESTROY(b)				      {}
+#define WAITGROUP_T						          waitgroup_t
+#define WAITGROUP_INIT(wg)				      waitgroup_init(&wg)
+#define WAITGROUP_ADD(wg,val)			      waitgroup_add(&wg,val)
+#define WAITGROUP_WAIT(wg)				      waitgroup_wait(&wg)
+#define MUTEX_T                         mutex_t
+#define MUTEX_INIT(m)                   mutex_init(m)
+#define MUTEX_LOCK(m)                   mutex_lock(m)
+#define MUTEX_UNLOCK(m)                 mutex_unlock(m)
+#define MUTEX_DESTROY(m)                {}
+#define SPINLOCK_T                      spinlock_t
+#define SPIN_LOCK_INIT(s)               spin_lock_init(s)
+#define SPIN_LOCK(s)                    spin_lock(s)
+#define SPIN_UNLOCK(s)                  spin_unlock(s)
+#define SPIN_LOCK_DESTROY(s)            {}
+#define USLEEP                          timer_sleep
 #else 
-#define THREAD_T						pthread_t
+#define THREAD_T						            pthread_t
 #define THREAD_CREATE(tid,routine,arg)	pthread_create(tid,NULL,routine,arg)
-#define THREAD_EXIT(ret)				pthread_exit(ret)
-#define BARRIER_T		 				pthread_barrier_t
-#define BARRIER_INIT(b,c)				pthread_barrier_init(b, NULL, c)
-#define BARRIER_WAIT 					pthread_barrier_wait
-#define BARRIER_DESTROY(b) 				pthread_barrier_destroy(b)
+#define THREAD_EXIT(ret)				        pthread_exit(ret)
+#define BARRIER_T		 				            pthread_barrier_t
+#define BARRIER_INIT(b,c)				        pthread_barrier_init(b, NULL, c)
+#define BARRIER_WAIT 					          pthread_barrier_wait
+#define BARRIER_DESTROY(b) 				      pthread_barrier_destroy(b)
+#define WAITGROUP_T						          int
+#define WAITGROUP_INIT(wg)				      { wg = 0; 	}
+#define WAITGROUP_ADD(wg,val)			      { wg++; 	}
+#define WAITGROUP_WAIT(wg)				      { for(int z=0; z < nworkers; z++)	pthread_join(workers[z], NULL); }
+#define MUTEX_T                         pthread_mutex_t
+#define MUTEX_INIT(m)                   pthread_mutex_init(m, NULL)
+#define MUTEX_LOCK(m)                   pthread_mutex_lock(m)
+#define MUTEX_UNLOCK(m)                 pthread_mutex_unlock(m)
+#define MUTEX_DESTROY(m)                pthread_mutex_destroy(m)
+#define SPINLOCK_T                      pthread_spinlock_t
+#define SPIN_LOCK_INIT(s)               pthread_spin_init(s, 0)
+#define SPIN_LOCK(s)                    pthread_spin_lock(s)
+#define SPIN_UNLOCK(s)                  pthread_spin_unlock(s)
+#define SPIN_LOCK_DESTROY(s)            pthread_spin_destroy(s)
+#define USLEEP                          usleep
 #endif
 
 /* remote memory primitives */
-#ifdef WITH_KONA
+#if defined(EDEN)
+#include "rmem/api.h"
+#include "rmem/common.h"
 #define RMALLOC		rmalloc
-#define RFREE		  rfree
+#define RFREE		  rmfree
 #else
 #define RMALLOC		malloc
 #define RFREE		  free
 #endif
 
 /* fault annotations */
-#if defined(SHENANGO) && defined(ANNOTATE_FAULTS)
-// #define POSSIBLE_READ_FAULT_AT   /* already defined */
-// #define POSSIBLE_WRITE_FAULT_AT  /* already defined */
-#define POSSIBLE_READ_FAULT_AT    possible_read_fault_on
-#define POSSIBLE_WRITE_FAULT_AT   possible_write_fault_on
-// #define POSSIBLE_READ_FAULT_AT    is_page_mapped
-// #define POSSIBLE_WRITE_FAULT_AT   is_page_mapped_and_wrprotected
+#if defined(EDEN)
+#define HINT_READ_FAULT             hint_read_fault
+#define HINT_WRITE_FAULT            hint_write_fault
+#define HINT_READ_FAULT_RDAHEAD     hint_read_fault_rdahead
+#define HINT_WRITE_FAULT_RDAHEAD    hint_write_fault_rdahead
 #else
-#define POSSIBLE_READ_FAULT_AT(a)	  {}
-#define POSSIBLE_WRITE_FAULT_AT(a)	{}
+#define HINT_READ_FAULT             {}
+#define HINT_WRITE_FAULT            {}
+#define HINT_READ_FAULT_RDAHEAD     {}
+#define HINT_WRITE_FAULT_RDAHEAD    {}
+#endif
+
+/* hints with build-time specified, optional readahead */
+#ifdef RDAHEAD
+#define HINT_READ_FAULT_OPT_RDAHEAD(x)    HINT_READ_FAULT_RDAHEAD(x,RDAHEAD)
+#define HINT_WRITE_FAULT_OPT_RDAHEAD(x)   HINT_WRITE_FAULT_RDAHEAD(x,RDAHEAD)
+#else
+#define HINT_READ_FAULT_OPT_RDAHEAD(x)    HINT_READ_FAULT(x)
+#define HINT_WRITE_FAULT_OPT_RDAHEAD(x)   HINT_WRITE_FAULT(x)
+#endif
+
+/* remote memory configuration helpers */
+#if defined(EDEN)
+#include "rmem/common.h"
+#define SET_MAX_LOCAL_MEM(limit)    { local_memory = limit; }
+#define GET_CURRENT_LOCAL_MEM()     (atomic64_read(&memory_used))
+#define LOCK_MEMORY(addr,len)       {}
+#define UNLOCK_MEMORY(addr,len)     {}
+#elif defined(FASTSWAP)
+#include "fastswap.h"
+#include "sys/mman.h"
+#define SET_MAX_LOCAL_MEM(limit)    set_local_memory_limit(limit)
+#define GET_CURRENT_LOCAL_MEM()     get_memory_usage()
+#define LOCK_MEMORY(addr,len)       mlock(addr,len)
+#define UNLOCK_MEMORY(addr,len)     munlock(addr,len)
+#else
+#define SET_MAX_LOCAL_MEM(limit)    {}
+#define GET_CURRENT_LOCAL_MEM()     0
+#define LOCK_MEMORY(addr,len)       {}
+#define UNLOCK_MEMORY(addr,len)     {}
 #endif
 
 /* page size parameters */

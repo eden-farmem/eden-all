@@ -306,15 +306,15 @@ msort_with_tmp (const struct msort_param *p, void *b, size_t n)
       while (n1 > 0 && n2 > 0)
 	{ 
     if (((unsigned long)b1 & _PAGE_OFFSET_MASK) == 0) {
-      POSSIBLE_READ_FAULT_AT(b1);
+      HINT_READ_FAULT(b1);
       counter++;     
     }
     if (((unsigned long)b2 & _PAGE_OFFSET_MASK) == 0){
-      POSSIBLE_READ_FAULT_AT(b2);
+      HINT_READ_FAULT(b2);
       counter++;     
     }
     if (((unsigned long)tmp & _PAGE_OFFSET_MASK) == 0) {
-      POSSIBLE_WRITE_FAULT_AT(tmp);
+      HINT_WRITE_FAULT(tmp);
       counter++;
     }
 	  if ((*(qelement_t*)b1 - *(qelement_t*)b2) <= 0)
