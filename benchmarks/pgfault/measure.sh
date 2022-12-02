@@ -146,13 +146,13 @@ measure_xput_vary_cpu()
     name="nohints"
     # sc="shenango"
     for bkend in "local"; do
-        for rmem in "fswap"; do
+        for rmem in "hints"; do
         # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
         # for rmem in "fswap"; do       # "fswap+1" "fswap+3" "fswap+7" ; do
             # for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
             for evict in "evict"; do
+                # for op in "read" "write"; do
                 for op in "read" "write"; do
-                # for op in "read"; do
                     # reset
                     cfg=${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
@@ -181,8 +181,13 @@ measure_xput_vary_cpu()
                             xput=$(cat result 2>/dev/null)
                             reclaimcpu=
                             if [ -f run_start ] && [ -f run_end ]; then
-                                cpuvals=$(bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf="cpu_reclaim.sar" -sc="%system" -t1=`cat run_start` -t2=`cat run_end` | tail -n+2)
-                                reclaimcpu=$(mean "$cpuvals")
+                                if [ "$rmem" == "fswap" ]; then
+                                    cpuvals=$(bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf="cpu_reclaim.sar" -sc="%system" -t1=`cat run_start` -t2=`cat run_end` | tail -n+2)
+                                    reclaimcpu=$(mean "$cpuvals")
+                                elif [[ "$rmem" == "hints"* ]]; then
+                                    python3 ../../scripts/parse_eden_rmem.py -i rmem-stats.out -st `cat run_start` -et `cat run_end` -o ${TMP_FILE_PFX}stats
+                                    reclaimcpu=$(csv_column_mean "${TMP_FILE_PFX}stats" "cpu_per_h")
+                                fi
                             fi
                             echo "$cores,$xput,$reclaimcpu" >> $datafile        # record xput
 

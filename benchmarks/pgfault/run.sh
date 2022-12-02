@@ -26,14 +26,6 @@ ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
 FASTSWAP_DIR="${ROOT_DIR}/fastswap"
 APPNAME="pfbenchmark"
 BINFILE="main.out"
-HOST_SSH="sc40"
-HOST_IP="192.168.0.40"
-RCNTRL_SSH="sc07"
-RCNTRL_IP="192.168.0.7"
-RCNTRL_PORT="9202"
-MEMSERVER_SSH=$RCNTRL_SSH
-MEMSERVER_IP=$RCNTRL_IP
-MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/eden"
 TMP_FILE_PFX="tmp_shen_"
 CFGFILE="default.config"
@@ -49,6 +41,24 @@ EVICT_THRESHOLD=100         # no handler eviction
 EVICT_BATCH_SIZE=1
 EXPECTED_PTI=off
 SCHEDULER=pthreads
+
+# network topology
+HOST_SSH="sc30"
+HOST_IP="192.168.100.106"
+RCNTRL_SSH="sc07"
+RCNTRL_IP="192.168.100.81"
+RCNTRL_PORT="9202"
+MEMSERVER_SSH=$RCNTRL_SSH
+MEMSERVER_IP=$RCNTRL_IP
+MEMSERVER_PORT="9200"
+if [ "`hostname`" == "sc2-hs2-b1640" ];
+then
+    # fastswap
+    HOST_SSH="sc40"
+    HOST_IP="192.168.0.40"
+    RCNTRL_IP="192.168.0.7"
+    MEMSERVER_IP=$RCNTRL_IP
+fi
 
 # parse cli
 for i in "$@"
