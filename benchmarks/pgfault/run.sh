@@ -182,8 +182,8 @@ NUMA_NODE=1
 BASECORE=14             # starting core on the node 
 NIC_PCI_SLOT="0000:d8:00.1"
 RMEM_HANDLER_CORE=55
-FASTSWAP_RECLAIM_CPU=55
-SHENANGO_STATS_CORE=54
+FASTSWAP_RECLAIM_CPU=54
+SHENANGO_STATS_CORE=53
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
 
 # helpers
@@ -205,13 +205,12 @@ cleanup() {
     rm -f main_pid
     sleep 1     #to unbind port
 }
-start_sar() {
+start_cpu_sar() {
     int=$1
-    nohup sar -r ${int}     | ts %s > memory.sar  2>&1 &
-    nohup sar -b ${int}     | ts %s > diskio.sar  2>&1 &
-    nohup sar -P ALL ${int} | ts %s > cpu.sar     2>&1 &
-    nohup sar -n DEV ${int} | ts %s > network.sar 2>&1 &
-    nohup sar -B ${int}     | ts %s > pgfaults.sar 2>&1 &
+    outdir=$2
+    cpustr=${3:-ALL}
+    suffix=$4
+    nohup sar -P ${cpustr} ${int} | ts %s > ${outdir}/cpu${suffix}.sar   2>&1 &
 }
 stop_sar() {
     pkill sar
@@ -395,13 +394,20 @@ rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}"""
     echo "$shenango_cfg" > $CFGFILE
     cat $CFGFILE
+
+    # shenango takes care of scheduling but we still want 
+    # to know what cores it runs to kick off sar
+    # currently, iokernel takes the first core on the node 
+    # and shenango provides the following cores to app
+    CPUSTR="$((BASECORE+1))-$((BASECORE+NCORES))"
+    start_cpu_sar 1 "." ${CPUSTR}
 else
     # Pthreads
     if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
     CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
     wrapper="taskset -a -c ${CPUSTR}"
+    start_cpu_sar 1 "." ${CPUSTR}
 fi
-
 
 # environment
 env=
@@ -426,10 +432,12 @@ fi
 echo "running test"
 if [[ $FASTSWAP ]]; then
     # Fastswap
-    start_sar 1
+    start_cpu_sar 1 "." ${FASTSWAP_RECLAIM_CPU} "_reclaim"
     start_memory_stat
     start_vmstat
     start_fsstat
+
+    # run
     sudo ${prefix} ./${BINFILE} ${CFGFILE} 2>&1 &
     tries=0
     while [ ! -f main_pid ] && [ $tries -lt 30 ]; do

@@ -17,6 +17,8 @@ usage="\n
 
 #Defaults
 SCRIPT_DIR=`dirname "$0"`
+ROOT_DIR="${SCRIPT_DIR}/../.."
+ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
 TEMP_PFX=tmp_shenango_
 PLOTSRC=${SCRIPT_DIR}/../../scripts/plot.py
 PLOTDIR=plots 
@@ -25,6 +27,8 @@ PLOTEXT=png
 CFGFILE=${TEMP_PFX}shenango.config
 LATFILE=latencies
 # PRELOAD="--preload"
+
+source ${ROOT_SCRIPTS_DIR}/utils.sh
 
 # parse cli
 for i in "$@"
@@ -141,12 +145,12 @@ measure_xput_vary_cpu()
 {
     name="nohints"
     # sc="shenango"
-    for bkend in "rdma"; do
-        for rmem in "hints"; do
+    for bkend in "local"; do
+        for rmem in "fswap"; do
         # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
         # for rmem in "fswap"; do       # "fswap+1" "fswap+3" "fswap+7" ; do
             # for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
-            for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16"; do
+            for evict in "evict"; do
                 for op in "read" "write"; do
                 # for op in "read"; do
                     # reset
@@ -169,13 +173,18 @@ measure_xput_vary_cpu()
                         bash run.sh --clean
                         # reloading fastswap everytime takes time
                         bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
-                        echo "cores,xput" > $datafile
+                        echo "cores,xput,reclaimcpu" > $datafile
                         for cores in `seq 1 1 12`; do 
                         # for cores in 1; do 
                             rm -f result
                             bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" ${PRELOAD}
                             xput=$(cat result 2>/dev/null)
-                            echo "$cores,$xput" >> $datafile        # record xput
+                            reclaimcpu=
+                            if [ -f run_start ] && [ -f run_end ]; then
+                                cpuvals=$(bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf="cpu_reclaim.sar" -sc="%system" -t1=`cat run_start` -t2=`cat run_end` | tail -n+2)
+                                reclaimcpu=$(mean "$cpuvals")
+                            fi
+                            echo "$cores,$xput,$reclaimcpu" >> $datafile        # record xput
 
                             # clean and wait a bit
                             bash run.sh --clean

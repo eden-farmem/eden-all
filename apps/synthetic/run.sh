@@ -243,21 +243,18 @@ NUMA_NODE=1
 BASECORE=14
 NIC_PCI_SLOT="0000:d8:00.1"
 RMEM_HANDLER_CORE=55
-FASTSWAP_RECLAIM_CPU=55
-SHENANGO_STATS_CORE=54
+FASTSWAP_RECLAIM_CPU=54
+SHENANGO_STATS_CORE=53
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
 NTHREADS=${NTHREADS:-$NCORES}
 
 # helpers
-start_sar() {
+start_cpu_sar() {
     int=$1
     outdir=$2
     cpustr=${3:-ALL}
-    nohup sar -P ${cpustr} ${int} | ts %s > ${outdir}/cpu.sar   2>&1 &
-    # nohup sar -r ${int}     | ts %s > ${outdir}/memory.sar  2>&1 &
-    # nohup sar -b ${int}     | ts %s > ${outdir}/diskio.sar  2>&1 &
-    # nohup sar -n DEV ${int} | ts %s > ${outdir}/network.sar 2>&1 &
-    nohup sar -B ${int}     | ts %s > ${outdir}/pgfaults.sar 2>&1 &
+    suffix=$4
+    nohup sar -P ${cpustr} ${int} | ts %s > ${outdir}/cpu${suffix}.sar   2>&1 &
 }
 stop_sar() {
     pkill sar || true
@@ -522,9 +519,6 @@ for retry in 1; do
     if [[ $EDEN ]] && [ "$BACKEND" == "rdma" ]; then
         env="RDMA_RACK_CNTRL_IP=$RCNTRL_IP"
         env="$env RDMA_RACK_CNTRL_PORT=$RCNTRL_PORT"
-        env="$env EVICTION_THRESHOLD=0.99"
-        env="$env EVICTION_DONE_THRESHOLD=0.99"
-        env="$env MEMORY_LIMIT=$LMEM"
         wrapper="$wrapper $env"
     fi
 
@@ -534,14 +528,14 @@ for retry in 1; do
         # currently, iokernel takes the first core on the node 
         # and shenango provides the following cores to app
         CPUSTR="$((BASECORE+1))-$((BASECORE+NCORES))"
-        start_sar 1 "." ${CPUSTR}
+        start_cpu_sar 1 "." ${CPUSTR}
     else 
         # pin the app to required number of cores ourselves
         # use cores 14-27 for non-hyperthreaded setting
         if [ $NCORES -gt 14 ];   then echo "WARNING! hyperthreading enabled"; fi
         CPUSTR="$BASECORE-$((BASECORE+NCORES-1))"
         wrapper="$wrapper taskset -a -c ${CPUSTR}"
-        start_sar 1 "." ${CPUSTR}
+        start_cpu_sar 1 "." ${CPUSTR}
     fi 
 
     # run in gdb server if requested
@@ -558,6 +552,7 @@ for retry in 1; do
         start_memory_stat
         start_vmstat
         start_fsstat
+        start_cpu_sar 1 "." ${FASTSWAP_RECLAIM_CPU} "_reclaim"
     fi
 
     # run

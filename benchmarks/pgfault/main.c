@@ -12,14 +12,13 @@
 #define RUNTIME_SECS        30
 #define NSAMPLES_PER_THREAD 5000
 #define MAX_XPUT_PER_THREAD 500000
-#define MAX_MEMORY	        (48ULL * 1024 * 1024 * 1024)    // 48 GB (eden)
-// #define MAX_MEMORY	        (24ULL * 1024 * 1024 * 1024)    // 24 GB (fastswap)
 #define MIN_MEMORY	        (200ULL * 1024 * 1024)          // 200 MB
 #define FASTSWAP_CGROUP_APP "pfbenchmark"
 
 #ifdef EDEN
 /* eden backend */
-#define NTHREADS		                64
+#define MAX_MEMORY	            (48ULL * 1024 * 1024 * 1024)    // 48 GB (eden)
+#define NTHREADS		        64
 #include "runtime/pgfault.h"
 #include "runtime/timer.h"
 #include "rmem/common.h"
@@ -43,6 +42,7 @@ void set_page_rdahead(int rdahead)
 
 #elif defined FASTSWAP
 /* fastswap backend */
+#define MAX_MEMORY	        (24ULL * 1024 * 1024 * 1024)    // 24 GB (fastswap)
 #define NTHREADS		                CORES
 #define heap_alloc(size)                aligned_alloc(_PAGE_SIZE,size)
 #define hint_read_fault_rdahead(a,r)    {}
@@ -119,7 +119,7 @@ struct thread_data {
     enum fault_op op;
     void* start;
     size_t size;
-    struct rand_state rs;
+    struct app_rand_state rs;
     bool sample_lat;
     int rdahead;
     int round;
@@ -192,7 +192,7 @@ void* thread_main(void* arg)
     while(!stop && (start < (targs->start + targs->size)))
     {
         now_tsc = 0;
-        randomness = rand_next(&targs->rs);
+        randomness = app_rand_next(&targs->rs);
     
         if (targs->op == FO_RANDOM)
             cur_op = (randomness & (1<<16)) ? FO_READ : FO_WRITE;
@@ -450,7 +450,7 @@ int main(int argc, char *argv[])
         targs[i].size = batch_offset;
         targs[i].npages = 0;
         ASSERT((targs[i].start + targs[i].size) <= (region + size));
-        ASSERTZ(rand_seed(&targs[i].rs, time(NULL) ^ i));
+        ASSERTZ(app_rand_seed(&targs[i].rs, time(NULL) ^ i));
     }
 
 #ifdef PRELOAD
@@ -472,8 +472,10 @@ int main(int argc, char *argv[])
 #endif
     
     /* now do the op again */
+    save_number_to_file("run_start", time(NULL));
     set_local_memory_limit(evict_on_path ? MIN_MEMORY : MAX_MEMORY);
     result = do_work(targs, nthreads, op, rdahead, RUNTIME_SECS, sample_lat);
+    save_number_to_file("run_end", time(NULL));
 
     /* write xput to file */
     pr_info("ran for %.1lf secs with %.0lf ops /sec",
