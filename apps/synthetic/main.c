@@ -15,6 +15,9 @@
 #define NUM_LAT_SAMPLES 	5000
 #define BLOB_SIZE 			((unsigned long)2*PAGE_SIZE)
 #define AES_KEY_SIZE 		128
+#ifndef KEYS_PER_REQ
+#define KEYS_PER_REQ 		1
+#endif
 
 /* these decide how long the experiment runs and how many 
  * requests to generate. Adjust maximum expected performance 
@@ -199,9 +202,10 @@ prepare_workload(void* arg) {
 }
 
 /* the real work for each request */
-static inline void process_request(int key, int nblobs,
+static inline void process_request(int keys[], int nkeys, int nblobs,
 		struct snappy_env* env,
-		char* encbuffer, char* zipbuffer) {
+		char* encbuffer, char* zipbuffer)
+{
 	int i, ret, found;
 	size_t ziplen;
 	void *data, *nextin;
@@ -212,15 +216,20 @@ static inline void process_request(int key, int nblobs,
 		0xff, 0xff, 0xff, 0xff };
 	int ncompress = 0;
 
-	/* lookup hash table */
-	*(uint32_t*)key_template = key;
-	value = (unsigned long)hopscotch_lookup(ht, key_template, &found);
-	ASSERT(found);
+	/* lookup hash table a number of times */
+	ASSERT(nkeys > 0);
+	for (i = 0; i < nkeys; i++) {
+		*(uint32_t*)key_template = keys[i];
+		value = (unsigned long)hopscotch_lookup(ht, key_template, &found);
+		ASSERT(found);
+	}
 	// ASSERT(value == key % nblobs);
+
+	/* use the last value to get the blob */
 	ASSERT(0 <= value && value < nblobs);
+	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
 	nextin = blobdata + value * BLOB_SIZE;
 
-	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
 #ifdef USE_READAHEAD
 	HINT_READ_FAULT_RDAHEAD(nextin, 1);
 #else
@@ -253,8 +262,10 @@ void
 #else 
 void* 
 #endif
-run(void* arg) {
-	int ret, i, key;
+run(void* arg)
+{
+	int ret, i, j, nkeys;
+	int keys[KEYS_PER_REQ];
 	void *data, *nextin;
 	unsigned long ystate = 0;
 	thread_args_t* targs = (thread_args_t*)arg;
@@ -290,8 +301,9 @@ run(void* arg) {
 	BARRIER_WAIT(&warmup);
 	while(!stop_button) {
 		/* pick a random key */
-		key = syn_rand_next(&rand) % targs->nkeys;
-		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
+		BUILD_ASSERT(KEYS_PER_REQ > 0);
+		keys[0] = syn_rand_next(&rand) % targs->nkeys;
+		process_request(keys, 1, targs->nblobs, &env, encbuffer, zipbuffer);
 		thread_yield_after(1000 /* µs */, &ystate);
 	}
 	pr_info("worker %d warmedup", targs->tid);
@@ -300,11 +312,13 @@ run(void* arg) {
 
 	/* actual run */
 	BARRIER_WAIT(&start);
-	for (i = 0; i < targs->len && !stop_button; i++) {
-		/* get the array index from hash table */
-		/* we just save the key as value which is ok for benchmarking purposes */
-		key = zipf_sequence[targs->start + i];
-		process_request(key, targs->nblobs, &env, encbuffer, zipbuffer);
+	for (i = 0; i < targs->len && !stop_button; i += KEYS_PER_REQ) {
+		/* pick a set of zipf-distributed keys */
+		BUILD_ASSERT(KEYS_PER_REQ > 0);
+		for (j = 0; j < KEYS_PER_REQ && (i + j) < targs->len; j++)
+			keys[j] = zipf_sequence[targs->start + i + j];
+		process_request(keys, KEYS_PER_REQ, targs->nblobs, &env,
+			encbuffer, zipbuffer);
 		targs->xput++;
 		thread_yield_after(1000 /* µs */, &ystate);
 	}

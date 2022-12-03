@@ -187,6 +187,11 @@ case $i in
     NBLOBS=${i#*=}
     ;;
 
+    -kpr=*|--keyspreq=*)
+    KEYS_PER_REQ=${i#*=}
+    CFLAGS="$CFLAGS -DKEYS_PER_REQ=$KEYS_PER_REQ"
+    ;;
+
     -lm=*|--localmem=*)
     LMEM=${i#*=}
     ;;
