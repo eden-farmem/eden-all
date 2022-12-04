@@ -13,8 +13,6 @@ usage="\n
 -lm, --lmem \t\t results filter: == localmem\n
 -lmp, --lmemper \t results filter: == localmemper\n
 -be, --backend \t results filter: == backend\n
--pf, --pgfaults \t results filter: == pgfaults\n
--pc, --pgchecks \t results filter: == pgchecks\n
 -zs, --zipfs \t\t results filter: == zipfs\n
 -f, --force \t\t remove any cached data and parse from scratch\n
 -b, --basic \t\t just print basic exp info and ignore results (faster!)\n
@@ -22,13 +20,12 @@ usage="\n
 -rm, --remove \t\t (recoverably) delete runs that match these filters\n
 -of, --outfile \t output results to a file instead of stdout\n"
 
+HOST="sc2-hs2-b1630"
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 DATADIR="${SCRIPT_DIR}/data"
 ROOT_DIR="${SCRIPT_DIR}/../../"
 ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
-HOST="sc2-hs2-b1630"
-CLIENT="sc2-hs2-b1632"
 TRASH="${DATADIR}/trash"
 
 source ${ROOT_SCRIPTS_DIR}/utils.sh
@@ -44,13 +41,17 @@ case $i in
     -cs=*|--csuffix=*)
     CSUFFIX="${i#*=}"
     ;;
-    
+
     -of=*|--outfile=*)
     OUTFILE="${i#*=}"
     ;;
 
     -rm|--remove)
     DELETE=1
+    ;;
+
+    -f|--force)
+    FORCE=1
     ;;
 
     # OUTPUT FILTERS
@@ -101,7 +102,7 @@ case $i in
     -d=*|--desc=*)
     DESC="${i#*=}"
     ;;
-    
+
     -b|--basic)
     BASIC=1
     ;;
@@ -175,7 +176,7 @@ for exp in $LS_CMD; do
     if [[ $EVPOL ]] && [ "$EVPOL" != "$evictpol" ];         then    continue;   fi
     if [[ $EVBATCH ]] && [ "$EVBATCH" != "$evictbs" ];      then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
-    
+
     if [ -z "$BASIC" ]; then
         # gather numbers
         preload_start=$(cat $exp/preload_start 2>/dev/null)
@@ -239,6 +240,7 @@ for exp in $LS_CMD; do
             hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
             # madvd=$(csv_column_max "$edenout" "rmadv_size")
             annothits=$(csv_column_mean "$edenout" "annot_hits")
+            reclaimcpu=$(csv_column_mean "$edenout" "cpu_per_h")
             hitr=
             if [[ $annothits ]] && [[ $faults ]]; then 
                 hitr=$(percentage "$((annothits-faults))" "$annothits" | ftoi)
@@ -259,6 +261,15 @@ for exp in $LS_CMD; do
             faults=$(csv_column_mean "$vmstat_out" "pgmajfault")
             netreads=$(csv_column_mean "$fstat_out" "loads")
             netwrite=$(csv_column_mean "$fstat_out" "succ_stores")
+
+            # reclaim cpu
+            cpusarout=${exp}/cpu_reclaim_sar_parsed
+            cpusarin=${exp}/cpu_reclaim.sar
+            if [ ! -f $cpusarout ] && [ -f $cpusarin ] && [[ $rstart ]] && [[ $rend ]]; then 
+                bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${cpusarin} -sc="%system" \
+                    -st=${rstart} -et=${rend} -of=${cpusarout}
+            fi
+            reclaimcpu=$(csv_column_mean "$cpusarout" "%system")
         fi
 
         # SHENANGO
@@ -319,6 +330,7 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
         HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
         HEADER="$HEADER,HitR";          LINE="$LINE,${hitr}";
+        HEADER="$HEADER,rCPU%";         LINE="$LINE,${reclaimcpu}";
 
         # HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
         # HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";

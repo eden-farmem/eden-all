@@ -83,8 +83,8 @@ def main():
 
     # conversion
     for field in TO_MB_FIELDS:
-        tdf[field] = (tdf[field] / 1024 / 1024).astype(int)
-        hdf[field] = (hdf[field] / 1024 / 1024).astype(int)
+        tdf[field + "_mb"] = (tdf[field] / 1024 / 1024).astype(int)
+        hdf[field + "_mb"] = (hdf[field] / 1024 / 1024).astype(int)
 
     # accumulated cols
     if not tdf.empty:

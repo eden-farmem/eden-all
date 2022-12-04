@@ -42,7 +42,7 @@ def main():
                 if stat_name == "RX_PULLED:": 
                     rx_pulled = float(stat_val)
                 if stat_name == "BATCH_TOTAL:": 
-                    stats['IOK_SATURATION'].append((tm, rx_pulled / float(stat_val)))
+                    stats['IOK_SATURATION'].append((tm, rx_pulled * 100 / float(stat_val)))
     
     # Correct timestamps: A bunch of logs may get the same timestamp 
     # due to stdout flushing at irregular intervals. Assume that the 
@@ -74,7 +74,7 @@ def main():
     if args.out:
         f = open(args.out, "w")
         # print("writing output stats to " + args.out)
-    tstamps = [ts for ts,_ in stats.values()[0]]
+    tstamps = [ts for ts,_ in list(stats.values())[0]]
     if len(tstamps) > 0:
         start = min(tstamps)
         f.write("time," + ",".join(stats.keys()) + "\n")    # header

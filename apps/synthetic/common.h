@@ -88,11 +88,15 @@
 #define HINT_WRITE_FAULT            hint_write_fault
 #define HINT_READ_FAULT_RDAHEAD     hint_read_fault_rdahead
 #define HINT_WRITE_FAULT_RDAHEAD    hint_write_fault_rdahead
+#define HINT_READ_FAULT_ALL         hint_read_fault_all
+#define HINT_WRITE_FAULT_ALL        hint_write_fault_all
 #else
 #define HINT_READ_FAULT             {}
 #define HINT_WRITE_FAULT            {}
 #define HINT_READ_FAULT_RDAHEAD     {}
 #define HINT_WRITE_FAULT_RDAHEAD    {}
+#define HINT_READ_FAULT_ALL         {}
+#define HINT_WRITE_FAULT_ALL        {}
 #endif
 
 /* remote memory configuration helpers */

@@ -54,18 +54,20 @@ done
 mkdir -p $DATADIR
 MAX_MOPS=50000000
 
-## Eden
+## Eden (Small)
 # NKEYS=10000000      # 2.5 GB
 # NBLOBS=400000       # 3 GB
 # LMEM=1000000000     # 1 GB
+# EDEN_MAX=5700
 # FASTSWAP_MAX=6150
 
-## AIFM
-NKEYS=32000000      # 2.5 GB
-NBLOBS=2000000      # 3 GB
-LMEM=5000000000     # 5 GB
+## AIFM (Large)
+# KEYS_PER_REQ=32
+NKEYS=32000000      # ? GB
+NBLOBS=2000000      # ? GB
+LMEM=5000000000     # ? GB
+EDEN_MAX=20800      # ~20 GB
 FASTSWAP_MAX=24000  # ~24 GB
-CFLAGS="$CFLAGS -DKEYS_PER_REQ=32"
 
 cores=1
 thr=1
@@ -76,7 +78,7 @@ zparams=0.1         # uniform
 touch __running__
 check_for_stop() {
     # stop if the fd is removed
-    if [ ! -f __running__ ]; then 
+    if [ ! -f __running__ ]; then
         echo "stop requested"   
         exit 0
     fi
@@ -124,11 +126,11 @@ configure_max_local_mem() {
     local kind=$1
     local cores=$2
     case $kind in
-    "pthr")             MAXRSS=6200;;
-    "uthr")             MAXRSS=5700;;
-    "eden-nh")          MAXRSS=5700;;
-    "eden-bh")          MAXRSS=5700;;
-    "eden")             MAXRSS=5700;;
+    "pthr")             MAXRSS=;;
+    "uthr")             MAXRSS=;;
+    "eden-nh")          MAXRSS=${EDEN_MAX};;
+    "eden-bh")          MAXRSS=${EDEN_MAX};;
+    "eden")             MAXRSS=${EDEN_MAX};;
     "fswap")            MAXRSS=${FASTSWAP_MAX}; PINNED=$((cores*381));;
     "fswap-uthr")       MAXRSS=${FASTSWAP_MAX}; PINNED=$((cores*381));;
     *)                  echo "Unknown fault kind"; exit;;
@@ -162,6 +164,7 @@ run_vary_lmem() {
     local evp=$9
     local evgens=${10}
     local kpr=${11}
+    local evprio=${12}
 
     # build 
     CFLAGS=
@@ -174,6 +177,7 @@ run_vary_lmem() {
     if [[ $evictbs ]];          then  OPTS="$OPTS --batchevict=${evictbs}"; fi
     if [[ $evgens ]];           then  OPTS="$OPTS --evictgens=${evgens}"; fi
     if [[ $kpr ]];              then  OPTS="$OPTS --keyspreq=${kpr}"; fi
+    if [[ $evprio ]];           then  OPTS="$OPTS --prio"; fi
     # OPTS="$OPTS --sampleepochs"
     # OPTS="$OPTS --safemode"
     rebuild_with_current_config
@@ -182,17 +186,21 @@ run_vary_lmem() {
     # run
     configure_max_local_mem "$kind" "$cores"
     for memp in `seq 20 10 100`; do
-    # for memp in 20; do
+    # for memp in 50; do
         check_for_stop
-        lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
-        if [[ $PINNED ]]; then lmem_mb=$((lmem_mb+PINNED)); fi
-        lmem=$((lmem_mb*1024*1024))
-        echo bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
-            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}            \
-            -lm=${lmem} -lmp=${memp} -zs=${zparams} ${NOPIE} -d="""${desc}"""
+        lmemopt=
+        if [[ $MAXRSS ]]; then 
+            lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
+            if [[ $PINNED ]]; then lmem_mb=$((lmem_mb+PINNED)); fi
+            lmem=$((lmem_mb*1024*1024))
+            lmemopt="-lm=${lmem} -lmp=${memp}"
+        fi
+        echo bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}             \
+            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
+            ${lmemopt} -zs=${zparams} ${NOPIE} -d="""${desc}"""
         bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
             -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
-            -lm=${lmem} -lmp=${memp} -zs=${zparams} ${NOPIE} -d="""${desc}"""
+            ${lmemopt} -zs=${zparams} ${NOPIE} -d="""${desc}"""
     done
 }
 
@@ -242,35 +250,37 @@ run_vary_thr_per_core() {
 }
 
 # runs
-rd=         # use read-ahead hints
-ebs=        # set eviction batch size
-evp=        # set eviction policy
-evg=4       # set eviction gens
-kpr=32      # keys per request
+rd=                     # use read-ahead hints
+ebs=                    # set eviction batch size
+evp=                    # set eviction policy
+evg=4                   # set eviction gens
+prio=                   # enable eviction priority
+kpr=${KEYS_PER_REQ}     # keys per request
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do
         for c in 5; do
             for tpc in 1; do
-                desc="lru"
+                desc="evprio"
                 t=$((c*tpc))
-                # run_vary_lmem "pthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "uthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden-nh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "SC"   "$evg" "$kpr"
-                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "LRU"  "$evg" "$kpr"
-                # run_vary_lmem "eden-nh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "0"   "$ebs" "NONE" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "$ebs" "NONE" "$evg" "$kpr"
-                run_vary_lmem "fswap"   "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "fswap"   "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "$evp" "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "SC"   "$evg" "$kpr"
-                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "LRU"  "$evg" "$kpr"
+                # run_vary_lmem "pthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "uthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden-nh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg" "$kpr" ""
+                run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg" "$kpr" "yes"
+                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "SC"   "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "LRU"  "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden-nh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "0"   "$ebs" "NONE" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "$ebs" "NONE" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "fswap"   "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "fswap"   "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "SC"   "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "LRU"  "$evg" "$kpr" "$prio"
             done
         done
     done
