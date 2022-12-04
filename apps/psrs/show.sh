@@ -213,7 +213,7 @@ for exp in $LS_CMD; do
     # HEADER="$HEADER,Keys";        LINE="$LINE,$((nkeys/1000000))M";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Thr";           LINE="$LINE,${threads}";
-    # HEADER="$HEADER,LocalMem";      LINE="$LINE,${localmem}M";
+    HEADER="$HEADER,LocalMem";      LINE="$LINE,${localmem}M";
     HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
     HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
 

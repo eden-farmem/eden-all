@@ -318,8 +318,9 @@ void main_thread(void* arg) {
 	merged_partition_length = RMALLOC(sizeof(size_t) * t);
 	partitions = RMALLOC(sizeof(size_t) *  t * (t+1));
 	merged_values = RMALLOC(sizeof(element_t) * size);			/* output buffer */	
-	// memset(merged_values, 0, sizeof(element_t) * size);			/* UNDO */
-	pr_info("output buffer: start: %p size %lu", merged_values, size);
+	// memset(merged_values, 0, sizeof(element_t) * size);		/* UNDO */
+	pr_info("output buffer: start: %p size %lu", 
+		merged_values, sizeof(element_t) * size);
 
 	/* start worker threads */
 	start_time;	
@@ -364,7 +365,7 @@ int main(int argc, char *argv[]){
 	t = atoi(argv[2]);
 	w = (size/(t*t));
 	ro 	= t / 2;
-	printf("size: %lu\n", size);
+	printf("nkeys: %lu\n", size);
 
 	/* write pid and wait some time for the saved pid to be added to 
      * the cgroup to enforce fastswap limits */
@@ -418,7 +419,8 @@ int* generate_array_of_size(size_t size) {
 		HINT_WRITE_FAULT(&randoms[i]);
 		randoms[i] = (element_t) random();
 	}
-	pr_info("input buffer: start: %p size %lu", randoms, size);
+	pr_info("input buffer: start: %p size %lu", 
+		randoms, sizeof(element_t) * size);
 	return randoms;
 }
 

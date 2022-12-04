@@ -43,13 +43,20 @@ case $i in
 esac
 done
 
-# settings
-NKEYS=1024000000        # 4 GB input
-# LMEM=250000000        # 250 MB
-LMEM=1000000000         # 1 GB
+# Configs
 CFLAGS="$CFLAGS -DCUSTOM_QSORT"
-cores=1
-thr=1
+
+# Small
+NKEYS=1000000000        # 4 GB input
+FASTSWAP_MAX=7500
+EDEN_MAX=7500   # TBD
+CORES=5
+
+# Large
+NKEYS=3000000000        # ~12 GB input, 25GB working set
+FASTSWAP_MAX=23904
+EDEN_MAX=25000          # TBD
+CORES=10
 
 # create a stop button
 touch __running__
@@ -89,12 +96,12 @@ configure_max_local_mem() {
     local kind=$1
     local cores=$2
     case $kind in
-    "pthr")             MAXRSS=7500;;
-    "uthr")             MAXRSS=7500;;
-    "eden-nh")          MAXRSS=7500;;
-    "eden")             MAXRSS=7500;;
-    "fswap")            MAXRSS=7500;;
-    "fswap-uthr")       MAXRSS=7500;;
+    "pthr")             MAXRSS=;;
+    "uthr")             MAXRSS=;;
+    "eden-nh")          MAXRSS=${EDEN_MAX};;
+    "eden")             MAXRSS=${EDEN_MAX};;
+    "fswap")            MAXRSS=${FASTSWAP_MAX};;
+    "fswap-uthr")       MAXRSS=${FASTSWAP_MAX};;
     *)                  echo "Unknown fault kind"; exit;;
     esac
 }
@@ -141,15 +148,19 @@ run_vary_lmem() {
     # run
     configure_max_local_mem "$kind" "$cores"
     for memp in `seq 20 10 100`; do
-    # for memp in 50; do
+    # for memp in 100; do
         check_for_stop
-        lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
-        lmem=$((lmem_mb*1024*1024))
+        lmemopt=
+        if [[ $MAXRSS ]]; then 
+            lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
+            lmem=$((lmem_mb*1024*1024))
+            lmemopt="-lm=${lmem} -lmp=${memp}"
+        fi
         echo "Running ${cores} cores, ${thr} threads, ${NKEYS} keys"
         echo bash run.sh -c=${cores} -t=${threads} -nk=${NKEYS} ${OPTS} ${FFLAG}\
-            -d="""${desc}""" -fl="""${CFLAGS}""" -lm=${lmem} -lmp=${memp}
+            -d="""${desc}""" -fl="""${CFLAGS}""" ${lmemopt}
         bash run.sh -c=${cores} -t=${threads} -nk=${NKEYS} ${OPTS} ${FFLAG}     \
-            -d="""${desc}""" -fl="""${CFLAGS}""" -lm=${lmem} -lmp=${memp}
+            -d="""${desc}""" -fl="""${CFLAGS}""" ${lmemopt}
     done
 }
 
@@ -158,11 +169,11 @@ rd=         # use read-ahead hints
 ebs=        # set eviction batch size
 evp=        # set eviction policy
 evg=        # set eviction gens
-for c in 1; do
-    for tpc in 1 5; do
-    # for rd in 0 1 3 7; do
-        desc="moretpc"
-        # tpc=1
+tpc=1
+for c in $CORES; do
+    for tpc in 5; do
+    for rd in 0 1 3 7; do
+        desc="large"
         t=$((c*tpc))
         # run_vary_lmem "eden-nh" "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
         # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg"
