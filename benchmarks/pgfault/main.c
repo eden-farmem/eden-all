@@ -278,7 +278,7 @@ void* thread_main(void* arg)
     targs->npages = npages;
     targs->nlatencies = samples;
     targs->round++;
-    pr_info("thread %d round %d done. npages: %lu", 
+    pr_debug("thread %d round %d done. npages: %lu", 
         targs->tid, targs->round, npages);
     return NULL;
 }

@@ -207,6 +207,7 @@ static inline void process_request(int keys[], int nkeys, int nblobs,
 		char* encbuffer, char* zipbuffer)
 {
 	int i, ret, found;
+	int rdahead, prio;
 	size_t ziplen;
 	void *data, *nextin;
 	unsigned long value;
@@ -230,12 +231,18 @@ static inline void process_request(int keys[], int nkeys, int nblobs,
 	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
 	nextin = blobdata + value * BLOB_SIZE;
 
-#ifdef USE_READAHEAD
-	HINT_READ_FAULT_RDAHEAD(nextin, 1);
-#else
-	HINT_READ_FAULT(nextin);
+	/* eden hints for two pages */
+	rdahead = prio = 0;
+#if defined(USE_READAHEAD)
+	rdahead = 1;
 #endif
-	HINT_READ_FAULT(nextin + PAGE_SIZE);
+#if defined(SET_PRIORITY)
+	prio = 1;	/* lower prio for polluting array data */
+#endif
+
+	/* set rdahead on the first page, prio on both */
+	HINT_READ_FAULT_ALL(nextin, rdahead, prio);
+	HINT_READ_FAULT_ALL(nextin + PAGE_SIZE, 0, prio);
 
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */

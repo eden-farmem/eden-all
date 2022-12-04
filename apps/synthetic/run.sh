@@ -71,6 +71,8 @@ SCHEDULER=pthreads
 RMEM=none
 RDAHEAD=no
 EVICT_GENS=1
+PRIO=no
+EVICT_NPRIO=1
 
 NCORES=1
 ZIPFS="0.1"
@@ -145,6 +147,12 @@ case $i in
 
     -eg=*|--evictgens=*)
     EVICT_GENS=${i#*=}
+    ;;
+
+    -pr|--prio)
+    PRIO=yes
+    EVICT_NPRIO=2
+    CFLAGS="$CFLAGS -DSET_PRIORITY"
     ;;
 
     -se|--sampleepochs)
@@ -451,6 +459,7 @@ save_cfg "rdahead"      $RDAHEAD
 save_cfg "evictbatch"   $EVICT_BATCH_SIZE
 save_cfg "evictpolicy"  $EVICT_POLICY
 save_cfg "evictgens"    $EVICT_GENS
+save_cfg "evictprio"    $PRIO
 save_cfg "desc"         $README
 echo -e "$CFGSTORE" > settings
 
@@ -474,7 +483,8 @@ rmem_backend ${BACKEND}
 rmem_local_memory ${LMEM}
 rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}
-rmem_evict_ngens ${EVICT_GENS}"""
+rmem_evict_ngens ${EVICT_GENS}
+rmem_evict_nprio ${EVICT_NPRIO}"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
