@@ -44,13 +44,12 @@ esac
 done
 
 # Configs
-CFLAGS="$CFLAGS -DCUSTOM_QSORT"
 
 # Small
-NKEYS=1000000000        # 4 GB input
-FASTSWAP_MAX=7500
-EDEN_MAX=7500   # TBD
-CORES=5
+# NKEYS=1000000000        # 4 GB input
+# FASTSWAP_MAX=7500
+# EDEN_MAX=7500   # TBD
+# CORES=5
 
 # Large
 NKEYS=3000000000        # ~12 GB input, 25GB working set
@@ -147,8 +146,8 @@ run_vary_lmem() {
     
     # run
     configure_max_local_mem "$kind" "$cores"
-    for memp in `seq 20 10 100`; do
-    # for memp in 100; do
+    # for memp in `seq 20 10 100`; do
+    for memp in 10; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -171,10 +170,12 @@ evp=        # set eviction policy
 evg=        # set eviction gens
 tpc=1
 for c in $CORES; do
-    for tpc in 5; do
+    # for tpc in 1 5; do
     for rd in 0 1 3 7; do
-        desc="large"
+        desc="cqsort"
         t=$((c*tpc))
+        # run_vary_lmem "uthr"    "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
+        # run_vary_lmem "pthr"    "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
         # run_vary_lmem "eden-nh" "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
         # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg"
         # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "8"    "NONE" "$evg"
@@ -186,7 +187,7 @@ for c in $CORES; do
         # run_vary_lmem "eden"    "rdma"  "$c" "50" "$rd" "8"    "NONE" "$evg"
 
         # run_vary_lmem "fswap"    "local"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
-        run_vary_lmem "fswap"    "rdma" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
+        # run_vary_lmem "fswap"    "rdma" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
     done
 done
 

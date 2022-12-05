@@ -317,8 +317,8 @@ void main_thread(void* arg) {
 	pivots = RMALLOC(sizeof(element_t) * (t - 1));
 	merged_partition_length = RMALLOC(sizeof(size_t) * t);
 	partitions = RMALLOC(sizeof(size_t) *  t * (t+1));
-	merged_values = RMALLOC(sizeof(element_t) * size);			/* output buffer */	
-	// memset(merged_values, 0, sizeof(element_t) * size);		/* UNDO */
+	merged_values = RMALLOC(sizeof(element_t) * size);		/* output buffer */	
+	memset(merged_values, 0, sizeof(element_t) * size);
 	pr_info("output buffer: start: %p size %lu", 
 		merged_values, sizeof(element_t) * size);
 
@@ -376,8 +376,7 @@ int main(int argc, char *argv[]){
 #ifdef SHENANGO
 	/* initialize shenango */
 	pr_info("running with shenango");
-	ret = runtime_init("shenango.config", main_thread, NULL);
-	ASSERTZ(ret);
+	runtime_init("shenango.config", main_thread, NULL);
 #else
 	pr_info("running with pthreads");
 	main_thread(NULL);
