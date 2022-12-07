@@ -85,6 +85,9 @@ set_hints_opts() {
     "hints+1")          LS=dashed;      OPTS="$OPTS --rmem --hints --rdahead=1";;
     "hints+2")          LS=dashdot;     OPTS="$OPTS --rmem --hints --rdahead=2";;
     "hints+4")          LS=dashdotdot;  OPTS="$OPTS --rmem --hints --rdahead=4";;
+    "hints-1")          LS=dashed;      OPTS="$OPTS --rmem --hints --rdahead=-1";;
+    "hints-2")          LS=dashdot;     OPTS="$OPTS --rmem --hints --rdahead=-2";;
+    "hints-4")          LS=dashdotdot;  OPTS="$OPTS --rmem --hints --rdahead=-4";;
     "fswap")            LS=solid;       OPTS="$OPTS --fastswap";;
     "fswap+1")          LS=solid;       OPTS="$OPTS --fastswap --rdahead=1";;
     "fswap+3")          LS=dashed;      OPTS="$OPTS --fastswap --rdahead=3";;
@@ -146,7 +149,7 @@ measure_xput_vary_cpu()
     name="nohints"
     # sc="shenango"
     for bkend in "local"; do
-        for rmem in "hints"; do
+        for rmem in "hints+4" "hints-4"; do
         # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
         # for rmem in "fswap"; do       # "fswap+1" "fswap+3" "fswap+7" ; do
             # for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do

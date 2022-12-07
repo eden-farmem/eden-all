@@ -164,7 +164,7 @@ void* thread_main(void* arg)
     void *start, *addr;
     unsigned long npages;
     unsigned long now_tsc;
-    int rdahead, rdahead_skip, rdahead_next, samples;
+    int rdahead_skip, rdahead_next, samples;
     double duration_secs, sampling_rate;
     unsigned long randomness, next_sample;
     thread_data_t* targs;
@@ -180,19 +180,38 @@ void* thread_main(void* arg)
 
     /* wait for all threads to init */
     pr_info("thread %d running with op %d, rdahead %d, start %p, size %lu, "
-        "pages: %llu", targs->tid, targs->op, rdahead, targs->start, targs->size,
-        targs->size / _PAGE_SIZE);
+        "pages: %llu", targs->tid, targs->op, targs->rdahead, targs->start,
+        targs->size, targs->size / _PAGE_SIZE);
     pthread_barrier_wait(&barrier);
+
+    /* start addr */
+    start = targs->start;
+    if (targs->rdahead < 0) {
+        /* if rdahead is less than 0, start from bottom */
+        start = (targs->start + targs->size - _PAGE_SIZE);
+        /* no support for negative rdahead with multiple rounds */
+        _BUG_ON(targs->round == 0);
+    }
 
     samples = 0;
     npages = 0;
     rdahead_skip = rdahead_next = 0;
     cur_op = targs->op;
-    start = targs->start;
-    while(!stop && (start < (targs->start + targs->size)))
+    while(!stop)
     {
         now_tsc = 0;
         randomness = app_rand_next(&targs->rs);
+
+        /* stop condition */
+        if (targs->rdahead >= 0) {
+            /* stop when we reach the end */
+            if (start >= (targs->start + targs->size))
+                break;
+        } else {
+            /* stop when we reach the beginning */
+            if (start < targs->start)
+                break;
+        }
     
         if (targs->op == FO_RANDOM)
             cur_op = (randomness & (1<<16)) ? FO_READ : FO_WRITE;
@@ -253,10 +272,11 @@ void* thread_main(void* arg)
         }
 
         /* params for next batch */
-        start += _PAGE_SIZE;
+        if (targs->rdahead >= 0)    start += _PAGE_SIZE;
+        else                        start -= _PAGE_SIZE;
         npages++;
         if(rdahead_skip-- <= 0)
-            rdahead_skip = targs->rdahead;
+            rdahead_skip = abs(targs->rdahead);
         rdahead_next = rdahead_skip ? 0 : targs->rdahead;
 
         /* yield once in a while (mainly for Eden) */
@@ -399,7 +419,6 @@ int main(int argc, char *argv[])
 #ifdef RDAHEAD
     rdahead = RDAHEAD;
 #endif
-    ASSERT(rdahead >= 0);
 
     /* fault operation */
     op = FO_READ;
