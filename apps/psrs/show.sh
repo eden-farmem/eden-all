@@ -220,9 +220,9 @@ for exp in $LS_CMD; do
     # OVERALL PERF
     if [[ $SIMPLE ]]; then
         HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime))";
-        HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
+        # HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
         HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1time))";
-        HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
+        # HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
         HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3time))";
         HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4time))";
         HEADER="$HEADER,Copyback";      LINE="$LINE,$((copyback))";
