@@ -68,13 +68,13 @@ def main():
         def addr2line(ips):
             global processed
             iplist = ips.split("|")
-            code = ""
+            traces = []
             if iplist:
-                code = subprocess   \
+                traces = subprocess   \
                     .check_output(['addr2line', '-e', args.binary] + iplist) \
                     .decode('utf-8') \
                     .split("\n")
-                code = "<//>".join(code)
+            code = '<//>'.join([t for t in traces if t != ''])
             processed += 1
             if processed % 100 == 0:
                 sys.stderr.write("processed {} entries\n".format(processed))

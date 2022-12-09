@@ -64,7 +64,7 @@ NO_HYPERTHREADING="-noht"
 EDEN=
 HINTS=
 BACKEND=local
-EVICT_THRESHOLD=100     # no handler eviction
+EVICT_THRESHOLD=99
 EVICT_BATCH_SIZE=1
 EXPECTED_PTI=off
 SCHEDULER=pthreads
@@ -228,7 +228,15 @@ case $i in
 
     -g|--gdb)
     GDB=1
-    CFLAGS="$CFLAGS -g -ggdb"
+    CFLAGS="$CFLAGS -O0 -g -ggdb"
+    ;;
+    
+    -pfs|--pfsamples)
+    KEEPBIN=1
+    CFLAGS="$CFLAGS -g"                 #for symbols
+    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE
+    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
+    SHEN_CFLAGS="$SHEN_CFLAGS -DFAULT_SAMPLER"
     ;;
 
     -bo|--buildonly)

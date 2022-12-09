@@ -204,7 +204,7 @@ prepare_workload(void* arg) {
 /* the real work for each request */
 static inline void process_request(int keys[], int nkeys, int nblobs,
 		struct snappy_env* env,
-		char* encbuffer, char* zipbuffer)
+		char* encbuffer, char* zipbuffer, uint64_t random)
 {
 	int i, ret, found;
 	int rdahead, prio;
@@ -224,9 +224,16 @@ static inline void process_request(int keys[], int nkeys, int nblobs,
 		value = (unsigned long)hopscotch_lookup(ht, key_template, &found);
 		ASSERT(found);
 	}
-	// ASSERT(value == key % nblobs);
 
-	/* use the last value to get the blob */
+	/* use the retrieved value to get the blob; this ensures that array blob
+	 * access distribution is the same as hash table access */
+// #define RANDOM_BLOB_ACCESS
+#ifdef RANDOM_BLOB_ACCESS
+	/* use a random access distribution for blob access regardless of 
+  	* the hash table access */
+  	value = random % nblobs;
+#endif
+
 	ASSERT(0 <= value && value < nblobs);
 	BUILD_ASSERT(BLOB_SIZE % PAGE_SIZE == 0);
 	nextin = blobdata + value * BLOB_SIZE;
@@ -241,8 +248,10 @@ static inline void process_request(int keys[], int nkeys, int nblobs,
 #endif
 
 	/* set rdahead on the first page, prio on both */
-	HINT_READ_FAULT_ALL(nextin, rdahead, prio);
-	HINT_READ_FAULT_ALL(nextin + PAGE_SIZE, 0, prio);
+	// HINT_READ_FAULT_ALL(nextin, rdahead, prio);
+	// HINT_READ_FAULT_ALL(nextin + PAGE_SIZE, 0, prio);
+	HINT_READ_FAULT(nextin);
+	HINT_READ_FAULT(nextin + PAGE_SIZE);
 
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */
@@ -310,7 +319,8 @@ run(void* arg)
 		/* pick a random key */
 		BUILD_ASSERT(KEYS_PER_REQ > 0);
 		keys[0] = syn_rand_next(&rand) % targs->nkeys;
-		process_request(keys, 1, targs->nblobs, &env, encbuffer, zipbuffer);
+		process_request(keys, 1, targs->nblobs, &env,
+			encbuffer, zipbuffer, syn_rand_next(&rand));
 		thread_yield_after(1000 /* µs */, &ystate);
 	}
 	pr_info("worker %d warmedup", targs->tid);
@@ -325,7 +335,7 @@ run(void* arg)
 		for (j = 0; j < KEYS_PER_REQ && (i + j) < targs->len; j++)
 			keys[j] = zipf_sequence[targs->start + i + j];
 		process_request(keys, KEYS_PER_REQ, targs->nblobs, &env,
-			encbuffer, zipbuffer);
+			encbuffer, zipbuffer, syn_rand_next(&rand));
 		targs->xput++;
 		thread_yield_after(1000 /* µs */, &ystate);
 	}
@@ -377,6 +387,8 @@ void main_thread(void* arg) {
     ASSERT(ht);
 	blobdata = RMALLOC(nblobs*BLOB_SIZE);
     pr_info("memory for blob array: %lu MB", nblobs*BLOB_SIZE / (1<<20));
+    pr_info("blob array start: %p, end: 0x%lx", 
+		blobdata, (unsigned long) blobdata + nblobs*BLOB_SIZE);
 	ASSERT(blobdata);
 
 	/* setup hash table */

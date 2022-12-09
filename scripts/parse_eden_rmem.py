@@ -12,7 +12,7 @@ ACCUMULATED_FIELDS = ["faults", "faults_r", "faults_w", "faults_wp",
     "evict_writes", "evict_wp_retries", "evict_madv", "evict_ops_done", 
     "evict_pages_done", "net_reads", "net_writes", "steals_ready", 
     "steals_wait", "wait_retries", "annot_hits", "total_cycles", "work_cycles"]
-TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size"]
+TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size", "memory_used"]
 
 def append_row(df, row):
     return pd.concat([
@@ -83,8 +83,9 @@ def main():
 
     # conversion
     for field in TO_MB_FIELDS:
-        tdf[field + "_mb"] = (tdf[field] / 1024 / 1024).astype(int)
-        hdf[field + "_mb"] = (hdf[field] / 1024 / 1024).astype(int)
+        if field in tdf:
+            tdf[field + "_mb"] = (tdf[field] / 1024 / 1024).astype(int)
+            hdf[field + "_mb"] = (hdf[field] / 1024 / 1024).astype(int)
 
     # accumulated cols
     if not tdf.empty:
