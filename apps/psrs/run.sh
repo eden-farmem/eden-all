@@ -48,6 +48,7 @@ SHENANGO_DIR="${ROOT_DIR}/eden"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
 TMP_FILE_PFX="tmp_syn_"
 CFGFILE="shenango.config"
+EVICT_BATCH_SIZE=1
 
 if [ "`hostname`" == "sc2-hs2-b1640" ];
 then
@@ -62,8 +63,7 @@ NO_HYPERTHREADING="-noht"
 EDEN=
 HINTS=
 BACKEND=local
-EVICT_THRESHOLD=100     # no handler eviction
-EVICT_BATCH_SIZE=1
+EVICT_THRESHOLD=99
 EXPECTED_PTI=off
 SCHEDULER=pthreads
 RMEM=none
@@ -117,6 +117,17 @@ case $i in
     EDEN=1
     HINTS=1
     SHENANGO=1
+    ;;
+
+    -bh|--bhints)
+    EDEN=1
+    HINTS=1
+    BHINTS=1
+    SHENANGO=1
+    ;;
+
+    -v|--vdso)
+    VDSO=1
     ;;
 
     -fs|--fastswap)
@@ -197,7 +208,7 @@ case $i in
 
     -g|--gdb)
     GDB=1
-    CFLAGS="$CFLAGS -g -ggdb"
+    CFLAGS="$CFLAGS -O0 -g -ggdb"
     ;;
 
     -bo|--buildonly)
@@ -314,6 +325,21 @@ if [[ $EDEN ]]; then
         CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
     fi
 
+    if [[ $BHINTS ]]; then
+        RMEM="eden-bh"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
+    fi
+
+    if [[ $BHINTS ]]; then
+        RMEM="eden-bh"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
+    fi
+
+    if [[ $VDSO ]]; then
+        CFLAGS="$CFLAGS -DUSE_VDSO_CHECKS"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DUSE_VDSO_CHECKS"
+    fi
+
     # eviction policy
     if [[ $EVICT_POLICY ]]; then
         if [[ $EVICT_POLICY != "SC" ]] && [[ $EVICT_POLICY != "LRU" ]]; then
@@ -420,6 +446,7 @@ save_cfg "rdahead"      $RDAHEAD
 save_cfg "evictbatch"   $EVICT_BATCH_SIZE
 save_cfg "evictpolicy"  $EVICT_POLICY
 save_cfg "evictgens"    $EVICT_GENS
+save_cfg "vdso"         $VDSO
 save_cfg "desc"         $README
 save_cfg "tag"          $TAG
 echo -e "$CFGSTORE" > settings
@@ -529,14 +556,14 @@ for retry in 1; do
         start_sar 1 "." ${CPUSTR}
     fi 
 
-    # run in gdb server if requested
-    if [[ $GDB ]]; then
-        if [ -z "$wrapper" ]; then
-            wrapper="gdbserver :1234 "
-        else
-            wrapper="gdbserver --wrapper $wrapper -- :1234 "
-        fi
-    fi
+    # # run in gdb server if requested
+    # if [[ $GDB ]]; then
+    #     if [ -z "$wrapper" ]; then
+    #         wrapper="gdbserver :1234 "
+    #     else
+    #         wrapper="gdbserver --wrapper $wrapper -- :1234 "
+    #     fi
+    # fi
 
     # start memory stats for fastswap
     if [[ $FASTSWAP ]]; then
@@ -548,7 +575,7 @@ for retry in 1; do
     # run
     args="${NKEYS} ${NTHREADS}"
     echo sudo ${wrapper} ${BINFILE} ${args} 
-    nohup sudo ${wrapper} ${BINFILE} ${args} 2>&1 | tee app.out &
+    nohup sudo ${wrapper} numactl -m ${NUMA_NODE} ${BINFILE} ${args} 2>&1 | tee app.out &
 
     # wait for run to finish
     tries=0

@@ -157,12 +157,16 @@ for exp in $LS_CMD; do
     evictbs=$(cat $exp/settings | grep "evictbatch:" | awk -F: '{ print $2 }')
     evictpol=$(cat $exp/settings | grep "evictpolicy:" | awk -F: '{ print $2 }')
     evictgens=$(cat $exp/settings | grep "evictgens:" | awk -F: '{ print $2 }')
-    desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
+    evictgens=$(cat $exp/settings | grep "evictgens:" | awk -F: '{ print $2 }')
+    vdso=$(cat $exp/settings | grep "vdso:" | awk -F: '{ print $2 }')
     tag=$(cat $exp/settings | grep "tag:" | awk -F: '{ print $2 }')
+    desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
     sched=${sched:-none}
     backend=${backend:-none}
     rmem=${rmem:-none}
     tag=${tag:-none}
+    vdso=${vdso:-0}
+    desc=${desc:-none}
 
     # apply filters
     if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];      then    continue;   fi
@@ -216,6 +220,10 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,LocalMem";      LINE="$LINE,${localmem}M";
     HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
     HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
+    HEADER="$HEADER,EvB";           LINE="$LINE,${evictbs}";
+    # HEADER="$HEADER,EvP";           LINE="$LINE,${evictpol}";
+    HEADER="$HEADER,VDSO";           LINE="$LINE,${vdso}";
+    # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
 
     # OVERALL PERF
     if [[ $SIMPLE ]]; then
@@ -249,33 +257,59 @@ for exp in $LS_CMD; do
             eflag_py="--end ${end}"        
             eflag_sh="--end=${end}"
 
+            vmstat_out=${exp}/vmstat_parsed_${kind}
+            vmstat_in=${exp}/vmstat.out 
+            if [ ! -f $vmstat_out ] && [ -f $vmstat_in ]; then 
+                python3 ${ROOT_SCRIPTS_DIR}/parse_vmstat.py -i ${vmstat_in} \
+                    -o ${vmstat_out}  ${sflag_sh} ${eflag_sh} 
+            fi
+
             # RMEM
-            if [ "$rmem" == "eden" ]; then
+            faults=
+            faultsr=
+            faultsw=
+            faultswp=
+            kfaultsr=
+            kfaultsw=
+            kfaultswp=
+            kfaults=
+            evicts=
+            kevicts=
+            evpopped=
+            hitr=
+            annothits=
+            if [[ "$rmem" == *"eden"* ]]; then
                 edenout=${exp}/eden_rmem_parsed_${kind}
                 edenin=${exp}/rmem-stats.out 
                 if [ ! -f $edenout ] && [ -f $edenin ]; then 
                     python3 ${ROOT_SCRIPTS_DIR}/parse_eden_rmem.py -i ${edenin}   \
                         -o ${edenout}  ${sflag_sh} ${eflag_sh}
                 fi
-                faultsr=$(csv_column_mean "$edenout" "faults_r")
-                faultsw=$(csv_column_mean "$edenout" "faults_w")
-                faultswp=$(csv_column_mean "$edenout" "faults_wp")
-                faults=$(csv_column_mean "$edenout" "faults")
-                kfaultsr=$(csv_column_mean "$edenout" "faults_r_h")
-                kfaultsw=$(csv_column_mean "$edenout" "faults_w_h")
-                kfaultswp=$(csv_column_mean "$edenout" "faults_wp_h")
-                kfaults=$(csv_column_mean "$edenout" "faults_h")
-                evicts=$(csv_column_mean "$edenout" "evict_pages_done")
-                kevicts=$(csv_column_mean "$edenout" "evict_pages_done_h")
-                evpopped=$(csv_column_mean "$edenout" "evict_pages_popped")
-                netreads=$(csv_column_mean "$edenout" "net_reads")
-                netwrite=$(csv_column_mean "$edenout" "net_writes")
+                faults=$(csv_column_sum "$edenout" "faults")
+                faultsr=$(csv_column_sum "$edenout" "faults_r")
+                faultsw=$(csv_column_sum "$edenout" "faults_w")
+                faultswp=$(csv_column_sum "$edenout" "faults_wp")
+                faultszp=$(csv_column_sum "$edenout" "faults_zp")
+                kfaultsr=$(csv_column_sum "$edenout" "faults_r_h")
+                kfaultsw=$(csv_column_sum "$edenout" "faults_w_h")
+                kfaultswp=$(csv_column_sum "$edenout" "faults_wp_h")
+                kfaults=$(csv_column_sum "$edenout" "faults_h")
+                evicts=$(csv_column_sum "$edenout" "evict_pages_done")
+                kevicts=$(csv_column_sum "$edenout" "evict_pages_done_h")
+                evpopped=$(csv_column_sum "$edenout" "evict_pages_popped")
+                netreads=$(csv_column_sum "$edenout" "net_reads")
+                netwrite=$(csv_column_sum "$edenout" "net_writes")
                 mallocd=$(csv_column_max "$edenout" "rmalloc_size")
-                steals=$(csv_column_mean "$edenout" "steals")
-                hsteals=$(csv_column_mean "$edenout" "steals_h")
-                waitretries=$(csv_column_mean "$edenout" "wait_retries")
-                hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
+                annothits=$(csv_column_sum "$edenout" "annot_hits")
+                # steals=$(csv_column_mean "$edenout" "steals")
+                # hsteals=$(csv_column_mean "$edenout" "steals_h")
+                # waitretries=$(csv_column_mean "$edenout" "wait_retries")
+                # hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
                 # madvd=$(csv_column_max "$edenout" "rmadv_size")
+                memused=$(csv_column_max "$edenout" "memory_used_mb")            hitr=
+                if [[ $annothits ]] && [[ $faults ]]; then 
+                    hitr=$(percentage "$((annothits-faults))" "$annothits" | ftoi)
+                fi
             elif [ "$rmem" == "fastswap" ]; then
                 fstat_out=${exp}/fstat_parsed_${kind}
                 fstat_in=${exp}/fstat.out 
@@ -289,10 +323,11 @@ for exp in $LS_CMD; do
                     python3 ${ROOT_SCRIPTS_DIR}/parse_vmstat.py -i ${vmstat_in} \
                         -o ${vmstat_out}  ${sflag_sh} ${eflag_sh} 
                 fi
-                faults=$(csv_column_mean "$vmstat_out" "pgmajfault")
-                faultsm=$(csv_column_mean "$vmstat_out" "pgfault")
-                netreads=$(csv_column_mean "$fstat_out" "loads")
-                netwrite=$(csv_column_mean "$fstat_out" "succ_stores")
+                faults=$(csv_column_sum "$vmstat_out" "pgmajfault")
+                memused=$(csv_column_max "$vmstat_out" "nr_anon_pages_mb")
+                faultsm=$(csv_column_sum "$vmstat_out" "pgfault")
+                netreads=$(csv_column_sum "$fstat_out" "loads")
+                netwrite=$(csv_column_sum "$fstat_out" "succ_stores")
             fi
 
             # SHENANGO
@@ -302,14 +337,14 @@ for exp in $LS_CMD; do
                 python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
                     -o ${shenangoout} ${sflag_py} ${eflag_py}
             fi
-            # sched_time_us=$(csv_column_sum "$shenangoout" "sched_time_us")
-            # user_idle_us=$(csv_column_sum "$shenangoout" "sched_idle_us")
+            sched_time_us=$(csv_column_sum "$shenangoout" "sched_time_us")
+            user_idle_us=$(csv_column_sum "$shenangoout" "sched_idle_us")
 
             # KERNEL
             cpusarout=${exp}/cpu_sar_parsed_${kind}
             cpusarin=${exp}/cpu.sar
             if ([[ $FORCE ]] || [ ! -f $cpusarout ]) && [ -f $cpusarin ]; then 
-                bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%idle" \
+                bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%user" \
                     ${sflag_sh} ${eflag_sh} -of=${cpusarout}
             fi
             kernel_idle_per=$(csv_column_sum "$cpusarout" "%idle")
@@ -318,15 +353,24 @@ for exp in $LS_CMD; do
 
             # Verbose
             if [[ $v ]]; then 
-                HEADER="$HEADER,MajorPF";           LINE="$LINE,${faults}";
-                HEADER="$HEADER,AllPF";             LINE="$LINE,${faultsm}";
-                HEADER="$HEADER,ReadPF";            LINE="$LINE,${faultsr}";
-                HEADER="$HEADER,WritePF";           LINE="$LINE,${faultsw}";
-                HEADER="$HEADER,WPFaults";          LINE="$LINE,${faultswp}";
+                HEADER="$HEADER,PF";                LINE="$LINE,${faults}";
+                # HEADER="$HEADER,AllPF";           LINE="$LINE,${faultsm}";
+                HEADER="$HEADER,KernPF";            LINE="$LINE,${kfaults}";
+                # HEADER="$HEADER,ReadPF";            LINE="$LINE,${faultsr}";
+                # HEADER="$HEADER,WritePF";           LINE="$LINE,${faultsw}";
+                # HEADER="$HEADER,WPFaults";          LINE="$LINE,${faultswp}";
+                HEADER="$HEADER,Evicts";          LINE="$LINE,${evicts}";
+                # HEADER="$HEADER,KEvicts";         LINE="$LINE,${kevicts}";
+                HEADER="$HEADER,EvPopped";        LINE="$LINE,${evpopped}";
+                # HEADER="$HEADER,HitR";            LINE="$LINE,${hitr}";
+                # HEADER="$HEADER,NetReads";        LINE="$LINE,${netreads}";
+                # HEADER="$HEADER,NetWrites";       LINE="$LINE,${netwrite}";
+                HEADER="$HEADER,rCPU%";             LINE="$LINE,${reclaimcpu}";
+                # HEADER="$HEADER,Mallocd";           LINE="$LINE,$((mallocd/(1024*1024)))M";
+                HEADER="$HEADER,MemUsed";           LINE="$LINE,${memused}M";
             fi
 
             # Condensed columns
-            hitr=${pf_annot_hitr}
             uidle=$((user_idle_us/1000000))
             kidle=$((kernel_idle_us/1000000))
             tidle=$((total_idle_us/1000000))
@@ -336,11 +380,13 @@ for exp in $LS_CMD; do
                 HEADER="$HEADER,UIdle($kind)";        LINE="$LINE,${uidle}";
                 HEADER="$HEADER,KIdle($kind)";        LINE="$LINE,${kidle}";
                 HEADER="$HEADER,HitR($kind)";         LINE="$LINE,${hitr}";
-                HEADER="$HEADER,Htpm($kind)";         LINE="$LINE,${pf_annot_hitpm}";
                 HEADER="$HEADER,Flts($kind)";         LINE="$LINE,${faults}";
             fi
 
-            HEADER="$HEADER,Idle($kind)";         LINE="$LINE,${uidle}|${kidle}";
+            # HEADER="$HEADER,HitR($kind)";           LINE="$LINE,${hitr}";
+            HEADER="$HEADER,Idle($kind)";           LINE="$LINE,${uidle}|${kidle}";
+            # HEADER="$HEADER,PF($kind)";             LINE="$LINE,${faultszp}";
+            # HEADER="$HEADER,PF($kind)";             LINE="$LINE,${faults}";
             # faultsf=$(echo $faults | awk '{
             #     if ($0>=1000000)    printf "%.1fM", $0*1.0/1000000;
             #     else                printf "%.1fK", $0*1.0/1000; }') 

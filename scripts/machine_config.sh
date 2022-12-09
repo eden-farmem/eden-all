@@ -6,10 +6,10 @@ echo "running machine config"
 # https://askubuntu.com/questions/619875/disabling-intel-turbo-boost-in-ubuntu
 echo "1" | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo
 
-# # Disable automatic NUMA load balancing. This feature raises spurious page 
-# # faults to determine NUMA node access patterns which interfere with 
-# # the VDSO-based annotations
-# echo 0 | sudo tee /proc/sys/kernel/numa_balancing
+# Disable automatic NUMA load balancing. This feature raises spurious page 
+# faults to determine NUMA node access patterns which interfere with 
+# the VDSO-based annotations
+echo 0 | sudo tee /proc/sys/kernel/numa_balancing
 
 # disable freq scaling and set CPU to a static frequency
 # Note that tools with daemons such as cpufrequtils may affect this
