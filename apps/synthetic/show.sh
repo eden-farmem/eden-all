@@ -323,7 +323,7 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs}";
     HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
     HEADER="$HEADER,EvB";           LINE="$LINE,${evictbs}";
-    # HEADER="$HEADER,EvP";           LINE="$LINE,${evictpol}";
+    HEADER="$HEADER,EvP";           LINE="$LINE,${evictpol}";
     HEADER="$HEADER,EvPr";          LINE="$LINE,${evictprio}";
     # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
     if [ -z "$BASIC" ]; then

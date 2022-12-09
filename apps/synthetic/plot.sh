@@ -84,7 +84,7 @@ if [ "$PLOTID" == "1" ]; then
     mkdir -p $plotdir
     plots=
     files=
-    NORMALIZE=
+    NORMALIZE=1
     CORES=5
 
     ## data
@@ -94,9 +94,8 @@ if [ "$PLOTID" == "1" ]; then
     # for runcfg in "tpc-1" "tpc-5"; do 
     # for runcfg in "evp-none" "evp-sc"; do 
     # for runcfg in "eden-local" "fswap-local"; do
-    # for runcfg in "fswap" "eden-bh" "eden-evb" "eden" "eden-rd"; do
-    for runcfg in "noprio" "prio"; do
-
+    for runcfg in "fswap" "eden-bh" "eden-evb" "eden" "eden-rd"; do
+    # for runcfg in "noprio" "prio"; do
         case $runcfg in
         "no-rdahead")       pattern="11-16-11-[34]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
         "rdahead")          pattern="11-16-11-[12]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
@@ -113,12 +112,12 @@ if [ "$PLOTID" == "1" ]; then
         "eden-local")       pattern="11-16-11-[34]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
         "fswap-local")      pattern="11-26-14"; rmem=fastswap; backend=local; cores=5; zipfs=1; tperc=1; desc="nordahead";;
         "fswap")            pattern="11-26-1"; rmem=fastswap; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; desc="nordahead";;
-        "eden-bh")          pattern="11-28-1[4-8]"; rmem=eden-bh; backend=local; cores=${CORES}; zipfs=1; tperc=5; evb=1; rdhd=no; desc="incremental";;
-        "eden-evb")         pattern="11-28-1[4-8]"; rmem=eden-bh; backend=local; cores=${CORES}; zipfs=1; tperc=5; evb=8; rdhd=no; desc="incremental";;
-        "eden")             pattern="11-28-1[4-8]"; rmem=eden; backend=local; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=NONE; rdhd=no; desc="incremental";;
-        "eden-rd")          pattern="11-28-1[4-8]"; rmem=eden; backend=local; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=NONE; rdhd=yes; desc="incremental";;
-        "eden-sc")          pattern="11-28-1[4-8]"; rmem=eden; backend=local; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=SC; rdhd=yes; desc="incremental";;
-        "eden-lru")         pattern="11-28-2[12]"; rmem=eden; backend=local; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=LRU; rdhd=yes; desc="incremental";;
+        "eden-bh")          pattern="11-28-1[4-8]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=1; rdhd=no; desc="incremental";;
+        "eden-evb")         pattern="11-28-1[4-8]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; rdhd=no; desc="incremental";;
+        "eden")             pattern="11-28-1[4-8]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=NONE; rdhd=no; desc="incremental";;
+        "eden-rd")          pattern="11-28-1[4-8]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=NONE; rdhd=yes; desc="incremental";;
+        "eden-sc")          pattern="11-28-1[4-8]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=SC; rdhd=yes; desc="incremental";;
+        "eden-lru")         pattern="11-28-2[12]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=LRU; rdhd=yes; desc="incremental";;
         "noprio")           pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=no; desc="hero";;
         "prio")             pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=yes; desc="hero";;
         *)                  echo "Unknown config"; exit;;
@@ -127,7 +126,7 @@ if [ "$PLOTID" == "1" ]; then
         # filter results
         cfg=be${bkend}_cores${cores}_zs${zipfs}_tperc${tperc}
         label=$runcfg
-        datafile=$plotdir/data_${cfg}_${runcfg}
+        datafile=$plotdir/data_${runcfg}_${cores}cpu
         thr=$((cores*tperc))
         descopt=
         evbopt=
@@ -190,16 +189,16 @@ if [ "$PLOTID" == "1" ]; then
     fi
     files="$files $plotname"
 
-    # Hit ratio
-    YLIMS="--ymin 0 --ymax 100"
-    plotname=${plotdir}/hitr_${cfg}.${PLOTEXT}
-    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
-            -yc "HitR" -yl "Hit Ratio %" ${YLIMS}                       \
-            -xc "LMem%" -xl "Local Mem (%)"                             \
-            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
-    fi
-    files="$files $plotname"
+    # # Hit ratio
+    # YLIMS="--ymin 0 --ymax 100"
+    # plotname=${plotdir}/hitr_${cfg}.${PLOTEXT}
+    # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+    #     python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+    #         -yc "HitR" -yl "Hit Ratio %" ${YLIMS}                       \
+    #         -xc "LMem%" -xl "Local Mem (%)"                             \
+    #         --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    # fi
+    # files="$files $plotname"
 
     # Combine
     plotname=${plotdir}/${cfg}.$PLOTEXT
