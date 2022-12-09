@@ -27,42 +27,19 @@ def main():
         rawdata = f.read().splitlines()
 
     pattern = None
-    pattern_v0 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
+    pattern_v0 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),"
+    "sched_cycles_idle:(\d+),program_cycles:(\d+),"
     "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
     "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
     "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
     "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),cycles_per_us:(\d+)")
-    pattern_v1 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
-    "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
-    "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
-    "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
-    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pf_posted:(\d+),"
-    "pf_returned:(\d+),pf_time_spent_mus:(\d+),pf_failed:(\d+),cycles_per_us:(\d+)")
-    pattern_v2 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),program_cycles:(\d+),"
-    "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
-    "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
-    "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
-    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pf_posted:(\d+),"
-    "pf_returned:(\d+),pf_service_cycles:(\d+),pf_failed:(\d+),cycles_per_us:(\d+)")
-    pattern_v3 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),sched_cycles_idle:(\d+),"
-    "program_cycles:(\d+),threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),"
-    "parks:(\d+),preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),"
-    "rx_bytes:(\d+),rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),"
-    "rx_tcp_in_order:(\d+),rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pf_posted:(\d+),"
-    "pf_returned:(\d+),pf_failed:(\d+),cycles_per_us:(\d+)")
-    pattern_v4 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),sched_cycles_idle:(\d+),"
-    "program_cycles:(\d+),threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),"
-    "parks:(\d+),preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),"
-    "rx_bytes:(\d+),rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),"
-    "rx_tcp_in_order:(\d+),rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),pf_posted:(\d+),"
-    "pf_returned:(\d+),pf_failed:(\d+),pf_annot_hits:(\d+),cycles_per_us:(\d+)")
     pattern = None
 
     data = defaultdict(list)
     values_old = None
     tstamps = []
     for line in rawdata:
-        for pat in [ pattern_v0, pattern_v1, pattern_v2, pattern_v3, pattern_v4 ]:
+        for pat in [ pattern_v0 ]:
             match = re.match(pat, line)
             if match:
                 pattern = pat
@@ -81,7 +58,7 @@ def main():
         ts = int(values[0])
         reschedules = diff[next_index()]
         sched_cycles = diff[next_index()]
-        sched_cycles_idle = diff[next_index()] if pattern in [pattern_v3, pattern_v4] else 0
+        sched_cycles_idle = diff[next_index()]
         program_cycles = diff[next_index()]
         threads_stolen = diff[next_index()]
         softirqs_stolen = diff[next_index()]
@@ -98,17 +75,7 @@ def main():
         rx_tcp_in_order = diff[next_index()]
         rx_tcp_out_of_order = diff[next_index()]
         rx_tcp_text_cycles = diff[next_index()]
-        pf_posted = diff[next_index()] if pattern != pattern_v0 else 0
-        pf_returned = diff[next_index()] if pattern != pattern_v0 else 0
-        pf_time_us = diff[next_index()] if pattern == pattern_v1 else 0   
-        pf_time_cycles = diff[next_index()] if pattern == pattern_v2 else 0
-        pf_failed = diff[next_index()] if pattern != pattern_v0 else 0
-        pf_annot_hits = diff[next_index()] if pattern == pattern_v4 else 0
-        cycles_per_us = values[next_index()] if pattern != pattern_v0 else 0
-
-        # derived
-        if pf_time_cycles:
-            pf_time_us = pf_time_cycles / cycles_per_us
+        cycles_per_us = values[next_index()]
 
         tstamps.append(ts)
         data['rescheds'].append((ts, reschedules))
@@ -135,16 +102,11 @@ def main():
             if (rx_tcp_in_order + rx_tcp_out_of_order) else 0))
         data['p_reorder_time'].append((ts, rx_tcp_text_cycles / (sched_cycles + program_cycles) * 100
             if (sched_cycles + program_cycles) else 0))
-        data['pf_posted'].append((ts, pf_posted))
-        data['pf_returned'].append((ts, pf_returned))
-        data['pf_time_us'].append((ts, pf_time_us))
-        data['pf_failed'].append((ts, pf_failed))
-        data['pf_annot_hits'].append((ts, pf_annot_hits))
 
         if cycles_per_us:
             sched_time_us = int(sched_cycles / cycles_per_us)
             data['sched_time_us'].append((ts, sched_time_us))
-            data['cpu_idle_time'].append((ts, sched_time_us + pf_time_us))
+            data['cpu_idle_time'].append((ts, sched_time_us)) #TODO: fix this
 
     # filter
     if args.start:  tstamps = filter(lambda x: x >= args.start, tstamps)
