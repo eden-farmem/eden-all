@@ -100,8 +100,8 @@ case $i in
     -d|--debug)
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
-    NKEYS=1000
-    LMEM=200000000    # 200MB
+    NKEYS=10000
+    LMEM=20000000    # 20MB
     ;;
 
     -s|--shenango)
@@ -123,6 +123,13 @@ case $i in
     EDEN=1
     HINTS=1
     BHINTS=1
+    SHENANGO=1
+    ;;
+
+    -obh|--optbhints)
+    EDEN=1
+    HINTS=1
+    OPTBHINTS=1
     SHENANGO=1
     ;;
 
@@ -330,9 +337,10 @@ if [[ $EDEN ]]; then
         SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
     fi
 
-    if [[ $BHINTS ]]; then
-        RMEM="eden-bh"
+    if [[ $OPTBHINTS ]]; then
+        RMEM="eden-obh"
         SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
+        CFLAGS="$CFLAGS -DOPTIONAL_BLOCKING"
     fi
 
     if [[ $VDSO ]]; then
@@ -390,6 +398,13 @@ fi
 # rebuild shenango
 if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     pushd ${SHENANGO_DIR} 
+
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [[ $branch != "sort" ]]; then
+        echo "ERROR! use only the sort branch until the deadline"
+        exit 1
+    fi
+
     if [[ $FORCE ]];        then    make clean;                         fi
     if [[ $EDEN ]];         then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
     if [[ $HINTS ]];        then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
@@ -598,7 +613,7 @@ for retry in 1; do
         while ps -p $pid > /dev/null; do
             sleep 1
             tries=$((tries+1))
-            if [[ $tries -gt 1000 ]]; then
+            if [[ $tries -gt 500 ]]; then
                 echo "ran too long"
                 sudo kill -9 $pid
                 break

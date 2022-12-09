@@ -23,7 +23,7 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
             addr = &base[i];
 #ifndef NO_QSORT_ANNOTS
             if (((unsigned long)addr & _PAGE_OFFSET_MASK) == 0) {
-                HINT_WRITE_FAULT_OPT_RDAHEAD(addr);
+                HINT_WRITE_FAULT_OPT_RDAHEAD_BLOCK(addr);
             }
 #endif
         } while (*addr <= pivot && i <= r);
@@ -34,7 +34,7 @@ size_t _partition(qelement_t *base, size_t l, size_t r)
             addr = &base[j];
 #ifndef NO_QSORT_ANNOTS
             if (((unsigned long)addr & _PAGE_OFFSET_MASK) == (_PAGE_SIZE - sizeof(qelement_t))) {
-                HINT_WRITE_FAULT_OPT_INVERSE_RDAHEAD(addr);
+                HINT_WRITE_FAULT_OPT_INVERSE_RDAHEAD_BLOCK(addr);
             }
 #endif
         } while (*addr > pivot && j >= l);

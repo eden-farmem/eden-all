@@ -250,6 +250,7 @@ void* psrs(void *args) {
 	time_start = get_time();
 	BARRIER;
 	phase1(data);
+	// printf("thread %d finished phase 1 at %lu\n", id, time(NULL));
 	BARRIER;
 	master { 
 		duration = end_timing(time_start);
@@ -421,13 +422,12 @@ long int end_timing(struct timeval* start) {
 int* generate_array_of_size(size_t size) {
 	srandom(15);
 	int* randoms = RMALLOC(sizeof(element_t) * size);
-	memset(randoms, 0, sizeof(element_t) * size);
 	for (size_t i = 0; i < size; i++) {
 #ifndef USE_VDSO_CHECKS
 		/* this results in a bug with vdso, not sure why. Corrupts stack so 
 		 * gdb is of little help; this is not part of benchmarked time so 
 		 * doesn't matter if we hint it */
-		HINT_READ_FAULT(&randoms[i]);
+		HINT_WRITE_FAULT(&randoms[i]);
 #endif
 		randoms[i] = (element_t) random();
 	}
