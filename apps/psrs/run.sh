@@ -268,6 +268,15 @@ stop_fsstat() {
     pid=$(pgrep -f "[f]swap-stat.sh" || true)
     if [[ $pid ]]; then  sudo kill ${pid}; fi
 }
+start_freestat() {
+    rm -f free-stat.out
+    nohup sudo bash ${ROOT_SCRIPTS_DIR}/free-stat.sh ${APPNAME} > free-stat.out &
+}
+stop_freestat() {
+    local pid
+    pid=$(pgrep -f "[f]ree-stat.sh" || true)
+    if [[ $pid ]]; then  sudo kill ${pid}; fi
+}
 kill_remnants() {
     sudo pkill iokerneld || true
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"            # eden memcontrol
@@ -283,6 +292,7 @@ cleanup() {
     stop_memory_stat
     stop_vmstat
     stop_fsstat
+    stop_freestat
     stop_sar
 }
 cleanup     #start clean
@@ -541,6 +551,7 @@ for retry in 1; do
         start_vmstat
         start_fsstat
         start_cpu_sar 1 "." ${FASTSWAP_RECLAIM_CPU} "_reclaim"
+        start_freestat
     fi
 
     # run
