@@ -404,7 +404,14 @@ fi
 
 # rebuild shenango
 if [[ $FORCE ]] && [[ $SHENANGO ]]; then
-    pushd ${SHENANGO_DIR} 
+    pushd ${SHENANGO_DIR}
+
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [[ $branch != "master" ]]; then
+        echo "ERROR! use only the master branch until the deadline"
+        exit 1
+    fi
+
     if [[ $FORCE ]];        then    make clean;                         fi
     if [[ $EDEN ]];         then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
     if [[ $HINTS ]];        then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi

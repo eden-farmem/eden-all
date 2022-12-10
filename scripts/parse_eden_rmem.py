@@ -78,8 +78,10 @@ def main():
         hdf = hdf[hdf[TIMECOL] <= args.end]
 
     # derived cols
+    global ACCUMULATED_FIELDS
     tdf["steals"] = tdf["steals_ready"] + tdf["steals_wait"]
     hdf["steals"] = hdf["steals_ready"] + hdf["steals_wait"]
+    ACCUMULATED_FIELDS += ["steals"]
 
     # conversion
     for field in TO_MB_FIELDS:
@@ -102,7 +104,6 @@ def main():
                 hdf[k] = hdf[k].diff()
         hdf = hdf.iloc[1:]    #drop first row
 
-    # derived over accumulated cols
     if not tdf.empty:
         if 'total_cycles' in tdf and tdf['total_cycles'].iloc[0] > 0:
             tdf['cpu_per'] = tdf['work_cycles'] * 100 / tdf['total_cycles']

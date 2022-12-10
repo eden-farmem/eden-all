@@ -94,8 +94,8 @@ if [ "$PLOTID" == "1" ]; then
     # for runcfg in "tpc-1" "tpc-5"; do 
     # for runcfg in "evp-none" "evp-sc"; do 
     # for runcfg in "eden-local" "fswap-local"; do
-    for runcfg in "fswap" "eden-bh" "eden-evb" "eden" "eden-rd"; do
-    # for runcfg in "noprio" "prio"; do
+    # for runcfg in "fswap" "eden-bh" "eden-evb" "eden" "eden-rd"; do
+    for runcfg in "noprio" "prio"; do
         case $runcfg in
         "no-rdahead")       pattern="11-16-11-[34]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
         "rdahead")          pattern="11-16-11-[12]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
@@ -118,8 +118,8 @@ if [ "$PLOTID" == "1" ]; then
         "eden-rd")          pattern="11-28-1[4-8]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=NONE; rdhd=yes; desc="incremental";;
         "eden-sc")          pattern="11-28-1[4-8]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=SC; rdhd=yes; desc="incremental";;
         "eden-lru")         pattern="11-28-2[12]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=LRU; rdhd=yes; desc="incremental";;
-        "noprio")           pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=no; desc="hero";;
-        "prio")             pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=yes; desc="hero";;
+        "eden-noprio")      pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=no; desc="hero";;
+        "eden-prio")        pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=yes; desc="hero";;
         *)                  echo "Unknown config"; exit;;
         esac
 

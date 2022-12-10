@@ -56,11 +56,11 @@ MAX_MOPS=50000000
 
 ## Eden (Usual)
 # KEYS_PER_REQ=8
-NKEYS=10000000      # 2.5 GB
-NBLOBS=400000       # 3 GB
-LMEM=1000000000     # 1 GB
-EDEN_MAX=5700
-FASTSWAP_MAX=6150
+# NKEYS=10000000      # 2.5 GB
+# NBLOBS=400000       # 3 GB
+# LMEM=1000000000     # 1 GB
+# EDEN_MAX=5700
+# FASTSWAP_MAX=6150
 
 ## Eden (Small)
 # KEYS_PER_REQ=32
@@ -71,13 +71,13 @@ FASTSWAP_MAX=6150
 # # FASTSWAP_MAX=TODO
 
 ## Eden (Large for AIFM)
-# KEYS_PER_REQ=32
-# # KEYS_PER_REQ=8
-# NKEYS=32000000      # 5 GB
-# NBLOBS=2000000      # 15 GB
-# LMEM=5000000000     # ? GB
-# EDEN_MAX=20800      # ~20 GB
-# FASTSWAP_MAX=24000  # ~24 GB
+# # KEYS_PER_REQ=32
+# # # KEYS_PER_REQ=8
+NKEYS=32000000      # 5 GB
+NBLOBS=2000000      # 15 GB
+LMEM=5000000000     # ? GB
+EDEN_MAX=20800      # ~20 GB
+FASTSWAP_MAX=24000  # ~24 GB
 
 cores=1
 thr=1
@@ -268,9 +268,9 @@ prio=                   # enable eviction priority
 kpr=${KEYS_PER_REQ}     # keys per request
 for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
     for zs in 1; do
-        for c in 5; do
+        for c in 10; do
             for tpc in 5; do
-                desc="herosmall"
+                desc="hero"
                 t=$((c*tpc))
                 # run_vary_lmem "pthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
                 # run_vary_lmem "uthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
@@ -285,13 +285,14 @@ for op in "zip5"; do  # "zip5" "zip50" "zip500"; do
                 # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "$ebs" "NONE" "$evg" "$kpr" "$prio"
                 # run_vary_lmem "fswap"   "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
                 # run_vary_lmem "fswap"   "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
-                run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
-                run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "yes"
-                run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "$prio"
-                run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
-                run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "$prio"
-                run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "yes"
-                run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "SC"   "$evg" "$kpr" "$prio"
+                run_vary_lmem "eden-bh"   "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "yes"
+                # run_vary_lmem "eden-bh" "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "$prio"
+                run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "$evp" "$evg" "$kpr" "$prio"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "$evp" "$evg" "$kpr" "yes"
+                # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "$rd" "8"    "SC"   "$evg" "$kpr" "$prio"
                 # run_vary_lmem "eden"    "rdma"  "$op" "$c" "$t" "$zs" "1"   "8"    "LRU"  "$evg" "$kpr" "$prio"
             done
         done
