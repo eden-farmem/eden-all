@@ -192,7 +192,7 @@ void phase4(struct thread_data* data) {
 			if (exchange_indices[i] != exchange_indices[i+1]) {
 				addr = &input[exchange_indices[i]];
 				if (((unsigned long) addr & _PAGE_OFFSET_MASK) == 0)
-					HINT_READ_FAULT_OPT_RDAHEAD(addr);
+					HINT_READ_FAULT_RDAHEAD(addr, MERGE_RDAHEAD);
 				if (!found) {
 					min = *addr;
 					min_pos = i;
@@ -243,17 +243,18 @@ void* psrs(void *args) {
 	struct thread_data* data = (struct thread_data*) args;
 	int id = data->id; 
 	struct timeval* time_start;
-	long int time;
+	long int duration;
 
 	/* phase 1 */
 	master { checkpoint("phase1"); }
 	time_start = get_time();
 	BARRIER;
 	phase1(data);
+	// printf("thread %d finished phase 1 at %lu\n", id, time(NULL));
 	BARRIER;
 	master { 
-		time = end_timing(time_start);
-		printf("phase 1 took %ld ms\n", time);
+		duration = end_timing(time_start);
+		printf("phase 1 took %ld ms\n", duration);
 	}
 
 	/* phase 2 */
@@ -263,8 +264,8 @@ void* psrs(void *args) {
 	phase2(data);
 	BARRIER;
 	master {
-		time = end_timing(time_start);
-		printf("phase 2 took %ld ms\n", time);
+		duration = end_timing(time_start);
+		printf("phase 2 took %ld ms\n", duration);
 		RFREE(regular_samples); 
 	}
 
@@ -275,8 +276,8 @@ void* psrs(void *args) {
 	phase3(data);
 	BARRIER;
 	master { 
-		time = end_timing(time_start);
-		printf("phase 3 took %ld ms\n", time);
+		duration = end_timing(time_start);
+		printf("phase 3 took %ld ms\n", duration);
 		RFREE(pivots); 
 	}
 	
@@ -287,8 +288,8 @@ void* psrs(void *args) {
 	phase4(data);
 	BARRIER;
 	master { 
-		time = end_timing(time_start);
-		printf("phase 4 took %ld ms\n", time);
+		duration = end_timing(time_start);
+		printf("phase 4 took %ld ms\n", duration);
 		RFREE(merged_partition_length); 
 	}
 
@@ -313,10 +314,17 @@ void main_thread(void* arg) {
 	/* initializing/allocating data */
 	checkpoint("start");
 	input = generate_array_of_size(size);
-	regular_samples = RMALLOC(sizeof(element_t) *t*t); 
+
+	/* alloc all intermediate buffers. memset all to touch all pages before 
+	 * starting the work */
+	regular_samples = RMALLOC(sizeof(element_t)*t*t);
+	memset(regular_samples, 0, sizeof(element_t)*t*t);
 	pivots = RMALLOC(sizeof(element_t) * (t - 1));
+	memset(pivots, 0, sizeof(element_t) * (t - 1));
 	merged_partition_length = RMALLOC(sizeof(size_t) * t);
+	memset(merged_partition_length, 0, sizeof(size_t) * t);
 	partitions = RMALLOC(sizeof(size_t) *  t * (t+1));
+	memset(partitions, 0, sizeof(size_t) * t * (t+1));
 	merged_values = RMALLOC(sizeof(element_t) * size);		/* output buffer */	
 	memset(merged_values, 0, sizeof(element_t) * size);
 	pr_info("output buffer: start: %p size %lu", 
@@ -415,7 +423,12 @@ int* generate_array_of_size(size_t size) {
 	srandom(15);
 	int* randoms = RMALLOC(sizeof(element_t) * size);
 	for (size_t i = 0; i < size; i++) {
+#ifndef USE_VDSO_CHECKS
+		/* this results in a bug with vdso, not sure why. Corrupts stack so 
+		 * gdb is of little help; this is not part of benchmarked time so 
+		 * doesn't matter if we hint it */
 		HINT_WRITE_FAULT(&randoms[i]);
+#endif
 		randoms[i] = (element_t) random();
 	}
 	pr_info("input buffer: start: %p size %lu", 

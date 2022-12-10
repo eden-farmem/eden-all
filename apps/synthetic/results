@@ -1,0 +1,10 @@
+
+#
+# Paper results
+#
+
+# Large runs
+bash show.sh 12-10 -d=hero 
+
+Ran till evb=1 80%
+

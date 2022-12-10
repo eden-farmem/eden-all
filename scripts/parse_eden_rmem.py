@@ -12,7 +12,7 @@ ACCUMULATED_FIELDS = ["faults", "faults_r", "faults_w", "faults_wp",
     "evict_writes", "evict_wp_retries", "evict_madv", "evict_ops_done", 
     "evict_pages_done", "net_reads", "net_writes", "steals_ready", 
     "steals_wait", "wait_retries", "annot_hits", "total_cycles", "work_cycles"]
-TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size"]
+TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size", "memory_used"]
 
 def append_row(df, row):
     return pd.concat([
@@ -78,13 +78,16 @@ def main():
         hdf = hdf[hdf[TIMECOL] <= args.end]
 
     # derived cols
+    global ACCUMULATED_FIELDS
     tdf["steals"] = tdf["steals_ready"] + tdf["steals_wait"]
     hdf["steals"] = hdf["steals_ready"] + hdf["steals_wait"]
+    ACCUMULATED_FIELDS += ["steals"]
 
     # conversion
     for field in TO_MB_FIELDS:
-        tdf[field + "_mb"] = (tdf[field] / 1024 / 1024).astype(int)
-        hdf[field + "_mb"] = (hdf[field] / 1024 / 1024).astype(int)
+        if field in tdf:
+            tdf[field + "_mb"] = (tdf[field] / 1024 / 1024).astype(int)
+            hdf[field + "_mb"] = (hdf[field] / 1024 / 1024).astype(int)
 
     # accumulated cols
     if not tdf.empty:
@@ -101,7 +104,6 @@ def main():
                 hdf[k] = hdf[k].diff()
         hdf = hdf.iloc[1:]    #drop first row
 
-    # derived over accumulated cols
     if not tdf.empty:
         if 'total_cycles' in tdf and tdf['total_cycles'].iloc[0] > 0:
             tdf['cpu_per'] = tdf['work_cycles'] * 100 / tdf['total_cycles']

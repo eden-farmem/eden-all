@@ -48,6 +48,7 @@ SHENANGO_DIR="${ROOT_DIR}/eden"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
 TMP_FILE_PFX="tmp_syn_"
 CFGFILE="shenango.config"
+EVICT_BATCH_SIZE=1
 
 if [ "`hostname`" == "sc2-hs2-b1640" ];
 then
@@ -62,12 +63,12 @@ NO_HYPERTHREADING="-noht"
 EDEN=
 HINTS=
 BACKEND=local
-EVICT_THRESHOLD=100     # no handler eviction
-EVICT_BATCH_SIZE=1
+EVICT_THRESHOLD=99
 EXPECTED_PTI=off
 SCHEDULER=pthreads
 RMEM=none
 RDAHEAD=0
+MERGE_RDAHEAD=0
 EVICT_GENS=1
 NCORES=1
 NKEYS=16000000
@@ -100,8 +101,8 @@ case $i in
     -d|--debug)
     DEBUG="DEBUG=1"
     CFLAGS="$CFLAGS -DDEBUG"
-    NKEYS=1000
-    LMEM=200000000    # 200MB
+    NKEYS=10000
+    LMEM=20000000    # 20MB
     ;;
 
     -s|--shenango)
@@ -117,6 +118,24 @@ case $i in
     EDEN=1
     HINTS=1
     SHENANGO=1
+    ;;
+
+    -bh|--bhints)
+    EDEN=1
+    HINTS=1
+    BHINTS=1
+    SHENANGO=1
+    ;;
+
+    -obh|--optbhints)
+    EDEN=1
+    HINTS=1
+    OPTBHINTS=1
+    SHENANGO=1
+    ;;
+
+    -v|--vdso)
+    VDSO=1
     ;;
 
     -fs|--fastswap)
@@ -187,6 +206,10 @@ case $i in
     CFLAGS="$CFLAGS -DRDAHEAD=$RDAHEAD"
     ;;
 
+    -mrd=*|--merge-rdahead=*)
+    MERGE_RDAHEAD=${i#*=}
+    ;;
+
     -sf|--safemode)
     SAFEMODE=1
     ;;
@@ -197,7 +220,7 @@ case $i in
 
     -g|--gdb)
     GDB=1
-    CFLAGS="$CFLAGS -g -ggdb"
+    CFLAGS="$CFLAGS -O0 -g -ggdb"
     ;;
 
     -bo|--buildonly)
@@ -321,6 +344,21 @@ if [[ $EDEN ]]; then
         CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
     fi
 
+    if [[ $BHINTS ]]; then
+        RMEM="eden-bh"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
+    fi
+
+    if [[ $OPTBHINTS ]]; then
+        RMEM="eden-obh"
+        CFLAGS="$CFLAGS -DOPTIONAL_BLOCKING"
+    fi
+
+    if [[ $VDSO ]]; then
+        CFLAGS="$CFLAGS -DUSE_VDSO_CHECKS"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DUSE_VDSO_CHECKS"
+    fi
+
     # eviction policy
     if [[ $EVICT_POLICY ]]; then
         if [[ $EVICT_POLICY != "SC" ]] && [[ $EVICT_POLICY != "LRU" ]]; then
@@ -371,6 +409,13 @@ fi
 # rebuild shenango
 if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     pushd ${SHENANGO_DIR} 
+
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [[ $branch != "sort" ]]; then
+        echo "ERROR! use only the sort branch until the deadline"
+        exit 1
+    fi
+
     if [[ $FORCE ]];        then    make clean;                         fi
     if [[ $EDEN ]];         then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
     if [[ $HINTS ]];        then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
@@ -402,6 +447,7 @@ fi
 
 # compile
 LIBS="${LIBS} -lpthread -lm"
+CFLAGS="$CFLAGS -DMERGE_RDAHEAD=$MERGE_RDAHEAD"
 gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then
@@ -424,9 +470,11 @@ save_cfg "backend"      $BACKEND
 save_cfg "localmem"     $LMEM
 save_cfg "lmemper"      $LMEMPER
 save_cfg "rdahead"      $RDAHEAD
+save_cfg "mergerdahead" $MERGE_RDAHEAD
 save_cfg "evictbatch"   $EVICT_BATCH_SIZE
 save_cfg "evictpolicy"  $EVICT_POLICY
 save_cfg "evictgens"    $EVICT_GENS
+save_cfg "vdso"         $VDSO
 save_cfg "desc"         $README
 save_cfg "tag"          $TAG
 echo -e "$CFGSTORE" > settings
@@ -536,14 +584,14 @@ for retry in 1; do
         start_cpu_sar 1 "." ${CPUSTR}
     fi 
 
-    # run in gdb server if requested
-    if [[ $GDB ]]; then
-        if [ -z "$wrapper" ]; then
-            wrapper="gdbserver :1234 "
-        else
-            wrapper="gdbserver --wrapper $wrapper -- :1234 "
-        fi
-    fi
+    # # run in gdb server if requested
+    # if [[ $GDB ]]; then
+    #     if [ -z "$wrapper" ]; then
+    #         wrapper="gdbserver :1234 "
+    #     else
+    #         wrapper="gdbserver --wrapper $wrapper -- :1234 "
+    #     fi
+    # fi
 
     # start memory stats for fastswap
     if [[ $FASTSWAP ]]; then
@@ -557,7 +605,7 @@ for retry in 1; do
     # run
     args="${NKEYS} ${NTHREADS}"
     echo sudo ${wrapper} ${BINFILE} ${args} 
-    nohup sudo ${wrapper} ${BINFILE} ${args} 2>&1 | tee app.out &
+    nohup sudo ${wrapper} numactl -m ${NUMA_NODE} ${BINFILE} ${args} 2>&1 | tee app.out &
 
     # wait for run to finish
     tries=0
@@ -580,7 +628,7 @@ for retry in 1; do
         while ps -p $pid > /dev/null; do
             sleep 1
             tries=$((tries+1))
-            if [[ $tries -gt 1000 ]]; then
+            if [[ $tries -gt 500 ]]; then
                 echo "ran too long"
                 sudo kill -9 $pid
                 break

@@ -45,16 +45,23 @@ done
 
 # Configs
 
-# Small
+## Debug/Quick
+# NKEYS=100000000
+# FASTSWAP_MAX=750
+# EDEN_MAX=740
+# # EDEN_MAX=1000
+# CORES=2
+
+## Small
 # NKEYS=1000000000        # 4 GB input
 # FASTSWAP_MAX=7500
-# EDEN_MAX=7500   # TBD
+# EDEN_MAX=7400
 # CORES=5
 
-# Large
+# ## Large
 NKEYS=3000000000        # ~12 GB input, 25GB working set
 FASTSWAP_MAX=23904
-EDEN_MAX=25000          # TBD
+EDEN_MAX=23904
 CORES=10
 
 # create a stop button
@@ -73,6 +80,8 @@ configure_for_fault_kind() {
     "pthr")             ;;
     "uthr")             OPTS="$OPTS --shenango";;
     "eden-nh")          OPTS="$OPTS --eden";;
+    "eden-bh")          OPTS="$OPTS --eden --bhints";;
+    "eden-obh")         OPTS="$OPTS --eden --optbhints";;
     "eden")             OPTS="$OPTS --eden --hints";;
     "eden-nqh")         OPTS="$OPTS --eden --hints"; CFLAGS="$CFLAGS -DNO_QSORT_ANNOTS";;
     "fswap")            OPTS="$OPTS --fastswap";;
@@ -98,6 +107,9 @@ configure_max_local_mem() {
     "pthr")             MAXRSS=;;
     "uthr")             MAXRSS=;;
     "eden-nh")          MAXRSS=${EDEN_MAX};;
+    "eden-bh")          MAXRSS=${EDEN_MAX};;
+    "eden-obh")         MAXRSS=${EDEN_MAX};;
+    "eden-nqh")         MAXRSS=${EDEN_MAX};;
     "eden")             MAXRSS=${EDEN_MAX};;
     "fswap")            MAXRSS=${FASTSWAP_MAX};;
     "fswap-uthr")       MAXRSS=${FASTSWAP_MAX};;
@@ -129,6 +141,9 @@ run_vary_lmem() {
     local evictbs=$6
     local evp=$7
     local evgens=$8
+    local vdso=$9
+    local MEMP=${10}
+    local mrdahead=${11}
 
     # build 
     CFLAGS=
@@ -136,9 +151,11 @@ run_vary_lmem() {
     configure_for_fault_kind "$kind"
     configure_for_backend "$bkend"
     configure_for_evict_policy "$evp"
-    if [[ $rdahead ]];  then  OPTS="$OPTS --rdahead=${rdahead}"; fi
+    if [[ $rdahead ]];  then  OPTS="$OPTS --rdahead=${rdahead}";    fi
     if [[ $evictbs ]];  then  OPTS="$OPTS --batchevict=${evictbs}"; fi
-    if [[ $evgens ]];   then  OPTS="$OPTS --evictgens=${evgens}"; fi
+    if [[ $evgens ]];   then  OPTS="$OPTS --evictgens=${evgens}";   fi
+    if [[ $vdso ]];     then  OPTS="$OPTS --vdso"; fi
+    if [[ $mrdahead ]]; then OPTS="$OPTS --merge-rdahead=${mrdahead}"; fi
     # OPTS="$OPTS --sampleepochs"
     # OPTS="$OPTS --safemode"
     rebuild_with_current_config
@@ -146,8 +163,9 @@ run_vary_lmem() {
     
     # run
     configure_max_local_mem "$kind" "$cores"
+    local memp
     # for memp in `seq 20 10 100`; do
-    for memp in 10; do
+    for memp in "${MEMP}"; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -164,30 +182,61 @@ run_vary_lmem() {
 }
 
 # eden runs
-rd=         # use read-ahead hints
+rd=         # set custom read-ahead
+mrd=        # set merge read-ahead
 ebs=        # set eviction batch size
 evp=        # set eviction policy
 evg=        # set eviction gens
 tpc=1
+vdso=       # use vdso
+mp=         # set default local mem %
 for c in $CORES; do
-    # for tpc in 1 5; do
-    for rd in 0 1 3 7; do
-        desc="cqsort"
+    # for tpc in 5 4 3 2 1; do
+    for tpc in 1; do
+        desc="test"
         t=$((c*tpc))
-        # run_vary_lmem "uthr"    "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
-        # run_vary_lmem "pthr"    "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
-        # run_vary_lmem "eden-nh" "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
-        # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg"
-        # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "8"    "NONE" "$evg"
-        # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "$ebs" "SC"   "$evg"
-        # run_vary_lmem "eden"    "local" "$c" "$t" "$rd" "$ebs" "LRU"  "$evg"
-        # run_vary_lmem "eden-nh" "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
-        # run_vary_lmem "eden"    "rdma"  "$c" "10" "$rd" "$ebs" "NONE" "$evg"
-        # run_vary_lmem "eden"    "rdma"  "$c" "50" "$rd" "$ebs" "NONE" "$evg"
-        # run_vary_lmem "eden"    "rdma"  "$c" "50" "$rd" "8"    "NONE" "$evg"
+        mp=
 
-        # run_vary_lmem "fswap"    "local"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
-        # run_vary_lmem "fswap"    "rdma" "$c" "$t" "$rd" "$ebs" "$evp" "$evg"
+        # run_vary_lmem "uthr"      "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+        # run_vary_lmem "pthr"      "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+        # run_vary_lmem "eden-nh"   "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "100" "$mrd"
+        # run_vary_lmem "eden-bh"  "local" "$c" "$t" "$rd"  "$ebs" "NONE" "$evg" "$vdso" "100" "$mrd"
+        # run_vary_lmem "eden-obh"  "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "100" "$mrd"
+        # run_vary_lmem "eden-nh"   "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "100" "$mrd"
+        # run_vary_lmem "eden"      "rdma"  "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "100" "$mrd"
+
+        # for mp in 10 25 50 75; do
+        for mp in 10; do
+            # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden-obh"  "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "8"    "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "8"    "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+
+            # run_vary_lmem "eden-bh"   "rdma"  "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "$rd" "8"    "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden-obh"  "rdma"  "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "$rd" "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "7"   "8"    "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "7"   "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "15"  "8"    "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden-bh"   "rdma"  "$c" "$t" "15"  "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "15"  "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "eden-obh"  "rdma"  "$c" "$t" "15"  "16"   "NONE" "$evg" "$vdso" "$mp" "$mrd"
+
+            # run_vary_lmem "eden-bh"   "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "1"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "7"
+            run_vary_lmem "eden"      "rdma"  "$c" "$t" "63"  "64"   "NONE" "$evg" "$vdso" "$mp" "63"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
+            # run_vary_lmem "eden-obh"  "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
+
+            # run_vary_lmem "fswap"     "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "fswap"     "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+        done
     done
 done
 

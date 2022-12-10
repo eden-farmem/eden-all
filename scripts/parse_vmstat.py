@@ -35,7 +35,6 @@ def main():
     values = []
     for line in rawdata:
         fields = [x.strip() for x in line.split(",") if len(x.strip()) > 0]
-        assert len(fields) == 129
         time = int(fields[0])
         if not header:
             header = ["time"] + [x.split(":")[0] for x in fields[1:]]

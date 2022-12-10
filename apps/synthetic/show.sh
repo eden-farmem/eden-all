@@ -95,6 +95,10 @@ case $i in
     EVPOL="${i#*=}"
     ;;
 
+    -evpr=*|--evprio=*)
+    EVPRIO="${i#*=}"
+    ;;
+
     -evb=*|--evbatch=*)
     EVBATCH="${i#*=}"
     ;;
@@ -157,11 +161,13 @@ for exp in $LS_CMD; do
     evictbs=$(cat $exp/settings | grep "evictbatch:" | awk -F: '{ print $2 }')
     evictpol=$(cat $exp/settings | grep "evictpolicy:" | awk -F: '{ print $2 }')
     evictgens=$(cat $exp/settings | grep "evictgens:" | awk -F: '{ print $2 }')
+    evictprio=$(cat $exp/settings | grep "evictprio:" | awk -F: '{ print $2 }')
     desc=$(cat $exp/settings | grep "desc:" | awk -F: '{ print $2 }')
     sched=${sched:-none}
     backend=${backend:-none}
     rmem=${rmem:-none}
     evictpol=${evictpol:-NONE}
+    evictprio=${evictprio:-no}
 
     # apply filters
     if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];      then    continue;   fi
@@ -174,6 +180,7 @@ for exp in $LS_CMD; do
     if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];            then    continue;   fi
     if [[ $RDAHEAD ]] && [ "$RDAHEAD" != "$rdahead" ];      then    continue;   fi
     if [[ $EVPOL ]] && [ "$EVPOL" != "$evictpol" ];         then    continue;   fi
+    if [[ $EVPRIO ]] && [ "$EVPRIO" != "$evictprio" ];      then    continue;   fi
     if [[ $EVBATCH ]] && [ "$EVBATCH" != "$evictbs" ];      then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
 
@@ -239,6 +246,7 @@ for exp in $LS_CMD; do
             waitretries=$(csv_column_mean "$edenout" "wait_retries")
             hwaitretries=$(csv_column_mean "$edenout" "wait_retries_h")
             # madvd=$(csv_column_max "$edenout" "rmadv_size")
+            memused=$(csv_column_max "$edenout" "memory_used_mb")
             annothits=$(csv_column_mean "$edenout" "annot_hits")
             reclaimcpu=$(csv_column_mean "$edenout" "cpu_per_h")
             hitr=
@@ -259,6 +267,7 @@ for exp in $LS_CMD; do
                     -o ${vmstat_out} -st ${rstart} -et ${rend}
             fi
             faults=$(csv_column_mean "$vmstat_out" "pgmajfault")
+            memused=$(csv_column_max "$vmstat_out" "nr_anon_pages_mb")
             netreads=$(csv_column_mean "$fstat_out" "loads")
             netwrite=$(csv_column_mean "$fstat_out" "succ_stores")
 
@@ -315,6 +324,7 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
     HEADER="$HEADER,EvB";           LINE="$LINE,${evictbs}";
     HEADER="$HEADER,EvP";           LINE="$LINE,${evictpol}";
+    HEADER="$HEADER,EvPr";          LINE="$LINE,${evictprio}";
     # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
     if [ -z "$BASIC" ]; then
         # HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime}";
@@ -324,7 +334,7 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
         HEADER="$HEADER,FaultsR";       LINE="$LINE,${faultsr}";
         # HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
-        HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
+        # HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
         HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
         HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
         HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
@@ -335,18 +345,7 @@ for exp in $LS_CMD; do
         # HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
         # HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
         # HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
-        # HEADER="$HEADER,MaxRSS";      LINE="$LINE,$((mempressure/1048576))M";
-        # HEADER="$HEADER,Steals";      LINE="$LINE,${steals}";
-        # HEADER="$HEADER,HSteals";      LINE="$LINE,${hsteals}";
-        # HEADER="$HEADER,Waits";       LINE="$LINE,${waitretries}";
-        # HEADER="$HEADER,HWaits";       LINE="$LINE,${hwaitretries}";
-
-        # HEADER="$HEADER,UFFDCopy";      LINE="$LINE,${uffd_copy_cost}";
-        # HEADER="$HEADER,UIdle%";        LINE="$LINE,${user_idle_per}";
-        # HEADER="$HEADER,KIdle%";        LINE="$LINE,${kernel_idle_per}";
-        # HEADER="$HEADER,AnnotHit";      LINE="$LINE,$((pf_annot_hits+pf_posted))";
-        # HEADER="$HEADER,AnnotMiss";     LINE="$LINE,${pf_posted}";
-        # HEADER="$HEADER,XputAcc";       LINE="$LINE,${xput_accounted}";
+        HEADER="$HEADER,MemUsed";           LINE="$LINE,${memused}M";
     fi
     
     HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    

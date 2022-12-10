@@ -1,0 +1,10 @@
+Exp,RMem,Backend,CPU,Threads,Local_MB,LMem%,ZipfS,RdHd,EvB,EvP,EvPr,Xput,Faults,FaultsR,KFaults,Evicts,KEvicts,EvPopped,HitR,rCPU%,MemUsed,Desc,XputNorm
+run-11-28-15-41-38,eden,rdma,5,25,1140,20,1,no,8,NONE,no,504803,414278,414278,2019,338238,203504,338237,,,M,incremental,0.673906
+run-11-28-15-44-54,eden,rdma,5,25,1710,30,1,no,8,NONE,no,528699,368098,368098,1984,324795,196628,324795,,,M,incremental,0.705807
+run-11-28-15-47-53,eden,rdma,5,25,2280,40,1,no,8,NONE,no,,,,0,,,,,,M,incremental,
+run-11-28-15-49-41,eden,rdma,5,25,2850,50,1,no,8,NONE,no,579987,257235,257235,1477,229378,151621,229377,,,M,incremental,0.774276
+run-11-28-15-52-17,eden,rdma,5,25,3420,60,1,no,8,NONE,no,604607,207022,207022,1271,193533,133010,193533,,,M,incremental,0.807144
+run-11-28-15-54-53,eden,rdma,5,25,3990,70,1,no,8,NONE,no,655889,151107,151107,870,128931,95242,128931,,,M,incremental,0.875604
+run-11-28-15-57-29,eden,rdma,5,25,4560,80,1,no,8,NONE,no,671969,111660,111660,763,109459,82787,109459,,,M,incremental,0.897071
+run-11-28-16-00-05,eden,rdma,5,25,5130,90,1,no,8,NONE,no,724170,46150,46150,251,36131,30931,36131,,,M,incremental,0.966759
+run-11-28-16-02-41,eden,rdma,5,25,5700,100,1,no,8,NONE,no,749070,0,0,0,0,0,0,,,M,incremental,1

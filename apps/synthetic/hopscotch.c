@@ -104,6 +104,8 @@ hopscotch_init(struct hopscotch_hash_table *ht, size_t exponent)
     if ( NULL == buckets ) {
         return NULL;
     }
+    pr_info("hash table memory start: %p, end: 0x%lx", buckets, 
+        (unsigned long) buckets + sizeof(struct hopscotch_bucket) * nbuckets);
     memset(buckets, 0, sizeof(struct hopscotch_bucket) * nbuckets);
 #ifdef THREAD_SAFE
     for (i = nbuckets; i >= 0; i--) {
