@@ -101,6 +101,10 @@ case $i in
     RDAHEAD="${i#*=}"
     ;;
 
+    -mrd=*|--mrdahead=*)
+    MGRDAHEAD="${i#*=}"
+    ;;
+
     -tg=*|--tag=*)
     TAG="${i#*=}"
     ;;
@@ -153,7 +157,8 @@ for exp in $LS_CMD; do
     sched=$(cat $exp/settings | grep "scheduler:" | awk -F: '{ print $2 }')
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
     nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
-    rdahead=$(cat $exp/settings | grep "rdahead:" | awk -F: '{ print $2 }')
+    rdahead=$(cat $exp/settings | grep "^rdahead:" | awk -F: '{ print $2 }')
+    mgrdahead=$(cat $exp/settings | grep "^mergerdahead:" | awk -F: '{ print $2 }')
     evictbs=$(cat $exp/settings | grep "evictbatch:" | awk -F: '{ print $2 }')
     evictpol=$(cat $exp/settings | grep "evictpolicy:" | awk -F: '{ print $2 }')
     evictgens=$(cat $exp/settings | grep "evictgens:" | awk -F: '{ print $2 }')
@@ -167,6 +172,7 @@ for exp in $LS_CMD; do
     tag=${tag:-none}
     vdso=${vdso:-0}
     desc=${desc:-none}
+    mgrdahead=${mgrdahead:-$rdahead}
 
     # apply filters
     if [[ $THREADS ]] && [ "$THREADS" != "$threads" ];      then    continue;   fi
@@ -179,6 +185,7 @@ for exp in $LS_CMD; do
     if [[ $SCHEDULER ]] && [ "$SCHEDULER" != "$sched" ];    then    continue;   fi
     if [[ $BACKEND ]] && [ "$BACKEND" != "$backend" ];      then    continue;   fi
     if [[ $RDAHEAD ]] && [ "$RDAHEAD" != "$rdahead" ];      then    continue;   fi
+    if [[ $MGRDAHEAD ]] && [ "$MGRDAHEAD" != "$mgrdahead" ];then    continue;   fi
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];            then    continue;   fi
     if [[ $TAG ]] && [[ "$tag" != "$TAG"  ]];               then    continue;   fi
     
@@ -220,9 +227,10 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,LocalMem";      LINE="$LINE,${localmem}M";
     HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
     HEADER="$HEADER,RdHd";          LINE="$LINE,${rdahead}";
+    HEADER="$HEADER,MRdHd";         LINE="$LINE,${mgrdahead}";
     HEADER="$HEADER,EvB";           LINE="$LINE,${evictbs}";
     # HEADER="$HEADER,EvP";           LINE="$LINE,${evictpol}";
-    HEADER="$HEADER,VDSO";           LINE="$LINE,${vdso}";
+    # HEADER="$HEADER,VDSO";           LINE="$LINE,${vdso}";
     # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
 
     # OVERALL PERF
@@ -360,7 +368,7 @@ for exp in $LS_CMD; do
                 # HEADER="$HEADER,WritePF";           LINE="$LINE,${faultsw}";
                 # HEADER="$HEADER,WPFaults";          LINE="$LINE,${faultswp}";
                 HEADER="$HEADER,Evicts";          LINE="$LINE,${evicts}";
-                # HEADER="$HEADER,KEvicts";         LINE="$LINE,${kevicts}";
+                HEADER="$HEADER,KEvicts";         LINE="$LINE,${kevicts}";
                 HEADER="$HEADER,EvPopped";        LINE="$LINE,${evpopped}";
                 # HEADER="$HEADER,HitR";            LINE="$LINE,${hitr}";
                 # HEADER="$HEADER,NetReads";        LINE="$LINE,${netreads}";
@@ -381,6 +389,7 @@ for exp in $LS_CMD; do
                 HEADER="$HEADER,KIdle($kind)";        LINE="$LINE,${kidle}";
                 HEADER="$HEADER,HitR($kind)";         LINE="$LINE,${hitr}";
                 HEADER="$HEADER,Flts($kind)";         LINE="$LINE,${faults}";
+                HEADER="$HEADER,Evicts($kind)";       LINE="$LINE,${evicts}";
             fi
 
             # HEADER="$HEADER,HitR($kind)";           LINE="$LINE,${hitr}";

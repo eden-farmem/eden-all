@@ -1,0 +1,28 @@
+  Exp                 Scheduler  RMem  Backend  CPU  Thr  LocalMem  LMem%  RdHd  MRdHd  EvB  Time(s)  Work  Phase1  Phase2  Phase3  Phase4  Copyback  Unacc  Desc
+  run-12-09-02-18-15  shenango   none  local    10   50   953.674M         0     0      1    71       710   40      0       1       30      0         0      hero
+  run-12-09-04-11-27  shenango   none  local    10   40   953.674M         0     0      1    68       680   41      0       0       27      0         0      hero
+  run-12-09-06-00-02  shenango   none  local    10   30   953.674M         0     0      1    63       630   42      0       0       21      0         0      hero
+  run-12-09-07-46-05  shenango   none  local    10   20   953.674M         0     0      1    59       590   42      0       1       16      0         0      hero
+  run-12-09-09-34-57  shenango   none  local    10   10   953.674M         0     0      1    56       560   44      0       0       11      1         0      hero
+
+  Exp                 Scheduler  RMem     Backend  CPU  Thr  LocalMem  LMem%  RdHd  MRdHd  EvB  Time(s)  Work  Phase1  Phase2  Phase3  Phase4  Copyback  Unacc  Desc
+  run-12-09-02-20-59  shenango   eden-bh  rdma     10   50   2390M     10     31    31     32   97       970   50      0       3       41      3         0      hero
+  run-12-09-04-14-07  shenango   eden-bh  rdma     10   40   2390M     10     31    31     32   94       940   53      0       3       35      3         0      hero
+  run-12-09-06-02-38  shenango   eden-bh  rdma     10   30   2390M     10     31    31     32   88       880   54      0       2       29      3         0      hero
+  run-12-09-07-48-37  shenango   eden-bh  rdma     10   20   2390M     10     31    31     32   106      1060  78      0       3       22      3         0      hero
+  run-12-09-09-37-24  shenango   eden-bh  rdma     10   10   2390M     10     31    31     32   81       810   60      0       3       15      3         0      hero
+
+  Exp                 Scheduler  RMem  Backend  CPU  Thr  LocalMem  LMem%  RdHd  MRdHd  EvB  Time(s)  Work  Phase1  Phase2  Phase3  Phase4  Copyback  Unacc  Desc
+  run-12-09-02-38-00  shenango   eden  rdma     10   50   2390M     10     31    31     32   100      1000  55      0       1       41      3         0      hero
+  run-12-09-04-31-12  shenango   eden  rdma     10   40   2390M     10     31    31     32   97       970   57      0       2       35      3         0      hero
+  run-12-09-06-19-30  shenango   eden  rdma     10   30   2390M     10     31    31     32   96       960   62      0       2       29      3         0      hero
+  run-12-09-08-05-13  shenango   eden  rdma     10   20   2390M     10     31    31     32   92       920   65      0       2       22      3         0      hero
+  run-12-09-09-53-37  shenango   eden  rdma     10   10   2390M     10     31    31     32   79       790   58      0       3       15      3         0      hero
+
+  Exp                 Scheduler  RMem      Backend  CPU  Thr  LocalMem  LMem%  RdHd  MRdHd  EvB  Time(s)  Work  Phase1  Phase2  Phase3  Phase4  Copyback  Unacc  Desc
+  run-12-09-02-43-43  shenango   eden-obh  rdma     10   50   2390M     10     31    31     32   95       950   50      0       2       40      3         0      hero
+  run-12-09-04-36-55  shenango   eden-obh  rdma     10   40   2390M     10     31    31     32   92       920   51      0       2       36      3         0      hero
+  run-12-09-06-25-12  shenango   eden-obh  rdma     10   30   2390M     10     31    31     32   0              0       0       0       0       3         0      hero
+  run-12-09-08-10-42  shenango   eden-obh  rdma     10   20   2390M     10     31    31     32   82       820   55      0       3       21      3         0      hero
+  run-12-09-09-58-59  shenango   eden-obh  rdma     10   10   2390M     10     31    31     32   80       800   58      0       4       15      3         0      hero
+

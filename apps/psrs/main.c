@@ -192,7 +192,7 @@ void phase4(struct thread_data* data) {
 			if (exchange_indices[i] != exchange_indices[i+1]) {
 				addr = &input[exchange_indices[i]];
 				if (((unsigned long) addr & _PAGE_OFFSET_MASK) == 0)
-					HINT_READ_FAULT_OPT_RDAHEAD(addr);
+					HINT_READ_FAULT_RDAHEAD(addr, MERGE_RDAHEAD);
 				if (!found) {
 					min = *addr;
 					min_pos = i;

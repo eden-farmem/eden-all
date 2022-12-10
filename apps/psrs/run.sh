@@ -68,6 +68,7 @@ EXPECTED_PTI=off
 SCHEDULER=pthreads
 RMEM=none
 RDAHEAD=0
+MERGE_RDAHEAD=0
 EVICT_GENS=1
 NCORES=1
 NKEYS=16000000
@@ -205,6 +206,10 @@ case $i in
     CFLAGS="$CFLAGS -DRDAHEAD=$RDAHEAD"
     ;;
 
+    -mrd=*|--merge-rdahead=*)
+    MERGE_RDAHEAD=${i#*=}
+    ;;
+
     -sf|--safemode)
     SAFEMODE=1
     ;;
@@ -339,7 +344,6 @@ if [[ $EDEN ]]; then
 
     if [[ $OPTBHINTS ]]; then
         RMEM="eden-obh"
-        SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
         CFLAGS="$CFLAGS -DOPTIONAL_BLOCKING"
     fi
 
@@ -436,6 +440,7 @@ fi
 
 # compile
 LIBS="${LIBS} -lpthread -lm"
+CFLAGS="$CFLAGS -DMERGE_RDAHEAD=$MERGE_RDAHEAD"
 gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 if [[ $BUILD_ONLY ]]; then
@@ -458,6 +463,7 @@ save_cfg "backend"      $BACKEND
 save_cfg "localmem"     $LMEM
 save_cfg "lmemper"      $LMEMPER
 save_cfg "rdahead"      $RDAHEAD
+save_cfg "mergerdahead" $MERGE_RDAHEAD
 save_cfg "evictbatch"   $EVICT_BATCH_SIZE
 save_cfg "evictpolicy"  $EVICT_POLICY
 save_cfg "evictgens"    $EVICT_GENS
