@@ -1,0 +1,11 @@
+
+#
+# Paper
+#
+
+## 
+
+## Fastswap runs
+bash show.sh 12-10 -d=fshero -rd=0 -s       # no rdahead
+bash show.sh 12-10 -d=fshero -rd=7 -s       # with rdahead
+

@@ -163,22 +163,19 @@ run_vary_lmem() {
     
     # run
     configure_max_local_mem "$kind" "$cores"
-    local memp
-    # for memp in `seq 20 10 100`; do
-    for memp in "${MEMP}"; do
-        check_for_stop
-        lmemopt=
-        if [[ $MAXRSS ]]; then 
-            lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
-            lmem=$((lmem_mb*1024*1024))
-            lmemopt="-lm=${lmem} -lmp=${memp}"
-        fi
-        echo "Running ${cores} cores, ${thr} threads, ${NKEYS} keys"
-        echo bash run.sh -c=${cores} -t=${threads} -nk=${NKEYS} ${OPTS} ${FFLAG}\
-            -d="""${desc}""" -fl="""${CFLAGS}""" ${lmemopt}
-        bash run.sh -c=${cores} -t=${threads} -nk=${NKEYS} ${OPTS} ${FFLAG}     \
-            -d="""${desc}""" -fl="""${CFLAGS}""" ${lmemopt}
-    done
+    local memp=${MEMP:-10}
+    check_for_stop
+    lmemopt=
+    if [[ $MAXRSS ]]; then 
+        lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
+        lmem=$((lmem_mb*1024*1024))
+        lmemopt="-lm=${lmem} -lmp=${memp}"
+    fi
+    echo "Running ${cores} cores, ${thr} threads, ${NKEYS} keys"
+    echo bash run.sh -c=${cores} -t=${threads} -nk=${NKEYS} ${OPTS} ${FFLAG}\
+        -d="""${desc}""" -fl="""${CFLAGS}""" ${lmemopt}
+    bash run.sh -c=${cores} -t=${threads} -nk=${NKEYS} ${OPTS} ${FFLAG}     \
+        -d="""${desc}""" -fl="""${CFLAGS}""" ${lmemopt}
 }
 
 # eden runs
@@ -193,7 +190,7 @@ mp=         # set default local mem %
 for c in $CORES; do
     # for tpc in 5 4 3 2 1; do
     for tpc in 1; do
-        desc="test"
+        desc="fshero"
         t=$((c*tpc))
         mp=
 
@@ -206,7 +203,7 @@ for c in $CORES; do
         # run_vary_lmem "eden"      "rdma"  "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "100" "$mrd"
 
         # for mp in 10 25 50 75; do
-        for mp in 10; do
+        for mp in `seq 10 15 100`; do
             # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
             # run_vary_lmem "eden-obh"  "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
             # run_vary_lmem "eden"      "local" "$c" "$t" "$rd" "$ebs" "NONE" "$evg" "$vdso" "$mp" "$mrd"
@@ -230,12 +227,13 @@ for c in $CORES; do
             # run_vary_lmem "eden-bh"   "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
             # run_vary_lmem "eden"      "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "1"
             # run_vary_lmem "eden"      "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "7"
-            run_vary_lmem "eden"      "rdma"  "$c" "$t" "63"  "64"   "NONE" "$evg" "$vdso" "$mp" "63"
+            # run_vary_lmem "eden"      "rdma"  "$c" "$t" "63"  "64"   "NONE" "$evg" "$vdso" "$mp" "63"
             # run_vary_lmem "eden"      "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
             # run_vary_lmem "eden-obh"  "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
 
             # run_vary_lmem "fswap"     "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
-            # run_vary_lmem "fswap"     "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+            run_vary_lmem "fswap"     "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+            run_vary_lmem "fswap"     "rdma"  "$c" "$t" "7"   "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
         done
     done
 done
