@@ -1,0 +1,8 @@
+,Exp,Scheduler,RMem,Backend,CPU,Thr,LocalMem,LMem%,RdHd,MRdHd,EvB,Time(s),Phase1,Phase3,Phase4,Copyback,Unacc,PF,KernPF,Evicts,KEvicts,EvPopped,rCPU%,MemUsed,Idle(T),Idle(p1),Idle(p2),Idle(p3),Idle(p4),Idle(cb),Desc,Overhead
+,run-12-10-15-25-56,pthreads,fastswap,rdma,10,10,2390M,10,0,0,1,121,79,4,25,13,0,24617951,,,,,,3034M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,86.153846
+,run-12-10-15-33-21,pthreads,fastswap,rdma,10,10,5976M,25,0,0,1,107,66,4,25,12,0,19003583,,,,,,6615M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,64.615385
+,run-12-10-15-40-22,pthreads,fastswap,rdma,10,10,9561M,40,0,0,1,100,60,2,26,12,0,15820351,,,,,,10199M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,53.846154
+,run-12-10-15-47-09,pthreads,fastswap,rdma,10,10,13147M,55,0,0,1,94,56,1,25,12,0,12385231,,,,,,13786M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,44.615385
+,run-12-10-15-53-37,pthreads,fastswap,rdma,10,10,16732M,70,0,0,1,83,55,1,20,7,0,7866932,,,,,,17370M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,27.692308
+,run-12-10-15-59-17,pthreads,fastswap,rdma,10,10,20318M,85,0,0,1,75,54,1,16,4,0,4317642,,,,,,21020M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,15.384615
+,run-12-10-16-04-44,pthreads,fastswap,rdma,10,10,23904M,100,0,0,1,65,50,0,14,1,0,0,,,,,,23573M,0|0,0|0,0|0,0|0,0|0,0|0,fshero,0.000000

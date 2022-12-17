@@ -39,6 +39,7 @@ case $i in
     PLOTID="${i#*=}"
     ;;
 
+
     -r=*|--run=*)
     RUNID="${i#*=}"
     ;;
@@ -61,11 +62,15 @@ mkdir -p $PLOTDIR
 
 
 # performance with kona/page faults
+
+# performance with kona/page faults
 if [ "$PLOTID" == "1" ]; then
     plotdir=$PLOTDIR/$PLOTID
     mkdir -p $plotdir
     plots=
     files=
+    NORMALIZE=1
+    CORES=5
     NORMALIZE=1
     CORES=5
 
