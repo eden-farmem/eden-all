@@ -1,15 +1,15 @@
 import os
-import sys
-from collections import defaultdict
-import re
 import argparse
+import sys
+import pandas as pd
 
-# counter
-idx = 0
-def next_index(): 
-    global idx
-    idx += 1
-    return idx
+TIMECOL = "time"
+
+def append_row(df, row):
+    return pd.concat([
+        df, 
+        pd.DataFrame([row], columns=row.index)]
+    ).reset_index(drop=True)
 
 def main():
     parser = argparse.ArgumentParser("Process input and write csv-formatted data to stdout/output file")
@@ -26,106 +26,39 @@ def main():
     with open(args.input) as f:
         rawdata = f.read().splitlines()
 
-    pattern = None
-    pattern_v0 = ("(\d+).*reschedules:(\d+),sched_cycles:(\d+),"
-    "sched_cycles_idle:(\d+),program_cycles:(\d+),"
-    "threads_stolen:(\d+),softirqs_stolen:(\d+),softirqs_local:(\d+),parks:(\d+),"
-    "preemptions:(\d+),preemptions_stolen:(\d+),core_migrations:(\d+),rx_bytes:(\d+),"
-    "rx_packets:(\d+),tx_bytes:(\d+),tx_packets:(\d+),drops:(\d+),rx_tcp_in_order:(\d+),"
-    "rx_tcp_out_of_order:(\d+),rx_tcp_text_cycles:(\d+),cycles_per_us:(\d+)")
-    pattern = None
-
-    data = defaultdict(list)
-    values_old = None
-    tstamps = []
+    # make df from data
+    header = None
+    values = []
     for line in rawdata:
-        for pat in [ pattern_v0 ]:
-            match = re.match(pat, line)
-            if match:
-                pattern = pat
-                break
-        assert pattern, line
-        values = [int(match.group(i+1)) for i in range(len(match.groups()))]
-        if not values_old:
-            values_old = values
-            continue        #ignore first value
-        diff = [x - y for x, y in zip(values, values_old)]
-        values_old = values
+        parts = [x.strip() for x in line.split(" ") if len(x.strip()) > 0]
+        time = int(parts[0])
+        vals=parts[1]
+        fields = [x.strip() for x in vals.split(",") if len(x.strip()) > 0]
+        if not header:
+            header = ["time"] + [x.split(":")[0] for x in fields]
+        values.append([time] + [int(x.split(":")[1])for x in fields])
+        
+    # print(header, values)
+    df = pd.DataFrame(columns=header, data=values)
+    # print(df)
 
-        # found columns
-        global idx
-        idx = 0
-        ts = int(values[0])
-        reschedules = diff[next_index()]
-        sched_cycles = diff[next_index()]
-        sched_cycles_idle = diff[next_index()]
-        program_cycles = diff[next_index()]
-        threads_stolen = diff[next_index()]
-        softirqs_stolen = diff[next_index()]
-        softirqs_local = diff[next_index()]
-        parks = diff[next_index()]
-        preemptions = diff[next_index()]
-        preemptions_stolen = diff[next_index()]
-        core_migrations = diff[next_index()]
-        rx_bytes = diff[next_index()]
-        rx_packets = diff[next_index()]
-        tx_bytes = diff[next_index()]
-        tx_packets = diff[next_index()]
-        drops = diff[next_index()]
-        rx_tcp_in_order = diff[next_index()]
-        rx_tcp_out_of_order = diff[next_index()]
-        rx_tcp_text_cycles = diff[next_index()]
-        cycles_per_us = values[next_index()]
+    # filter 
+    if args.start:  df = df[df[TIMECOL] >= (args.start-1)]
+    if args.end:    df = df[df[TIMECOL] <= args.end]
 
-        tstamps.append(ts)
-        data['rescheds'].append((ts, reschedules))
-        data['schedtimepct'].append((ts, sched_cycles * 100.0 / (sched_cycles + program_cycles) 
-            if (sched_cycles + program_cycles) else 0))
-        data['sched_idle_us'].append((ts, sched_cycles_idle / cycles_per_us if cycles_per_us else 0))
-        data['sched_idle_per'].append((ts, sched_cycles_idle * 100.0 / (sched_cycles + program_cycles)
-            if (sched_cycles + program_cycles) else 0))
-        data['localschedpct'].append((ts, (1 - threads_stolen / reschedules) * 100 if reschedules else 0))
-        data['softirqs'].append((ts, softirqs_local + softirqs_stolen))
-        data['stolenirqpct'].append((ts, (softirqs_stolen / (softirqs_local + softirqs_stolen)) * 100 
-            if (softirqs_local + softirqs_stolen) else 0))
-        data['cpupct'].append((ts, (sched_cycles + program_cycles) * 100 /(float(cycles_per_us) * 1000000)))
-        data['parks'].append((ts, parks))
-        data['migratedpct'].append((ts, core_migrations * 100 / parks if parks else 0))
-        data['preempts'].append((ts, preemptions))
-        data['stolenpct'].append((ts, preemptions_stolen))
-        data['rxpkt'].append((ts, rx_packets))
-        data['rxbytes'].append((ts, rx_bytes))
-        data['txpkt'].append((ts, tx_packets))
-        data['txbytes'].append((ts,tx_bytes ))
-        data['drops'].append((ts, drops))
-        data['p_rx_ooo'].append((ts, rx_tcp_out_of_order / (rx_tcp_in_order + rx_tcp_out_of_order) * 100
-            if (rx_tcp_in_order + rx_tcp_out_of_order) else 0))
-        data['p_reorder_time'].append((ts, rx_tcp_text_cycles / (sched_cycles + program_cycles) * 100
-            if (sched_cycles + program_cycles) else 0))
+    # derived cols
+    # df[""] = df[""] + df[""]
 
-        if cycles_per_us:
-            sched_time_us = int(sched_cycles / cycles_per_us)
-            data['sched_time_us'].append((ts, sched_time_us))
-            data['cpu_idle_time'].append((ts, sched_time_us)) #TODO: fix this
-
-    # filter
-    if args.start:  tstamps = filter(lambda x: x >= args.start, tstamps)
-    if args.end:    tstamps = filter(lambda x: x <= args.end, tstamps)
-    for k in data.keys():
-        if args.start:  data[k] = filter(lambda x: x[0] >= args.start, data[k])
-        if args.end:    data[k] = filter(lambda x: x[0] <= args.end, data[k])
+    # accumulated cols
+    if not df.empty:
+        for k in df:
+            df[k] = df[k].diff()
+        df = df.iloc[1:]    #drop first row
 
     # write out
-    f = sys.stdout
-    if args.out:
-        f = open(args.out, "w")
-        # print("writing output stats to " + args.out)
-    start = min(tstamps)
-    keys = data.keys()
-    f.write("time," + ",".join(keys) + "\n")    # header
-    for i, time in enumerate(tstamps):
-        values = [str(time - start)] + [str(data[k][i][1]) for k in keys]
-        f.write(",".join(values) + "\n")
+    out = args.out if args.out else sys.stdout
+    df.to_csv(out, index=False)
+
 
 if __name__ == '__main__':
     main()

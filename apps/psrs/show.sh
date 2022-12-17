@@ -234,16 +234,14 @@ for exp in $LS_CMD; do
     # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
 
     # OVERALL PERF
-    if [[ $SIMPLE ]]; then
-        HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime))";
-        # HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
-        HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1time))";
-        # HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
-        HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3time))";
-        HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4time))";
-        HEADER="$HEADER,Copyback";      LINE="$LINE,$((copyback))";
-        HEADER="$HEADER,Unacc";         LINE="$LINE,$((unaccounted))"; 
-    fi
+    HEADER="$HEADER,Time(s)";       LINE="$LINE,$((rtime))";
+    # HEADER="$HEADER,Work";          LINE="$LINE,${cpuwork}";
+    HEADER="$HEADER,Phase1";        LINE="$LINE,$((p1time))";
+    # HEADER="$HEADER,Phase2";        LINE="$LINE,$((p2time))";
+    HEADER="$HEADER,Phase3";        LINE="$LINE,$((p3time))";
+    HEADER="$HEADER,Phase4";        LINE="$LINE,$((p4time))";
+    HEADER="$HEADER,Copyback";      LINE="$LINE,$((copyback))";
+    HEADER="$HEADER,Unacc";         LINE="$LINE,$((unaccounted))"; 
 
     # PERFORMANCE BREAKDOWN
     if ! [[ $SIMPLE ]]; then 
@@ -393,9 +391,9 @@ for exp in $LS_CMD; do
             fi
 
             # HEADER="$HEADER,HitR($kind)";           LINE="$LINE,${hitr}";
-            HEADER="$HEADER,Idle($kind)";           LINE="$LINE,${uidle}|${kidle}";
+            # HEADER="$HEADER,Idle($kind)";           LINE="$LINE,${uidle}|${kidle}";
             # HEADER="$HEADER,PF($kind)";             LINE="$LINE,${faultszp}";
-            # HEADER="$HEADER,PF($kind)";             LINE="$LINE,${faults}";
+            HEADER="$HEADER,PF($kind)";             LINE="$LINE,${faults}";
             # faultsf=$(echo $faults | awk '{
             #     if ($0>=1000000)    printf "%.1fM", $0*1.0/1000000;
             #     else                printf "%.1fK", $0*1.0/1000; }') 

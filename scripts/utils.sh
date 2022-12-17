@@ -109,7 +109,7 @@ csv_column() {
     local header=$(head -n1 $FILE 2>/dev/null)
     local cols=$(echo $header | awk -F, '{for (i=1; i<=NF; i++) print $i}')
     local ncols=$(echo "$cols" | wc -l)
-    local colidx=$(echo "$cols" | grep -w -n "$COLNAME" | cut -f1 -d:)
+    local colidx=$(echo "$cols" | grep -w -n "^${COLNAME}$" | cut -f1 -d: | xargs)
     if [ -z "$header" ] || [ -z "$ncols" ] || [ -z "$colidx" ]; then   
         # echo "couldn't find file or column" 1>&2
         return 
@@ -142,7 +142,6 @@ csv_column_stdev() {
     local FILE=$1
     local COLNAME=$2
     local values=$(csv_column "$FILE" "$COLNAME")
-    # echo "$values"
     if [[ $values ]]; then 
         echo "$values" | awk '{ x+=$0; y+=$0^2; n++ } 
             END { if (n > 0) print sqrt(y/n-(x/n)^2)}'

@@ -377,6 +377,15 @@ if [[ $FASTSWAP ]]; then
     RMEM="fastswap"
     CFLAGS="$CFLAGS -DFASTSWAP"
 
+    # until deadline
+    pushd ${SHENANGO_DIR}
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [[ $branch != "sort" ]]; then
+        echo "ERROR! use only the synthetic branch until the deadline"
+        exit 1
+    fi
+    popd
+
     if [[ $EDEN ]] || [[ $RHINTS ]]; then
         echo "ERROR! Eden or hints can't be enabled with fastswap"
         exit 1
@@ -409,13 +418,6 @@ fi
 # rebuild shenango
 if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     pushd ${SHENANGO_DIR} 
-
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    if [[ $branch != "sort" ]]; then
-        echo "ERROR! use only the sort branch until the deadline"
-        exit 1
-    fi
-
     if [[ $FORCE ]];        then    make clean;                         fi
     if [[ $EDEN ]];         then    OPTS="$OPTS REMOTE_MEMORY=1";       fi
     if [[ $HINTS ]];        then    OPTS="$OPTS REMOTE_MEMORY_HINTS=1"; fi
