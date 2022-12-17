@@ -162,3 +162,47 @@ if [ "$PLOTID" == "6" ]; then
         --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname -lt "UFFD Page Op" 
     display ${plotname} &
 fi
+
+# Plot 7: For Paper
+if [ "$PLOTID" == "7" ]; then
+    plotname=${PLOTDIR}/uffd_scalability.${PLOTEXT}
+    python3 ${ROOT_SCRIPTS_DIR}/plot.py -yc "xput"                                                          \
+        -d ${DATADIR}/fault_path_one_fd_hthr_4_pti_off.dat   		
+        -d ${DATADIR}/uffd_copy_one_fd_reg_pti_off.dat       		
+        -d ${DATADIR}/madv_dneed_one_fd_reg_pti_off.dat      		
+        -d ${DATADIR}/uffd_prot_one_fd_reg_pti_on.dat        		
+        -yl "MOPS" --ymul 1e-6 --ymin 0 --ymax 4  -xc cores -xl "CPU Cores"                               \
+        --size 5 3.5 -fs 15 -of $PLOTEXT -o $plotname
+    display ${plotname} &
+fi
+
+# Plot 8: No plot, just move all uffd data for Stew
+if [ "$PLOTID" == "8" ]; then
+    # uffd figure (fig 1)
+    DSTDIR=../../../faults-analysis/paper/uffd
+    cp ${DATADIR}/fault_path_one_fd_hthr_4_pti_off.dat  ${DSTDIR}/uffd_zero_page_faults.dat  
+    cp ${DATADIR}/uffd_copy_one_fd_reg_pti_off.dat      ${DSTDIR}/uffd_map_page.dat
+    cp ${DATADIR}/madv_dneed_one_fd_reg_pti_off.dat     ${DSTDIR}/uffd_remove_page.dat
+    cp ${DATADIR}/uffd_prot_one_fd_reg_pti_on.dat       ${DSTDIR}/uffd_write_protect.dat
+
+    # uffd batching ops figure (a)
+    DSTDIR=../../../faults-analysis/paper/uffd-batching
+    cp ${DATADIR}/uffd_wp_vec_batch_1_pti_off.dat   ${DSTDIR}/uffd_wp_vec_batch_1.dat
+    cp ${DATADIR}/uffd_wp_vec_batch_2_pti_off.dat	${DSTDIR}/uffd_wp_vec_batch_2.dat
+    cp ${DATADIR}/uffd_wp_vec_batch_4_pti_off.dat	${DSTDIR}/uffd_wp_vec_batch_4.dat	
+    cp ${DATADIR}/uffd_wp_vec_batch_8_pti_off.dat	${DSTDIR}/uffd_wp_vec_batch_8.dat
+    cp ${DATADIR}/uffd_wp_vec_batch_8_pti_off.dat	${DSTDIR}/uffd_wp_vec_batch_16.dat
+    cp ${DATADIR}/uffd_wp_vec_batch_8_pti_off.dat	${DSTDIR}/uffd_wp_vec_batch_32.dat
+
+    # uffd batching ops figure (b)
+    cp ${DATADIR}/proc_madv_batch_1_pti_off.dat		${DSTDIR}/uffd_madv_batch_1.dat  
+    cp ${DATADIR}/proc_madv_batch_2_pti_off.dat		${DSTDIR}/uffd_madv_batch_2.dat
+    cp ${DATADIR}/proc_madv_batch_4_pti_off.dat		${DSTDIR}/uffd_madv_batch_4.dat
+    cp ${DATADIR}/proc_madv_batch_8_pti_off.dat		${DSTDIR}/uffd_madv_batch_8.dat
+    cp ${DATADIR}/proc_madv_batch_16_pti_off.dat    ${DSTDIR}/uffd_madv_batch_16.dat
+    cp ${DATADIR}/proc_madv_batch_32_pti_off.dat    ${DSTDIR}/uffd_madv_batch_32.dat
+
+    # uffd batching latency figure (c)
+    cp ${DATADIR}/uffd_wp_vec_latency_pti_off.dat  	${DSTDIR}/uffd_wp_vec_latency.dat
+    cp ${DATADIR}/proc_madv_latency_pti_off.dat     ${DSTDIR}/uffd_madv_latency.dat
+fi
