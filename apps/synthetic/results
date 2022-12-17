@@ -3,8 +3,22 @@
 # Paper results
 #
 
+## Hero 
+
+# Fastswap runs
+bash show.sh 12-10 -d=fshero-1 -zs=0.8
+bash show.sh 12-10 -d=fshero -zs=1
+
 # Large runs
 bash show.sh 12-10 -d=hero 
 
 Ran till evb=1 80%
+
+
+# EVPRIO
+
+# Fastswap runs
+bash show.sh 12-10 -d="fsprio-8"        # kpr=32
+bash show.sh 12-10 -d="fsprio-32"       # kpr=8
+
 

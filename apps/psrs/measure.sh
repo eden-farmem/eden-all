@@ -232,8 +232,9 @@ for c in $CORES; do
             # run_vary_lmem "eden-obh"  "rdma"  "$c" "$t" "31"  "32"   "NONE" "$evg" "$vdso" "$mp" "31"
 
             # run_vary_lmem "fswap"     "local" "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
-            run_vary_lmem "fswap"     "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "fswap"     "rdma"  "$c" "$t" "$rd" "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
             run_vary_lmem "fswap"     "rdma"  "$c" "$t" "7"   "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
+            # run_vary_lmem "fswap"     "rdma"  "$c" "$t" "63"  "$ebs" "$evp" "$evg" "$vdso" "$mp" "$mrd"
         done
     done
 done

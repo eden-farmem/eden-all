@@ -54,8 +54,13 @@ if [ "`hostname`" == "sc2-hs2-b1640" ];
 then
     # fastswap
     HOST_SSH="sc40"
-    HOST_IP="192.168.0.40"
-    RCNTRL_IP="192.168.0.7"
+    # HOST_IP="192.168.0.40"
+    # RCNTRL_IP="192.168.0.7"
+    # MEMSERVER_IP=$RCNTRL_IP
+    HOST_IP="192.168.100.116"    #sc32
+    RCNTRL_SSH="sc32"
+    MEMSERVER_SSH=$RCNTRL_SSH
+    RCNTRL_IP="192.168.100.108"
     MEMSERVER_IP=$RCNTRL_IP
 fi
 
@@ -522,6 +527,7 @@ if [[ $FASTSWAP ]]; then
         "3")    logRDAHEAD=2;;
         "7")    logRDAHEAD=3;;
         "15")   logRDAHEAD=4;;
+        "63")   logRDAHEAD=6;;
         *)      echo "unsupported rdahead"; exit;;
         esac
         echo "setting read-ahead to $logRDAHEAD pages"
