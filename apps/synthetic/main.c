@@ -248,10 +248,8 @@ static inline void process_request(int keys[], int nkeys, int nblobs,
 #endif
 
 	/* set rdahead on the first page, prio on both */
-	// HINT_READ_FAULT_ALL(nextin, rdahead, prio);
-	// HINT_READ_FAULT_ALL(nextin + PAGE_SIZE, 0, prio);
-	HINT_READ_FAULT(nextin);
-	HINT_READ_FAULT(nextin + PAGE_SIZE);
+	HINT_READ_FAULT_ALL(nextin, rdahead, prio);
+	HINT_READ_FAULT_ALL(nextin + PAGE_SIZE, 0, prio);
 
 #ifdef ENCRYPT
 	/* encrypt data (emits same length as input) */

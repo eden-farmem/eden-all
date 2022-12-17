@@ -204,6 +204,10 @@ for exp in $LS_CMD; do
             rm -f ${exp}/eden_rmem_parsed
             rm -f ${exp}/runtime_parsed
             rm -f ${exp}/cpu_sar_parsed
+            rm -f ${exp}/iokstats_parsed
+            rm -f ${exp}/vmstat_parsed
+            rm -f ${exp}/fstat_parsed
+            rm -f ${exp}/cpu_reclaim_sar_parsed
         fi
 
         # RMEM
@@ -249,6 +253,7 @@ for exp in $LS_CMD; do
             memused=$(csv_column_max "$edenout" "memory_used_mb")
             annothits=$(csv_column_mean "$edenout" "annot_hits")
             reclaimcpu=$(csv_column_mean "$edenout" "cpu_per_h")
+            bkendwait=$(csv_column_mean "$edenout" "backend_wait_cycles")
             hitr=
             if [[ $annothits ]] && [[ $faults ]]; then 
                 hitr=$(percentage "$((annothits-faults))" "$annothits" | ftoi)
@@ -282,33 +287,20 @@ for exp in $LS_CMD; do
         fi
 
         # SHENANGO
-        # shenangoout=${exp}/runtime_parsed
-        # shenangoin=${exp}/runtime.out 
-        # if [ ! -f $shenangoout ] && [ -f $shenangoin ] && [[ $rstart ]] && [[ $rend ]]; then 
-        #     python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
-        #         -o ${shenangoout} -st=${rstart} -et ${rend}
-        # fi
-        # user_idle_per=$(csv_column_mean "$shenangoout" "sched_idle_per")
-        # pf_annot_hits=$(csv_column_mean "$shenangoout" "pf_annot_hits")
-        # pf_posted=$(csv_column_mean "$shenangoout" "pf_posted")
-        # # pf_annot_hitr=$(percentage "$pf_annot_hits" "$((pf_posted+pf_annot_hits))" | ftoi)
-        # # pf_annot_hitpm=$(percentage $pf_annot_hits $pf_posted | ftoi)
-        # hitcost=30; misscost=1400;  #vdso
-        # if [ "$pgchecks" == "kona" ]; then  hitcost=120; misscost=120; fi
-        # annot_hitcost_ms=$((pf_annot_hits*hitcost/1000000))
-        # annot_misscost_ms=$((pf_posted*misscost/1000000))
-        # annot_hit_overhd=$((annot_hitcost_ms*xput/1000))
-        # annot_miss_overhd=$((annot_misscost_ms*xput/1000))
-        # xput_accounted=$((xput+annot_hit_overhd+annot_miss_overhd))
-
-        # # KERNEL
-        # cpusarout=${exp}/cpu_sar_parsed
-        # cpusarin=${exp}/cpu.sar
-        # if [ ! -f $cpusarout ] && [ -f $cpusarin ] && [[ $rstart ]] && [[ $rend ]]; then 
-        #     bash ${ROOT_SCRIPTS_DIR}/parse_sar.sh -sf=${exp}/cpu.sar -sc="%idle" \
-        #         -st=${rstart} -et=${rend} -of=${cpusarout}
-        # fi
-        # kernel_idle_per=$(csv_column_mean "$cpusarout" "%idle")
+        shenangoout=${exp}/runtime_parsed_s${sampleid}
+        shenangoin=${exp}/runtime.out 
+        if ([[ $FORCE ]] || [ ! -f $shenangoout ]) && [ -f $shenangoin ]; then 
+            python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
+                -o ${shenangoout}  -st=${rstart} -et=${rend} 
+        fi
+        sched_idle_cycles=$(csv_column_mean "$shenangoout" "sched_cycles_idle")
+        sched_time_cycles=$(csv_column_mean "$shenangoout" "sched_cycles")
+        app_time_cycles=$(csv_column_mean "$shenangoout" "program_cycles")
+        rescheds=$(csv_column_mean "$shenangoout" "rescheds")
+        parks=$(csv_column_mean "$shenangoout" "parks")
+        softirqs=$(csv_column_mean "$shenangoout" "softirqs")
+        thsteals=$(csv_column_mean "$shenangoout" "threads_stolen")
+        irqsteals=$(csv_column_mean "$shenangoout" "softirqs_stolen")
     fi
 
     # write
@@ -336,18 +328,41 @@ for exp in $LS_CMD; do
         # HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
         # HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
         HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
+        HEADER="$HEADER,KFaultsR";      LINE="$LINE,${kfaultsr}";
+        HEADER="$HEADER,KFaultsW";      LINE="$LINE,${kfaultsw}";
+        HEADER="$HEADER,KFaultsWP";     LINE="$LINE,${kfaultswp}";
         HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
         HEADER="$HEADER,KEvicts";       LINE="$LINE,${kevicts}";
         HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
+        HEADER="$HEADER,AnnotHits";     LINE="$LINE,${annothits}";
         HEADER="$HEADER,HitR";          LINE="$LINE,${hitr}";
-        HEADER="$HEADER,rCPU%";         LINE="$LINE,${reclaimcpu}";
+        HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
 
-        # HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
-        # HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
-        # HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
-        HEADER="$HEADER,MemUsed";           LINE="$LINE,${memused}M";
+        HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
+        HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
+        HEADER="$HEADER,rCPU%";         LINE="$LINE,${reclaimcpu}";
+        HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
+        HEADER="$HEADER,MemUsed";       LINE="$LINE,${memused}M";
+
+        # steals
+        HEADER="$HEADER,RSteals";       LINE="$LINE,${rsteals}";
+        HEADER="$HEADER,WSteals";       LINE="$LINE,${wsteals}";
+        HEADER="$HEADER,HRSteals";      LINE="$LINE,${hrsteals}";
+        HEADER="$HEADER,WRSteals";      LINE="$LINE,${wrsteals}";
+        HEADER="$HEADER,WaitRetries";   LINE="$LINE,${waitretries}";
+
+        # Shenango
+        HEADER="$HEADER,Idle(ms)";      LINE="$LINE,$((sched_idle_cycles/(cores*2194*1000)))";
+        HEADER="$HEADER,BkIdle(ms)";    LINE="$LINE,$((bkendwait/(cores*2194*1000)))";
+        HEADER="$HEADER,Rtime(ms)";     LINE="$LINE,$((sched_time_cycles/(cores*2194*1000)))";
+        HEADER="$HEADER,Ptime(ms)";     LINE="$LINE,$((app_time_cycles/(cores*2194*1000)))";
+        HEADER="$HEADER,Rescheds";      LINE="$LINE,${rescheds}";
+        HEADER="$HEADER,RTentries";     LINE="$LINE,${parks}";
+        HEADER="$HEADER,Softirqs";      LINE="$LINE,${softirqs}";
+        HEADER="$HEADER,Steals";        LINE="$LINE,${thsteals}";
+        HEADER="$HEADER,IRQSteals";     LINE="$LINE,${irqsteals}";
     fi
-    
+
     HEADER="$HEADER,Desc";          LINE="$LINE,${desc:0:30}";    
     OUT=`echo -e "${OUT}\n${LINE}"`
 

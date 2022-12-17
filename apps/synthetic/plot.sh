@@ -3,7 +3,7 @@
 
 # Fastswap plots
 
-PLOTEXT=png
+PLOTEXT=pdf
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 ROOTDIR="${SCRIPT_DIR}/../../"
@@ -222,6 +222,261 @@ if [ "$PLOTID" == "2" ]; then
     fi
     display ${plotname} &
 fi
+
+# Paper grade plots
+if [ "$PLOTID" == "3" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    NORMALIZE=1
+    CORES=10
+
+    ## data
+    for runcfg in "fswap" "eden-bh" "eden"; do
+        LABEL=
+        LS=
+        CMI=
+
+        case $runcfg in
+        "fswap")                pattern="12-13"; rmem=fastswap; backend=rdma; cores=${CORES}; tpc=5; zipfs=1; desc="fshero"; LS=solid; CMI=1; LABEL="Fastswap";;
+        # "eden-bh")              pattern="12-12-0[23]"; rmem=eden-bh; backend=rdma; cores=${CORES}; tpc=5; zipfs=1; evb=32; rdhd=no; desc="hero"; LS=dashed; CMI=0; LABEL="Eden(Blocking,NoRA)";;
+        # "eden")                 pattern="12-11"; rmem=eden; backend=rdma; cores=${CORES}; tpc=5; zipfs=1; evb=32; rdhd=yes; desc="hero"; LS=solid; CMI=1; LABEL="Eden";;
+        "eden-bh")              pattern="12-13"; rmem=eden-bh; backend=rdma; cores=${CORES}; tpc=5; zipfs=1; evb=32; rdhd=yes; desc="hero"; LS=dashed; CMI=0; LABEL="Eden(Blocking)";;
+        "eden")                 pattern="12-13"; rmem=eden; backend=rdma; cores=${CORES}; tpc=5; zipfs=1; evb=32; rdhd=yes; desc="hero"; LS=solid; CMI=1; LABEL="Eden";;
+        *)                      echo "Unknown config"; exit;;
+        esac
+
+        # filter results
+        cfg=be${bkend}_cores${cores}_zs${zipfs}_tperc${tpc}
+        label=$runcfg
+        datafile=$plotdir/data_${LABEL}
+        thr=$((cores*tpc))
+        descopt=
+        evbopt=
+        rmemopt=
+        evpopt=
+        rdopt=
+        if [[ $desc ]]; then descopt="-d=$desc";    fi
+        if [[ $evb ]];  then evbopt="-evb=$evb";    fi
+        if [[ $evp ]];  then evpopt="-evp=$evp";    fi
+        if [[ $rmem ]];  then rmemopt="-r=$rmem";   fi
+        if [[ $rdhd ]];  then rdopt="-rd=$rdhd";    fi
+        if [[ $evprio ]];  then evpropt="-evpr=$evprio";    fi
+
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            echo "LMem%,Xput,XputErr,Faults,FaultsErr,HitR,Count,System,Backend,EvP,EvB,CPU,Zipfs" > $datafile
+            for memp in `seq 10 10 100`; do
+                tmpfile=${TMP_FILE_PFX}data
+                rm -f ${tmpfile}
+                echo bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$tmpfile  \
+                    -t=${thr} -zs=${zipfs} -be=${bkend} ${descopt} ${evbopt} ${rmemopt} ${evpopt} ${rdopt} ${evpropt} -lmp=${memp}
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$tmpfile  \
+                    -t=${thr} -zs=${zipfs} -be=${bkend} ${descopt} ${evbopt} ${rmemopt} ${evpopt} ${rdopt} ${evpropt} -lmp=${memp}
+                cat $tmpfile
+                xmean=$(csv_column_mean $tmpfile "Xput")
+                xstd=$(csv_column_stdev $tmpfile "Xput")
+                xnum=$(csv_column_count $tmpfile "Xput")
+                fmean=$(csv_column_mean $tmpfile "Faults")
+                fstd=$(csv_column_stdev $tmpfile "Faults")
+                hitrmean=$(csv_column_mean $tmpfile "HitR")
+                echo ${memp},${xmean},${xstd},${fmean},${fstd},${hitrmean},${xnum},${rmem},${bkend},${evp},${evb},${cores},${zipfs} >> ${datafile}
+            done
+
+            # compute and add normalized throughput column
+            maxput=$(csv_column_max "$datafile" "Xput")
+            echo $maxput
+            xputnorm=$(csv_column "$datafile" "Xput" | awk '{ if($1) print $1/'$maxput'; else print ""; }')
+            xputerrnorm=$(csv_column "$datafile" "XputErr" | awk '{ if($1) print $1/'$maxput'; else print ""; }')
+            echo -e "XputNorm\n${xputnorm}" > ${TMP_FILE_PFX}normxput
+            echo -e "XputErrNorm\n${xputerrnorm}" > ${TMP_FILE_PFX}normxputerr
+            paste -d, $datafile ${TMP_FILE_PFX}normxput ${TMP_FILE_PFX}normxputerr > ${TMP_FILE_PFX}normdata
+            mv ${TMP_FILE_PFX}normdata $datafile
+        fi
+
+        label=${LABEL:-$runcfg}
+        ls=${LS:-solid}
+        cmi=${CMI:-1}
+        plots="$plots -d $datafile -l $label -ls $ls -cmi $cmi"
+        cat $datafile
+    done
+
+    #plot xput
+    XPUTCOL="Xput"
+    XPUTERR="XputErr"
+    YLIMS="--ymin 0 --ymax 1500"
+    YLABEL="KOPS"
+    YMUL="--ymul 1e-3"
+    if [[ $NORMALIZE ]]; then
+        XPUTCOL="XputNorm"
+        XPUTERR="XputErrNorm"
+        YLIMS=
+        YLABEL="Normalized Throughput"
+        YMUL=
+    fi
+    plotname=${plotdir}/synthetic_prio_xput.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}             \
+            -yce ${XPUTCOL} ${XPUTERR} -yl "${YLABEL}" ${YMUL} ${YLIMS}     \
+            -xc "LMem%" -xl "Local Mem (%)"                     \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    #plot faults
+    YLIMS="--ymin 0 --ymax $((100*cores))"
+    plotname=${plotdir}/synthetic_prio_faults.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+            -yce "Faults" "FaultsErr" -yl "Faults KOPS" --ymul 1e-3 ${YLIMS}         \
+            -xc "LMem%" -xl "Local Mem (%)"                             \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    # # Hit ratio
+    YLIMS="--ymin 0 --ymax 100"
+    plotname=${plotdir}/synthetic_prio_hitrate.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+            -yc "HitR" -yl "Hit Ratio %" ${YLIMS}                       \
+            -xc "LMem%" -xl "Local Mem (%)"                             \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    # Combine
+    plotname=${plotdir}/${cfg}.$PLOTEXT
+    montage -tile 3x0 -geometry +5+5 -border 5 $files ${plotname}
+    display ${plotname} &
+fi
+
+
+# Paper grade plots
+if [ "$PLOTID" == "4" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    NORMALIZE=1
+    CORES=10
+
+    ## data
+    for runcfg in "noprio" "prio"; do
+        LABEL=
+        LS=
+        CMI=
+
+        case $runcfg in
+        "noprio")               pattern="12-12-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; tpc=5; zipfs=0.1; evb=32; rdhd=yes; evprio=no; desc="evprio"; LS=solid; CMI=1; LABEL="No-Prio";;
+        "prio")                 pattern="12-12-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; tpc=5; zipfs=0.1; evb=32; rdhd=yes; evprio=yes; desc="evprio"; LS=solid; CMI=1; LABEL="With-Prio";;
+        *)                      echo "Unknown config"; exit;;
+        esac
+
+        # filter results
+        cfg=be${bkend}_cores${cores}_zs${zipfs}_tperc${tpc}
+        label=$runcfg
+        datafile=$plotdir/data_${LABEL}
+        thr=$((cores*tpc))
+        descopt=
+        evbopt=
+        rmemopt=
+        evpopt=
+        rdopt=
+        if [[ $desc ]]; then descopt="-d=$desc";    fi
+        if [[ $evb ]];  then evbopt="-evb=$evb";    fi
+        if [[ $evp ]];  then evpopt="-evp=$evp";    fi
+        if [[ $rmem ]];  then rmemopt="-r=$rmem";   fi
+        if [[ $rdhd ]];  then rdopt="-rd=$rdhd";    fi
+        if [[ $evprio ]];  then evpropt="-evpr=$evprio";    fi
+
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            echo "LMem%,Xput,XputErr,Faults,FaultsErr,HitR,Count,System,Backend,EvP,EvB,CPU,Zipfs" > $datafile
+            for memp in `seq 10 10 100`; do
+                tmpfile=${TMP_FILE_PFX}data
+                rm -f ${tmpfile}
+                echo bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$datafile  \
+                    -t=${thr} -zs=${zipfs} -be=${bkend} ${descopt} ${evbopt} ${rmemopt} ${evpopt} ${rdopt} ${evpropt} -lmp=${memp}
+                bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$datafile  \
+                    -t=${thr} -zs=${zipfs} -be=${bkend} ${descopt} ${evbopt} ${rmemopt} ${evpopt} ${rdopt} ${evpropt} -lmp=${memp}
+                cat $tmpfile
+                xmean=$(csv_column_mean $tmpfile "Xput")
+                xstd=$(csv_column_stdev $tmpfile "Xput")
+                xnum=$(csv_column_count $tmpfile "Xput")
+                fmean=$(csv_column_mean $tmpfile "Faults")
+                fstd=$(csv_column_stdev $tmpfile "Faults")
+                hitrmean=$(csv_column_mean $tmpfile "HitR")
+                echo ${memp},${xmean},${xstd},${fmean},${fstd},${hitrmean},${xnum},${rmem},${bkend},${evp},${evb},${cores},${zipfs} >> ${datafile}
+            done
+
+            # compute and add normalized throughput column
+            maxput=$(csv_column_max "$datafile" "Xput")
+            echo $maxput
+            xputnorm=$(csv_column "$datafile" "Xput" | awk '{ if($1) print $1/'$maxput'; else print ""; }')
+            xputerrnorm=$(csv_column "$datafile" "XputErr" | awk '{ if($1) print $1/'$maxput'; else print ""; }')
+            echo -e "XputNorm\n${xputnorm}" > ${TMP_FILE_PFX}normxput
+            echo -e "XputErrNorm\n${xputerrnorm}" > ${TMP_FILE_PFX}normxputerr
+            paste -d, $datafile ${TMP_FILE_PFX}normxput ${TMP_FILE_PFX}normxputerr > ${TMP_FILE_PFX}normdata
+            mv ${TMP_FILE_PFX}normdata $datafile
+        fi
+
+        label=${LABEL:-$runcfg}
+        ls=${LS:-solid}
+        cmi=${CMI:-1}
+        plots="$plots -d $datafile -l $label -ls $ls -cmi $cmi"
+        cat $datafile
+    done
+
+    #plot xput
+    XPUTCOL="Xput"
+    XPUTERR="XputErr"
+    YLIMS="--ymin 0 --ymax 600"
+    YLABEL="KOPS"
+    YMUL="--ymul 1e-3"
+    if [[ $NORMALIZE ]]; then
+        XPUTCOL="XputNorm"
+        XPUTERR="XputErrNorm"
+        YLIMS=
+        YLABEL="Normalized Throughput"
+        YMUL=
+    fi
+    plotname=${plotdir}/synthetic_prio_xput.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}             \
+            -yce ${XPUTCOL} ${XPUTERR} -yl "${YLABEL}" ${YMUL} ${YLIMS}     \
+            -xc "LMem%" -xl "Local Mem (%)"                     \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    #plot faults
+    YLIMS="--ymin 0 --ymax $((100*cores))"
+    plotname=${plotdir}/synthetic_prio_faults.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+            -yce "Faults" "FaultsErr" -yl "Faults KOPS" --ymul 1e-3 ${YLIMS}         \
+            -xc "LMem%" -xl "Local Mem (%)"                             \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    # # Hit ratio
+    YLIMS="--ymin 0 --ymax 100"
+    plotname=${plotdir}/synthetic_prio_hitrate.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+            -yc "HitR" -yl "Hit Ratio %" ${YLIMS}                       \
+            -xc "LMem%" -xl "Local Mem (%)"                             \
+            --size 4.5 3 -fs 12 -of $PLOTEXT -o $plotname
+    fi
+    files="$files $plotname"
+
+    # Combine
+    plotname=${plotdir}/${cfg}.$PLOTEXT
+    montage -tile 3x0 -geometry +5+5 -border 5 $files ${plotname}
+    display ${plotname} &
+fi
+
 
 # cleanup
 rm -f ${TMP_FILE_PFX}*
