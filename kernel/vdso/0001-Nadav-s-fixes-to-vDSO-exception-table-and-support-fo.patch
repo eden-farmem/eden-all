@@ -1,4 +1,4 @@
-From 47bbf7228a0efe0fe8a4856bcab172360d647150 Mon Sep 17 00:00:00 2001
+From 33ef50d5d291477fe36c54460c1d31c0c694c598 Mon Sep 17 00:00:00 2001
 From: Anil Yelam <yelama@vmware.com>
 Date: Wed, 1 Jun 2022 12:24:29 -0700
 Subject: [PATCH 1/2] Nadav's fixes to vDSO exception table and support for
@@ -175,7 +175,7 @@ index b56f6b012941..7ca8a0776805 100644
  #endif
  
 diff --git a/arch/x86/entry/vdso/vsgx.S b/arch/x86/entry/vdso/vsgx.S
-index 86a0e94f68df..c588255af480 100644
+index 99dafac992e2..3a97eaa82fff 100644
 --- a/arch/x86/entry/vdso/vsgx.S
 +++ b/arch/x86/entry/vdso/vsgx.S
 @@ -4,6 +4,7 @@

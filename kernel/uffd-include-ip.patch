@@ -1,4 +1,4 @@
-From 08e1791e714a1fd11a806e173ad31560eb090d4d Mon Sep 17 00:00:00 2001
+From 4fa3bf54f2760ce4c1a51168a87f199f68a11382 Mon Sep 17 00:00:00 2001
 From: Anil Yelam <yelama@vmware.com>
 Date: Wed, 8 Jun 2022 15:25:14 -0700
 Subject: [PATCH] Send more details for each fault to userspace (ip register
@@ -9,16 +9,16 @@ Encapsulated ip info in one of the reserved fields in uffd_msg
  fs/userfaultfd.c                 | 13 ++++++++++---
  include/linux/mm.h               |  2 ++
  include/uapi/linux/userfaultfd.h |  5 ++---
- mm/hugetlb.c                     |  1 +
+ mm/hugetlb.c                     |  2 +-
  mm/khugepaged.c                  |  1 +
  mm/memory.c                      |  6 ++++--
- 6 files changed, 20 insertions(+), 8 deletions(-)
+ 6 files changed, 20 insertions(+), 9 deletions(-)
 
 diff --git a/fs/userfaultfd.c b/fs/userfaultfd.c
-index 894cc28142e7..69c0f7cb9b67 100644
+index 003f0d31743e..1a3c6a53f381 100644
 --- a/fs/userfaultfd.c
 +++ b/fs/userfaultfd.c
-@@ -27,6 +27,7 @@
+@@ -28,6 +28,7 @@
  #include <linux/ioctl.h>
  #include <linux/security.h>
  #include <linux/hugetlb.h>
@@ -26,7 +26,7 @@ index 894cc28142e7..69c0f7cb9b67 100644
  
  int sysctl_unprivileged_userfaultfd __read_mostly;
  
-@@ -190,7 +191,8 @@ static inline void msg_init(struct uffd_msg *msg)
+@@ -192,7 +193,8 @@ static inline void msg_init(struct uffd_msg *msg)
  static inline struct uffd_msg userfault_msg(unsigned long address,
  					    unsigned int flags,
  					    unsigned long reason,
@@ -36,8 +36,8 @@ index 894cc28142e7..69c0f7cb9b67 100644
  {
  	struct uffd_msg msg;
  	msg_init(&msg);
-@@ -216,6 +218,11 @@ static inline struct uffd_msg userfault_msg(unsigned long address,
- 		msg.arg.pagefault.flags |= UFFD_PAGEFAULT_FLAG_WP;
+@@ -215,6 +217,11 @@ static inline struct uffd_msg userfault_msg(unsigned long address,
+ 		msg.arg.pagefault.flags |= UFFD_PAGEFAULT_FLAG_MINOR;
  	if (features & UFFD_FEATURE_THREAD_ID)
  		msg.arg.pagefault.feat.ptid = task_pid_vnr(current);
 +
@@ -48,7 +48,7 @@ index 894cc28142e7..69c0f7cb9b67 100644
  	return msg;
  }
  
-@@ -480,8 +487,8 @@ vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason)
+@@ -481,8 +488,8 @@ vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason)
  
  	init_waitqueue_func_entry(&uwq.wq, userfaultfd_wake_function);
  	uwq.wq.private = current;
@@ -60,18 +60,18 @@ index 894cc28142e7..69c0f7cb9b67 100644
  	uwq.waken = false;
  
 diff --git a/include/linux/mm.h b/include/linux/mm.h
-index 5299b90a6c40..31af152a89e7 100644
+index 73a52aba448f..be1f8fe60603 100644
 --- a/include/linux/mm.h
 +++ b/include/linux/mm.h
-@@ -512,6 +512,7 @@ struct vm_fault {
- 	gfp_t gfp_mask;			/* gfp mask to be used for allocations */
- 	pgoff_t pgoff;			/* Logical page offset based on vma */
- 	unsigned long address;		/* Faulting virtual address */
-+	unsigned long unmasked_address;	/* Faulting virtual address - unmasked */
- 	pmd_t *pmd;			/* Pointer to pmd entry matching
- 					 * the 'address' */
- 	pud_t *pud;			/* Pointer to pud entry matching
-@@ -541,6 +542,7 @@ struct vm_fault {
+@@ -534,6 +534,7 @@ struct vm_fault {
+ 		gfp_t gfp_mask;			/* gfp mask to be used for allocations */
+ 		pgoff_t pgoff;			/* Logical page offset based on vma */
+ 		unsigned long address;		/* Faulting virtual address */
++		unsigned long unmasked_address;	/* Faulting virtual address - unmasked */
+ 	};
+ 	enum fault_flag flags;		/* FAULT_FLAG_xxx flags
+ 					 * XXX: should really be 'const' */
+@@ -571,6 +572,7 @@ struct vm_fault {
  					 * page table to avoid allocation from
  					 * atomic context.
  					 */
@@ -80,11 +80,11 @@ index 5299b90a6c40..31af152a89e7 100644
  
  /* page entry size for vm->huge_fault() */
 diff --git a/include/uapi/linux/userfaultfd.h b/include/uapi/linux/userfaultfd.h
-index 5f2d88212f7c..3e39b2eefcec 100644
+index 05b31d60acf6..b450b1554f03 100644
 --- a/include/uapi/linux/userfaultfd.h
 +++ b/include/uapi/linux/userfaultfd.h
-@@ -75,12 +75,11 @@
- 				      struct uffdio_writeprotect)
+@@ -85,12 +85,11 @@
+ 				      struct uffdio_continue)
  
  /* read() structure */
 -struct uffd_msg {
@@ -99,34 +99,35 @@ index 5f2d88212f7c..3e39b2eefcec 100644
  	union {
  		struct {
 diff --git a/mm/hugetlb.c b/mm/hugetlb.c
-index cbf32d2824fd..5686144f886b 100644
+index 95dc7b83381f..023247ae1248 100644
 --- a/mm/hugetlb.c
 +++ b/mm/hugetlb.c
-@@ -4284,6 +4284,7 @@ static vm_fault_t hugetlb_no_page(struct mm_struct *mm,
- 				 * uninitialized fields... same as in
- 				 * memory.c
- 				 */
-+				.regs = NULL,
- 			};
- 
- 			/*
+@@ -4835,7 +4835,7 @@ static inline vm_fault_t hugetlb_handle_userfault(struct vm_area_struct *vma,
+ 		.vma = vma,
+ 		.address = haddr,
+ 		.flags = flags,
+-
++		.regs = NULL
+ 		/*
+ 		 * Hard to debug if it ends up being
+ 		 * used by a callee that assumes
 diff --git a/mm/khugepaged.c b/mm/khugepaged.c
-index 67ab391a5373..fc0da6346c4a 100644
+index 045cc579f724..ab8249226142 100644
 --- a/mm/khugepaged.c
 +++ b/mm/khugepaged.c
-@@ -1002,6 +1002,7 @@ static bool __collapse_huge_page_swapin(struct mm_struct *mm,
- 		.flags = FAULT_FLAG_ALLOW_RETRY,
- 		.pmd = pmd,
- 		.pgoff = linear_page_index(vma, address),
-+		.regs = NULL,
- 	};
+@@ -1014,6 +1014,7 @@ static bool __collapse_huge_page_swapin(struct mm_struct *mm,
+ 			.pgoff = linear_page_index(vma, haddr),
+ 			.flags = FAULT_FLAG_ALLOW_RETRY,
+ 			.pmd = pmd,
++			.regs = NULL,
+ 		};
  
- 	vmf.pte = pte_offset_map(pmd, address);
+ 		vmf.pte = pte_offset_map(pmd, address);
 diff --git a/mm/memory.c b/mm/memory.c
-index 7d608765932b..b1960e35a3dc 100644
+index 25fc46e87214..1488f1669565 100644
 --- a/mm/memory.c
 +++ b/mm/memory.c
-@@ -4432,14 +4432,16 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
+@@ -4605,14 +4605,16 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
   * return value.  See filemap_fault() and __lock_page_or_retry().
   */
  static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
@@ -144,7 +145,7 @@ index 7d608765932b..b1960e35a3dc 100644
  	};
  	unsigned int dirty = flags & FAULT_FLAG_WRITE;
  	struct mm_struct *mm = vma->vm_mm;
-@@ -4615,7 +4617,7 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
+@@ -4788,7 +4790,7 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
  	if (unlikely(is_vm_hugetlb_page(vma)))
  		ret = hugetlb_fault(vma->vm_mm, vma, address, flags);
  	else
