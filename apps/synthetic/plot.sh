@@ -84,7 +84,7 @@ if [ "$PLOTID" == "1" ]; then
     mkdir -p $plotdir
     plots=
     files=
-    NORMALIZE=1
+    NORMALIZE=
     CORES=5
 
     ## data
@@ -95,7 +95,8 @@ if [ "$PLOTID" == "1" ]; then
     # for runcfg in "evp-none" "evp-sc"; do 
     # for runcfg in "eden-local" "fswap-local"; do
     # for runcfg in "fswap" "eden-bh" "eden-evb" "eden" "eden-rd"; do
-    for runcfg in "noprio" "prio"; do
+    # for runcfg in "noprio" "prio"; do
+    for runcfg in "fswapL"; do
         case $runcfg in
         "no-rdahead")       pattern="11-16-11-[34]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
         "rdahead")          pattern="11-16-11-[12]"; backend=local; cores=5; zipfs=1; tperc=1; desc="rdahead";;
@@ -120,6 +121,9 @@ if [ "$PLOTID" == "1" ]; then
         "eden-lru")         pattern="11-28-2[12]"; rmem=eden; backend=rdma; cores=${CORES}; zipfs=1; tperc=5; evb=8; evp=LRU; rdhd=yes; desc="incremental";;
         "eden-noprio")      pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=no; desc="hero";;
         "eden-prio")        pattern="12-05-0[34]"; rmem=eden-bh; backend=rdma; cores=${CORES}; zipfs=0.1; tperc=1; evb=1; evp=NONE; rdhd=no; evprio=yes; desc="hero";;
+        "fswapL")           pattern="12-10"; rmem=fastswap; backend=rdma; cores=10; zipfs=0.8; tperc=5; desc="fshero-1";;
+        "fswapL-kpr8")      pattern="12-10"; rmem=fastswap; backend=rdma; cores=10; zipfs=0.1; tperc=5; desc="fsprio-8";;
+        "fswapL-kpr32")     pattern="12-10"; rmem=fastswap; backend=rdma; cores=10; zipfs=0.1; tperc=5; desc="fsprio-32";;
         *)                  echo "Unknown config"; exit;;
         esac
 
@@ -160,7 +164,7 @@ if [ "$PLOTID" == "1" ]; then
 
     #plot xput
     XPUTCOL="Xput"
-    YLIMS="--ymin 0 --ymax 480"
+    YLIMS="--ymin 0 --ymax 1000"
     YLABEL="Xput KOPS"
     YMUL="--ymul 1e-3"
     if [[ $NORMALIZE ]]; then
@@ -179,7 +183,7 @@ if [ "$PLOTID" == "1" ]; then
     files="$files $plotname"
 
     #plot faults
-    YLIMS="--ymin 0 --ymax $((100*cores))"
+    YLIMS="--ymin 0 --ymax 400"
     plotname=${plotdir}/rfaults_${cfg}.${PLOTEXT}
     if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
         python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
