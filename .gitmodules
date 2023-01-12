@@ -1,15 +1,15 @@
 [submodule "memcached"]
 	path = apps/memcached
-	url = git@gitlab.eng.vmware.com:kona/memcached.git
+	url = git@github.com:eden-ucsd-vmware/memcached.git
 [submodule "eden"]
 	path = eden
-	url = git@gitlab.eng.vmware.com:kona/eden.git
+	url = git@github.com:eden-ucsd-vmware/eden.git
 [submodule "parsec"]
 	path = apps/parsec
-	url = git@gitlab.eng.vmware.com:kona/parsec-kona.git
+	url = git@github.com:eden-ucsd-vmware/parsec.git
 [submodule "fastswap"]
 	path = fastswap
-	url = git@gitlab.eng.vmware.com:kona/fastswap.git
+	url = git@github.com:eden-ucsd-vmware/fastswap.git
 [submodule "dataframe"]
 	path = apps/dataframe/dataframe
-	url = git@gitlab.eng.vmware.com:kona/dataframe.git
+	url = git@github.com:eden-ucsd-vmware/dataframe.git
