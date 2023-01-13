@@ -56,7 +56,7 @@ done
 
 # rebuild fltrace tool
 if [[ $FORCE ]]; then
-    pushd ${SHENANGO_DIR} 
+    pushd ${SHENANGO_DIR}
     if [[ $FORCE ]];        then    make clean;                         fi
     if [[ $SAFEMODE ]];     then    OPTS="$OPTS SAFEMODE=1";            fi
     if [[ $GDB ]];          then    OPTS="$OPTS GDB=1";                 fi
@@ -82,12 +82,19 @@ CFLAGS="$CFLAGS -no-pie -fno-pie"   # symbols
 echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
 gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
+sudo sysctl -w vm.unprivileged_userfaultfd=1    # to run without sudo
+env="$env LD_PRELOAD=${SHENANGO_DIR}/fltrace.so"
+env="$env FLTRACE_LOCAL_MEMORY_MB=$((LMEM/(1024*1024)))"
+env="$env FLTRACE_MAX_MEMORY_MB=16000"
+env="$env FLTRACE_NHANDLERS=1"
+# env="$env FLTRACE_MAX_SAMPLES_PER_SEC=1000"
+
 # run
-if [[ $GDB ]]; then 
-    echo sudo gdb --args env LD_PRELOAD=${SHENANGO_DIR}/fltrace.so LOCAL_MEMORY=${LMEM} ./main.out ${NKEYS} ${NTHREADS}
-else
-    sudo LD_PRELOAD=${SHENANGO_DIR}/fltrace.so LOCAL_MEMORY=${LMEM} ./main.out ${NKEYS} ${NTHREADS}
-fi
+if [[ $GDB ]]; then  prefix="gdb --args";   fi
+start=$(date +%s)
+${prefix} env ${env} ./main.out ${NKEYS} ${NTHREADS}
+end=$(date +%s)
+echo "Time taken: $((end-start)) seconds"
 
 # cleanup
 if [[ ${TMP_FILE_PFX} ]]; then
