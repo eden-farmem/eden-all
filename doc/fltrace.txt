@@ -1,0 +1,24 @@
+#
+# Setup an app for tracing with FLTRACE
+#
+
+1. Clone eden-all.
+    ```
+    git clone git@github.com:eden-ucsd-vmware/eden-all.git
+    cd eden-all
+    git submodule update --init
+    ```
+    (Make sure you're using git over SSH: https://docs.github.com/en/authentication/connecting-to-github-with-ssh)
+
+2. Build the tool
+    ```
+    cd eden
+    sudo apt-get install autoconf libibverbs-dev librdmacm-dev libnuma-dev  #deps
+    bash setup.sh -je -f    #jemalloc
+    make fltrace.so -j
+    ```
+
+3. 
+
+
+
