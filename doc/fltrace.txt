@@ -18,7 +18,14 @@
     make fltrace.so -j
     ```
 
-3. 
-
+3. **Note Heders may be out of date
+    # go to https://kernel.ubuntu.com/~kernel-ppa/mainline
+    # find the appropriate version number `uname -r`
+    # for example: https://kernel.ubuntu.com/~kernel-ppa/mainline/v5.11/
+    # run git clone on the "To obtain the source from which..."
+    # git clone git://git.launchpad.net/~ubuntu-kernel-test/ubuntu/+source/linux/+git/mainline-crack cod/mainline/v5.11
+    # after cloning checkout the correct commit found as the first line of page
+    # cod/mainline/v5.11 (ccdf20483c3f2fe69df1a766752f027e85c7ddc2)
+    # sudo make headers_install INSTALL_HDR_PATH=/usr
 
 
