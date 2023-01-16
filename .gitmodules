@@ -13,3 +13,6 @@
 [submodule "dataframe"]
 	path = apps/dataframe/dataframe
 	url = git@github.com:eden-ucsd-vmware/dataframe.git
+[submodule "fault-analysis"]
+	path = fault-analysis
+	url = git@github.com:eden-ucsd-vmware/fault-analysis.git
