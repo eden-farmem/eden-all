@@ -1,0 +1,31 @@
+#
+# Setup an app for tracing with FLTRACE
+#
+
+1. Clone eden-all.
+    ```
+    git clone git@github.com:eden-ucsd-vmware/eden-all.git
+    cd eden-all
+    git submodule update --init
+    ```
+    (Make sure you're using git over SSH: https://docs.github.com/en/authentication/connecting-to-github-with-ssh)
+
+2. Build the tool
+    ```
+    cd eden
+    sudo apt-get install autoconf libibverbs-dev librdmacm-dev libnuma-dev  #deps
+    bash setup.sh -je -f    #jemalloc
+    make fltrace.so -j
+    ```
+
+3. **Note Heders may be out of date
+    # go to https://kernel.ubuntu.com/~kernel-ppa/mainline
+    # find the appropriate version number `uname -r`
+    # for example: https://kernel.ubuntu.com/~kernel-ppa/mainline/v5.11/
+    # run git clone on the "To obtain the source from which..."
+    # git clone git://git.launchpad.net/~ubuntu-kernel-test/ubuntu/+source/linux/+git/mainline-crack cod/mainline/v5.11
+    # after cloning checkout the correct commit found as the first line of page
+    # cod/mainline/v5.11 (ccdf20483c3f2fe69df1a766752f027e85c7ddc2)
+    # sudo make headers_install INSTALL_HDR_PATH=/usr
+
+
