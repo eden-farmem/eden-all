@@ -25,7 +25,7 @@ EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
 APPDIR="${SCRIPTDIR}/src/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
-MAX_REMOTE_MEMORY_MB=16000
+MAX_REMOTE_MEMORY_MB=100
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
 NHANDLERS=1
 #app specific
@@ -121,10 +121,16 @@ if [[ $FORCE ]]; then
     if [[ $DEBUG ]];        then    OPTS="$OPTS DEBUG=1";               fi
     make fltrace.so -j ${DEBUG} ${OPTS}
     popd
+
+    pushd src
+    make
+    make install
+    popd
 fi
 
 # initialize run
 sudo killall nginx
+sudo killall ab
 sleep 1
 
 
@@ -144,30 +150,60 @@ save_cfg "desc"             $README
 echo -e "$SETTINGS" > settings
 
 
+
 # run app with tool
 prefix="time"
 # if [[ $GDB ]]; then  prefix="gdb --args";   fi
 # ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
     # --num=${OPS} --benchmarks=${benchmark} &> app.out
 export LD_PRELOAD=${EDENDIR}/fltrace.so
-export FLTRACE_LOCAL_MEMORY_MB=$((LMEM/1000000))
+export FLTRACE_LOCAL_MEMORY_MB="1"
 export FLTRACE_MAX_MEMORY_MB=${MAX_REMOTE_MEMORY_MB}
 export FLTRACE_NHANDLERS=${NHANDLERS}
 if [[ $SAMPLESPERSEC ]]; then 
     export FLTRACE_MAX_SAMPLES_PER_SEC=$SAMPLESPERSEC
 fi
 
-nginx &
+echo "Starting NGINX"
+nginx -g "daemon off; master_process off;" &
+echo "Started NGINX"
 export -n LD_PRELOAD
 
-# TODO: parse trace
-nginx_pid=$!
-echo "nginx_pid $nginx_pid"
-# strings /proc/$nginx_pid/environ
-sleep $time_exp
+#run the apache benchmark tool
+NGINX_PORT=1080
+NGINX_RUNTIME=30
+CONCURRENCY=3
+BENCH_OUTPUT="apache_benchmark.log"
+ab_command='/root/dependencies/apachebench-for-multi-url/ab'
+# NGINX_BENCH_FLAGS=(
+#     "-t $NGINX_RUNTIME"
+#     '-n 1000000'
+#     '-c 5'
+#     '-r'
+#     "http://127.0.0.1:$NGINX_PORT/"
+# )
+
+sleep 2
+NGINX_BENCH_FLAGS=(
+    "-t $NGINX_RUNTIME"
+    '-n 100000'
+    '-r'
+    '-c 5'
+    '-L /root/eden-all/apps/nginx/url.txt'
+    "http://127.0.0.1/"
+)
+($ab_command ${NGINX_BENCH_FLAGS[@]} | tee $BENCH_OUTPUT-$i) &
+wait
+killall nginx
+
+# nginx_pid=$!
+# echo "nginx_pid $nginx_pid"
+# # strings /proc/$nginx_pid/environ
+# sleep $time_exp
 
 
 # run succeeded
 popd
 mkdir -p ${DATADIR}
 mv ${expdir}/ $DATADIR/
+echo "successfully finished the script"
