@@ -24,7 +24,7 @@ def kind_to_enum(kind):
 
 def main():
     parser = argparse.ArgumentParser("Process input and write csv-formatted data to stdout/output file")
-    parser.add_argument('-i', '--input', action='store', help="path to the input/data file", required=True)
+    parser.add_argument('-i', '--input', action='store', nargs='+', help="path to the input/data file(s)", required=True)
     parser.add_argument('-st', '--start', action='store', type=int,  help='start tstamp to filter data')
     parser.add_argument('-et', '--end', action='store', type=int, help='end tstamp to filter data')
     parser.add_argument('-fk', '--kind', action='store', type=FaultKind, choices=list(FaultKind), help='filter for a specific kind of fault')
@@ -32,12 +32,17 @@ def main():
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
 
-    if not os.path.exists(args.input): 
-        print("can't locate input file: {}".format(args.input))
-        exit(1)
+    # read in
+    dfs = []
+    for file in args.input:
+        if not os.path.exists(file):
+            print("can't locate input file: {}".format(file))
+            exit(1)
 
-    df = pd.read_csv(args.input, skipinitialspace=True)
-    sys.stderr.write("total rows read: {}\n".format(len(df)))
+        tempdf = pd.read_csv(file, skipinitialspace=True)
+        sys.stderr.write("rows read from {}: {}\n".format(file, len(tempdf)))
+        dfs.append(tempdf)
+    df = pd.concat(dfs, ignore_index=True)
 
     # filter
     if args.start:  
@@ -76,11 +81,13 @@ def main():
                 code = "<//>".join(code)
             processed += 1
             if processed % 100 == 0:
-                sys.stderr.write("processed {} entries\n".format(processed))
+                sys.stderr.write("processed {} unique traces\n".format(processed))
             return code
 
         sys.stderr.write("getting backtraces for {} ips\n".format(len(df)))
         df['code'] = df['ips'].apply(addr2line)
+    else:
+        df['code'] = ""
 
     # write out
     out = args.out if args.out else sys.stdout
