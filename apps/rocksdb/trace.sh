@@ -161,7 +161,7 @@ esac
 prefix="time"
 if [[ $GDB ]]; then  prefix="gdb --args";   fi
 ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
-    --num=${OPS} --benchmarks=${benchmark} &> app.out
+    --num=${OPS} --benchmarks=${benchmark} | tee app.out
 
 # TODO: parse trace
 
