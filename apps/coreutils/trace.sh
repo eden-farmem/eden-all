@@ -29,6 +29,9 @@ case $i in
     -sf|--safemode)
     SAFEMODE=1
     ;;
+    -sl|--suppresslog)
+    SUPPRESS_LOG=1
+    ;;
     -g|--gdb)
     GDB=1
     CFLAGS="$CFLAGS -O0 -g -ggdb"
@@ -51,6 +54,7 @@ if [[ $FORCE ]]; then
     if [[ $SAFEMODE ]];     then    OPTS="$OPTS SAFEMODE=1";            fi
     if [[ $GDB ]];          then    OPTS="$OPTS GDB=1";                 fi
     if [[ $DEBUG ]];        then    OPTS="$OPTS DEBUG=1";               fi
+    if [[ $SUPPRESS_LOG ]]; then    OPTS="$OPTS SUPPRESS_LOG=1";         fi
     make fltrace.so -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
     popd
 fi
