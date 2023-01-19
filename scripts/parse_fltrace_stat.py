@@ -22,6 +22,7 @@ def main():
     parser.add_argument('-i', '--input', action='store', help="path to the input/data file", required=True)
     parser.add_argument('-st', '--start', action='store', type=int,  help='start (unix) time to filter data')
     parser.add_argument('-et', '--end', action='store', type=int, help='end (unix) time to filter data')
+    parser.add_argument('-mr', '--maxrss', action='store_true', help="just spit out the max rss from the data")
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
 
@@ -77,8 +78,12 @@ def main():
     if not df.empty:
         if 'total_cycles' in df and df['total_cycles'].iloc[0] > 0:
             df['cpu_per'] = df['work_cycles'] * 100 / df['total_cycles']
-            df['cpu_per'] = df['cpu_per'].replace(np.inf, 0).astype(int)
+            df['cpu_per'] = df['cpu_per'].replace([np.inf, np.nan], 0).astype(int)
     
+    if args.maxrss:
+        print(df['memory_used'].max())
+        return
+
     # write out
     out = args.out if args.out else sys.stdout
     df.to_csv(out, index=False)
