@@ -36,6 +36,11 @@ case $i in
     SAFEMODE=1
     ;;
 
+    -sl|--suppresslog)
+    SUPPRESS_LOG=1
+    echo waa
+    ;;
+
     -g|--gdb)
     GDB=1
     CFLAGS="$CFLAGS -O0 -g -ggdb"
@@ -61,28 +66,31 @@ if [[ $FORCE ]]; then
     if [[ $SAFEMODE ]];     then    OPTS="$OPTS SAFEMODE=1";            fi
     if [[ $GDB ]];          then    OPTS="$OPTS GDB=1";                 fi
     if [[ $DEBUG ]];        then    OPTS="$OPTS DEBUG=1";               fi
+    if [[ $SUPPRESS_LOG ]]; then    OPTS="$OPTS SUPPRESS_LOG=1";         fi
     make fltrace.so -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
     popd
 fi
 
 ## simple
-# NTHREADS=5
-# NKEYS=1000000
-# LMEM=77594624
+NTHREADS=5
+NKEYS=1000000
+LMEM=77594624
 
 ## large
-NTHREADS=10
-NKEYS=1000000000
-LMEM=7400000000
+# NTHREADS=10
+# NKEYS=1000000000
+# LMEM=7400000000
+
+## setupenv
+# echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
+# sudo sysctl -w vm.unprivileged_userfaultfd=1    # to run without sudo
 
 # build sort
 LIBS="${LIBS} -lpthread -lm"
 CFLAGS="$CFLAGS -DMERGE_RDAHEAD=0"
 CFLAGS="$CFLAGS -no-pie -fno-pie"   # symbols
-echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
 gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
-sudo sysctl -w vm.unprivileged_userfaultfd=1    # to run without sudo
 env="$env LD_PRELOAD=${SHENANGO_DIR}/fltrace.so"
 env="$env FLTRACE_LOCAL_MEMORY_MB=$((LMEM/(1024*1024)))"
 env="$env FLTRACE_MAX_MEMORY_MB=16000"
@@ -90,7 +98,7 @@ env="$env FLTRACE_NHANDLERS=1"
 # env="$env FLTRACE_MAX_SAMPLES_PER_SEC=1000"
 
 # run
-if [[ $GDB ]]; then  prefix="gdb --args";   fi
+if [[ $GDB ]]; then  prefix="gdb --args"; fi
 start=$(date +%s)
 ${prefix} env ${env} ./main.out ${NKEYS} ${NTHREADS}
 end=$(date +%s)
