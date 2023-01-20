@@ -86,9 +86,45 @@ env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 # Insert a python file that adds the above env def to init.sh 
 python3 insert_env_to_init.py
 
+cwpd=$PWD
+
+
+
+
+# ### Run individual test cases ###
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d --cmd=cat
+
+# ## Actually running the program ##
+# cd coreutils
+# ./tests/misc/cat-proc-modified.sh
+
+# ### Run individual test cases ###
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-self.sh -d --cmd=cat
+
+# ## Actually running the program ##
+# cd coreutils
+# ./tests/misc/cat-self-modified.sh
+
+
+### Run individual test cases ###
+cd "$cwpd"
 ## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d --cmd=cat
+python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-version.sh -d --cmd=sort
 
 ## Actually running the program ##
 cd coreutils
-./tests/misc/cat-proc-modified.sh
+./tests/misc/sort-version-modified.sh
+
+
+### Run individual test cases ###
+cd "$cwpd"
+## Modify the program
+python3 modify_test_sh.py --path=./coreutils/tests/misc/uniq-collate.sh -d --cmd=uniq
+
+## Actually running the program ##
+cd coreutils
+./tests/misc/uniq-collate-modified.sh

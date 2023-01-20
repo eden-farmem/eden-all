@@ -41,6 +41,8 @@ def is_dummy_cases(line, cmd):
     if line.startswith("print_ver_"):
         return True
 
+    
+
     return False
 
 def parse_type_1(lines, args):
@@ -75,8 +77,10 @@ def parse_type_1(lines, args):
 
             cmd_instances = list(findall(cmd,l))
             
+            dash_cmd_instances = list(findall("--"+cmd,l))
+
             # Undefined cases
-            if len(cmd_instances) >= 2:
+            if len(cmd_instances) >= 2 and len(cmd_instances) - len(dash_cmd_instances) > 1:
                 raise Exception("I Don't Know What To Do! {}".format(l))
 
             cmd_pos = cmd_instances[0]
