@@ -47,6 +47,8 @@ def parse_type_1(lines, args):
     cmd = args.cmd
     debug = args.d
 
+    test_suite_name = os.path.basename(args.path).replace(".sh", "").replace(".pl", "")
+
     # Type 1: cat-proc
     # require: 
     # (1) include init.sh
@@ -58,7 +60,8 @@ def parse_type_1(lines, args):
      or has_proc_cmd(lines, cmd):
         return False
 
-    print("Handling Type 1")
+    if debug:
+        print("[modift_test_sh/parse_type_1]: Handling Type 1")
     # Find find all instances of the command
     new_lines = []
 
@@ -84,13 +87,13 @@ def parse_type_1(lines, args):
 
             new_lines.append(new_command)
             pwd = os.getcwd()
-            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="cat-proc"'\
-            .format(execution_number))
+            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="{}"'\
+            .format(execution_number, test_suite_name))
 
             execution_number += 1
 
             if debug:
-                print('Found Raw Command:\n{}'.format(l))
+                print('[modift_test_sh/parse_type_1]: Found Raw Command:{}'.format(l))
 
 
         
@@ -115,7 +118,7 @@ def modify(args):
     debug = args.d
 
     if debug:
-        print(args)
+        print("[modift_test_sh/modify] ", args)
 
     with open(args.path) as f:
         lines = f.readlines()

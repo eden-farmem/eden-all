@@ -33,7 +33,7 @@ def main():
     debug = args.d
     
     if debug:
-        print(args, os.getcwd())
+        print("[in_folder_result_processing/main] ", args, os.getcwd())
 
     # create directories
     dirpath = os.path.join(ROOT_OUTPUT, args.name)
@@ -43,7 +43,16 @@ def main():
     if not os.path.exists(dirpath):
         os.mkdir(dirpath)
         if debug:
-            print("Creating Dir: {}".format(dirpath))
+            print("[in_folder_result_processing/main] Creating Dir: {}".format(dirpath))
+
+    f_analysis_path = os.path.join(dirpath, "fault_analysis")
+    if os.path.exists(f_analysis_path) and os.path.isdir(f_analysis_path):
+        # shutil.rmtree(dirpath)
+        pass
+    if not os.path.exists(f_analysis_path):
+        os.mkdir(f_analysis_path)
+        if debug:
+            print("[in_folder_result_processing/main] Creating Dir: {}".format(f_analysis_path))
     
     tracepath = os.path.join(dirpath, "traces")
     if os.path.exists(tracepath) and os.path.isdir(tracepath):
@@ -52,7 +61,7 @@ def main():
     if not os.path.exists(tracepath):
         os.mkdir(tracepath)
         if debug:
-            print("Creating Dir: {}".format(tracepath))
+            print("[in_folder_result_processing/main] Creating Dir: {}".format(tracepath))
 
     rawpath = os.path.join(dirpath, "raw")
     if os.path.exists(rawpath) and os.path.isdir(rawpath):
@@ -61,7 +70,7 @@ def main():
     if not os.path.exists(rawpath):
         os.mkdir(rawpath)
         if debug:
-            print("Creating Dir: {}".format(rawpath))
+            print("[in_folder_result_processing/main] Creating Dir: {}".format(rawpath))
 
     # create sub dir under raw
     rawpath_current_execution = os.path.join(rawpath, execution_number.zfill(3))
@@ -69,12 +78,12 @@ def main():
         shutil.rmtree(rawpath_current_execution)
     os.mkdir(rawpath_current_execution)
     if debug:
-        print("Creating Dir: {}".format(rawpath_current_execution))
+        print("[in_folder_result_processing/main] Creating Dir: {}".format(rawpath_current_execution))
 
     # move data to raw -- might have to be very specific
     curdir_files = os.listdir(args.wd)
     if debug:
-        print("Generated Files in CWD: {}".format(curdir_files))
+        print("[in_folder_result_processing/main] Generated Files in CWD: {}".format(curdir_files))
 
     for f in curdir_files:
         if "fault-samples" in f:
@@ -86,15 +95,36 @@ def main():
     mv_cmd = "cd {}; mv fault* {}".format(args.wd, rawpath_current_execution)
     subprocess.call(mv_cmd, shell=True)
     if debug:
-        print("Moving traces to raw with cmd: {}".format(mv_cmd))
+        print("[in_folder_result_processing/main] Moving traces to raw with cmd: {}".format(mv_cmd))
     
-    # processing data
+    # merging trace data
     RAW_TRACE_PATH = os.path.join(rawpath_current_execution, TRACE_NAME)
     PROCESSED_TRACE_PATH = os.path.join(tracepath, "{}_000.txt".format(execution_number.zfill(3)))
     merge_cmd = "python3 {} -i {} -o {}".format(MERGE_SCRIPT, RAW_TRACE_PATH, PROCESSED_TRACE_PATH) 
     subprocess.call(merge_cmd, shell=True)
     if debug:
-        print("Merging Traces with cmd: {}".format(merge_cmd))
+        print("[in_folder_result_processing/main] Merging Traces with cmd: {}".format(merge_cmd))
+
+    # performing fault analysis
+    f_analysis_100_cmd = "python3 {} -d {} -n {}_100 -c 100 -R".format(FAULT_ANALYSIS_SCRIPT, tracepath, dirpath) 
+    f_analysis_100_output_path = os.path.join(f_analysis_path, "result_100.txt")
+
+    with open(f_analysis_100_output_path, "w") as f_analysis_100_output_file:
+        p = subprocess.Popen(f_analysis_100_cmd, shell=True, stdout=f_analysis_100_output_file, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+    
+    if debug:
+        print("[in_folder_result_processing/main] Performing fault analysis (100) with cmd: {}; saved to: {}".format(f_analysis_100_cmd, f_analysis_100_output_path))
+    
+    if len(err.decode('utf-8')) != 0:
+        raise Exception("Error: Performing fault analysis failed {}".format(err.decode('utf-8')))
+        
+    # fault_analysis_tool="../../../../fault-analysis/analysis/trace_codebase.py"
+    # results="${trace_dir}/results.txt"
+    # python ${fault_analysis_tool} -d "$trace_dir/traces" -n "${folder_name}_100" -c 100 -R > $results
+    # python ${fault_analysis_tool} -d "$trace_dir/traces" -n "${folder_name}_95" -c 95 -r >> $results
+    # cat $results
+
 
 if __name__ == "__main__":
     main()

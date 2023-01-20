@@ -22,7 +22,7 @@ def insert(args):
     debug = args.d
 
     if debug:
-        print(args)
+        print("[insert_env_to_init/modify] ", args)
 
     # First, read what's defined in 
     record_trace_conf = False
@@ -40,7 +40,7 @@ def insert(args):
             if record_trace_conf == True:
                 confs.append(l)
     if debug:
-        print("Confs Detected:\n{}\n".format("\n".join(confs)))
+        print("[insert_env_to_init/modify] Confs Detected:\n{}\n".format("\n".join(confs)))
 
     if len(confs) == 0:
         raise Exception("Conf Not Detected")
@@ -52,8 +52,9 @@ def insert(args):
                 break
         else:
             raise Exception("Conf Error")
-        
-    print("Finished Reading Conf\n")
+    
+    if debug:
+        print("[insert_env_to_init/modify] Finished Reading Conf\n")
 
     # Second append confs init_sh
     # Signal: ### Custom Conf ###
@@ -75,9 +76,10 @@ def insert(args):
         f.write("\n".join(init_sh))
     
     if debug:
-        print("Appending:{}\n{}\n".format("### Custom Conf ###","\n".join(custom_conf)))
+        print("[insert_env_to_init/modify] Appending:{}\n{}\n".format("### Custom Conf ###","\n".join(custom_conf)))
     
-    print("Finished Editing Init\n")
+    if debug:
+        print("[insert_env_to_init/modify] Finished Editing Init\n")
 
     
 
