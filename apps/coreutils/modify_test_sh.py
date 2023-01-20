@@ -1,5 +1,7 @@
 import argparse
-
+import os
+import stat
+import subprocess
 
 def findall(p, s):
     '''Yields all the positions of
@@ -60,7 +62,7 @@ def parse_type_1(lines, args):
     # Find find all instances of the command
     new_lines = []
 
-
+    execution_number = 0
     for i, l in enumerate(lines):
         if cmd in l:
             # not dummy
@@ -81,7 +83,11 @@ def parse_type_1(lines, args):
                 new_command = "env $env" + " " + l[cmd_pos:]
 
             new_lines.append(new_command)
-            new_lines.append("python3 in_folder_result_processing.py")
+            pwd = os.getcwd()
+            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="cat-proc"'\
+            .format(execution_number))
+
+            execution_number += 1
 
             if debug:
                 print('Found Raw Command:\n{}'.format(l))
@@ -93,9 +99,14 @@ def parse_type_1(lines, args):
             new_lines.append(l)
             continue
 
-    for l in new_lines:
-        print(l)
-
+    # Write to new file
+    fname = args.path
+    new_name = fname.replace(".sh","-modified.sh")
+    with open(new_name, "w") as f:
+        for l in new_lines:
+            f.write(l + "\n")
+    subprocess.call(['chmod', '0777', '{}'.format(new_name)])
+            
     return True
 
 
