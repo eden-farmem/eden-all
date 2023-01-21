@@ -119,7 +119,7 @@ for exp in $LS_CMD; do
 
     # TOOL OUTPUT
     fltraceout=${exp}/fltrace_parsed
-    fltracein=${exp}/fault-stats.out
+    fltracein=$(ls ${exp}/fault-stats-*.out | head -1)
     if [ ! -f $fltraceout ] && [ -f $fltracein ]; then 
         python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_stat.py -i ${fltracein} -o ${fltraceout}
     fi
