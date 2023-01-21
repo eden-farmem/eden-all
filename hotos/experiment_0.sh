@@ -56,7 +56,7 @@ function most_recent_data_dir() {
 function hundred_mem() {
     latest_data_dir=$1
     pushd $latest_data_dir
-    line=`cat fault-stats.out | tail -1`
+    line=`cat fault-stats-* | tail -1`
     dict=`echo $line | awk '{split($0,b,","); for (key in b) { print b[key]}}' | grep "memory_allocd" `
     hundred=`echo $dict | cut -d ":" -f 2`
 
@@ -96,7 +96,7 @@ function run_trace_merge_tool() {
 
     python $merge_script -i $trace_location -o $processed_trace
 
-    echo ${trace_dir}
+    echo "data/${latest_data_dir}"
 
 }
 
@@ -113,9 +113,9 @@ function run_fault_tool() {
 
 function run_sweep() {
     app=$1
+    app_dir=$2
     echo "Running Sweep on app: $app"
     
-    app_dir="../apps/$app"
     if [ ! -d $app_dir ]; then
         echo "${app_dir} does not exit. This test is going to fail"
         exit 1
@@ -158,12 +158,25 @@ function run_sweep() {
         result_dirs+=(`run_trace_merge_tool`)
     done
 
-    # declare -p percent_array
+    echo "Current working directory"
+    pwd
+    if [ -d current_run ]; then
+        rm -r current_run
+    fi
     mkdir -p current_run
+
     for i in ${!result_dirs[@]}; do
         echo "${result_dirs[i]}"
-        cp data/${result_dirs[i]} current_run/${percentage[i]}
+        memory=`cat ${result_dirs[i]}/settings | grep localmempercent | cut -d ":" -f 2`
+        cp -r ${result_dirs[i]} current_run/${memory}
     done
+
+    hotos_data_dir="/root/eden-all/hotos/data/$app"
+    if [ -d "${hotos_data_dir}" ]; then
+        rm -r "${hotos_data_dir}"
+    fi
+    cp -r current_run "/root/eden-all/hotos/data/$app"
+    popd
 
 }
 
@@ -186,7 +199,6 @@ function run_merge_tool() {
 
     python $merge_script -i $trace_location -o $processed_trace
     ${clean_script} $processed_trace
-
     popd
 
 }
@@ -200,25 +212,75 @@ function run_analysis() {
     dirs=`ls --format=single-column  data/$app`
 
     fault_analysis_tool="/root/eden-all/fault-analysis/analysis/trace_codebase.py"
-    if [ -f results ]; then
-        rm results
-    fi
+
+    result_100_name="results_${app}_100.csv"
+    result_95_name="results_${app}_95.csv"
+    result_files=("$result_100_name" "$result_95_name")
+
+    for file in ${result_files[@]}; do
+        if [ -f data/${file} ]; then
+            rm data/${file}
+        fi
+    done
 
     for d in ${dirs[@]}; do
         pushd "data/${app}/${d}"
         memory=`cat settings | grep localmempercent | cut -d ":" -f 2`
-        # if [ ! -d traces ] || [ ! -f traces/000_000.txt ]; then
+        if [ ! -d trace ] || [ ! -f trace/000_000.txt ]; then
             run_merge_tool "./" 
+        fi
 
-        # fi
-        python ${fault_analysis_tool} -d "./" -n "${app}_$memory" -c 100 -r -z >> results
-        python ${fault_analysis_tool} -d "./" -n "${app}_$memory" -c 95 -r -z >> results
+        #check if the files exist, if they do not then inject the header, otherwise run as normal
+        for file in ${result_files[@]}; do
+            echo $file
+            rel_file="../../${file}"
+            if [ ! -f "$rel_file" ]; then
+                header_arg="-R"
+            else
+                header_arg="-r"
+            fi
+            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c 100 ${header_arg}  >> $rel_file
+            truncate -s-1 $rel_file
+            echo "${app},${memory},native" >> $rel_file
+
+            if [ $header_arg == "-R" ]; then
+                sed -i ' 1 s/.*/&,app,lmemp,input/' $rel_file
+            fi
+
+        done
+
         popd
 
     done
 
+    pushd data
+    mkdir -p latest_results
+    mv *.csv latest_results
+    popd
+
+
 }
 
-run_sweep "apache"
-
+# run_sweep "apache" "../apps/apache"
 # run_analysis "apache"
+
+function run_tests() {
+    apps=(
+        # "../apps/apache"
+        # "../apps/nginx"
+        "../apps/crono/crono/apps/bfs"
+    )
+
+    #itterate through the tests    
+    for app_dir in ${apps[@]}; do
+        name=`basename $app_dir`
+        run_sweep $name $app_dir
+        run_analysis $name
+
+    done
+}
+
+run_tests
+
+# run_sweep "bfs" "../apps/crono/crono/apps/bfs"
+# run_analysis "bfs"
