@@ -6,20 +6,34 @@ import subprocess
 import pandas as pd
 
 TIMECOL = "tstamp"
-KINDCOL = "kind"
 
-class FaultKind(Enum):
+# access op that resulted in the fault 
+class FaultOp(Enum):
     READ = "read"
     WRITE = "write"
     WRPROTECT = "wrprotect"
     def __str__(self):
         return self.value
 
-def kind_to_enum(kind):
-    if kind == 0:   return FaultKind.READ
-    if kind == 1:   return FaultKind.WRITE
-    if kind == 3:   return FaultKind.WRPROTECT
-    raise Exception("unknown kind: {}".format(kind))
+# fault type
+class FaultType(Enum):
+    REGULAR = "regular"
+    ZEROPAGE = "zero"
+    def __str__(self):
+        return self.value
+
+def get_fault_op(flags):
+    op = flags & 0x1F
+    if op == 0:   return FaultOp.READ
+    if op == 1:   return FaultOp.WRITE
+    if op == 3:   return FaultOp.WRPROTECT
+    raise Exception("unknown op: {}".format(op))
+
+def get_fault_type(flags):
+    type = flags >> 5
+    if type == 0:   return FaultType.REGULAR
+    if type == 1:   return FaultType.ZEROPAGE
+    raise Exception("unknown type: {}".format(type))
 
 
 def main():
@@ -27,7 +41,7 @@ def main():
     parser.add_argument('-i', '--input', action='store', nargs='+', help="path to the input/data file(s)", required=True)
     parser.add_argument('-st', '--start', action='store', type=int,  help='start tstamp to filter data')
     parser.add_argument('-et', '--end', action='store', type=int, help='end tstamp to filter data')
-    parser.add_argument('-fk', '--kind', action='store', type=FaultKind, choices=list(FaultKind), help='filter for a specific kind of fault')
+    parser.add_argument('-fo', '--faultop', action='store', type=FaultOp, choices=list(FaultOp), help='filter for a specific fault op')
     parser.add_argument('-b', '--binary', action='store', help='path to the binary file to locate code location')
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
@@ -50,22 +64,31 @@ def main():
     if args.end:    
         df = df[df[TIMECOL] <= args.end]
 
-    # rewrite and filter by kind
-    df["kind"] = df.apply(lambda r: kind_to_enum(r["kind"]).value, axis=1)
-    if args.kind is not None:
-        df = df[df[KINDCOL] == args.kind.value]
-
+    # op col renamd to flags
+    FLAGSCOL="flags"
+    if "kind" in df:
+            FLAGSCOL="kind"
     # group by ip or trace
     if 'trace' in df:
-        df = df.groupby(['trace', 'kind']).size().reset_index(name='count')
+        df = df.groupby(['trace', FLAGSCOL]).size().reset_index(name='count')
         df = df.rename(columns={"trace": "ips"})
     else:
-        df = df.groupby(['ip', 'kind']).size().reset_index(name='count')
+        df = df.groupby(['ip', FLAGSCOL]).size().reset_index(name='count')
         df = df.rename(columns={"ip": "ips"})
 
     df = df.sort_values("count", ascending=False)
     df["percent"] = (df['count'] / df['count'].sum()) * 100
     df["percent"] = df["percent"].astype(int)
+
+    # NOTE: adding more columns after grouping traces is fine
+
+    # evaluate op and filter
+    df["op"] = df.apply(lambda r: get_fault_op(r[FLAGSCOL]).value, axis=1)
+    if args.faultop is not None:
+        df = df[df["op"] == args.faultop.value]
+
+    # evaluate fault type
+    df["type"] = df.apply(lambda r: get_fault_type(r[FLAGSCOL]).value, axis=1)
 
     if args.binary:
         assert os.path.exists(args.binary)

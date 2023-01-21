@@ -73,7 +73,7 @@ def main():
     # conversion
     for field in TO_MB_FIELDS:
         if field in df:
-            df[field + "_mb"] = (df[field] / 1024 / 1024).astype(int)
+            df[field + "_mb"] = (df[field] / 1000000).astype(int)
         
     if not df.empty:
         if 'total_cycles' in df and df['total_cycles'].iloc[0] > 0:
