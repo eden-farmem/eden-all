@@ -1,3 +1,1 @@
-name,percent,loc,floc,local,app,lmemp,input
-pagerank_100,95.0,-1,9,False,pagerank,100,native
-pagerank_90,95.0,-1,9,False,pagerank,90,native
+pagerank,90,native

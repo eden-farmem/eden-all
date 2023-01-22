@@ -1,3 +1,11 @@
 name,percent,loc,floc,local,app,lmemp,input
-sssp_100,100.0,-1,19,False,sssp,100,native
-sssp_90,95.0,-1,6,False,sssp,90,native
+sssp_10,100.0,-1,65,False,sssp,10,native
+sssp_100,100.0,-1,20,False,sssp,100,native
+sssp_20,100.0,-1,65,False,sssp,20,native
+sssp_30,100.0,-1,66,False,sssp,30,native
+sssp_40,100.0,-1,66,False,sssp,40,native
+sssp_50,100.0,-1,65,False,sssp,50,native
+sssp_60,100.0,-1,66,False,sssp,60,native
+sssp_70,100.0,-1,66,False,sssp,70,native
+sssp_80,100.0,-1,58,False,sssp,80,native
+sssp_90,100.0,-1,48,False,sssp,90,native

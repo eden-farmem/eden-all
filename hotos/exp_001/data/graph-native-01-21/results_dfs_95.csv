@@ -1,3 +1,1 @@
-name,percent,loc,floc,local,app,lmemp,input
-dfs_100,95.0,-1,7,False,dfs,100,native
-dfs_90,95.0,-1,7,False,dfs,90,native
+dfs,90,native

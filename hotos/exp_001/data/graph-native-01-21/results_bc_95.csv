@@ -1,11 +1,1 @@
-name,percent,loc,floc,local,app,lmemp,input
-bc_10,95.0,-1,2,False,bc,10,native
-bc_100,95.0,-1,2,False,bc,100,native
-bc_20,95.0,-1,2,False,bc,20,native
-bc_30,95.0,-1,2,False,bc,30,native
-bc_40,95.0,-1,2,False,bc,40,native
-bc_50,95.0,-1,2,False,bc,50,native
-bc_60,95.0,-1,2,False,bc,60,native
-bc_70,95.0,-1,2,False,bc,70,native
-bc_80,95.0,-1,2,False,bc,80,native
-bc_90,95.0,-1,2,False,bc,90,native
+bc,90,native

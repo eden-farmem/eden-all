@@ -2,7 +2,7 @@
 source ../trace-lib.sh "$@"
 
 echo "Starting Traveling Salesman"
-../tsp 1 20
+../tsp 1 15
 export -n LD_PRELOAD
 
 finish_exp

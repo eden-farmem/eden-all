@@ -7,6 +7,11 @@ pushd crono
 make -j 30
 popd
 
+wget https://snap.stanford.edu/data/web-Google.txt.gz
+gzip -d web-Google.txt.gz
+rm web-Google.txt.gz
+mv web-Google.txt crono/
+
 pushd crono/apps/
 mv triangle_counting triangle-counting
 mv connected_components connected-components
