@@ -41,7 +41,9 @@ def is_dummy_cases(line, cmd):
     if line.startswith("print_ver_"):
         return True
 
-    
+    # Not in perl for sort-benchmark-random
+    if "print sort(@list)" in line:
+        return True    
 
     return False
 
