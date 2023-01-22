@@ -60,6 +60,9 @@ def main():
     if args.end:
         df = df[df[TIMECOL] <= args.end]
 
+    if args.maxrss:
+        print(df['memory_used'].max())
+        return
     # derived cols
 
     # accumulated cols
@@ -80,9 +83,6 @@ def main():
             df['cpu_per'] = df['work_cycles'] * 100 / df['total_cycles']
             df['cpu_per'] = df['cpu_per'].replace([np.inf, np.nan], 0).astype(int)
     
-    if args.maxrss:
-        print(df['memory_used'].max())
-        return
 
     # write out
     out = args.out if args.out else sys.stdout
