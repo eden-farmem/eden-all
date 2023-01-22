@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# git clone https://github.com/masabahmad/CRONO.git
-# mv CRONO crono
+#clone and build
+git clone https://github.com/masabahmad/CRONO.git
+mv CRONO crono
+pushd crono
+make -j 30
+popd
 
 
 ### Uncomment this if you want to bring the files back to this directory
@@ -14,8 +18,7 @@
 # cp crono/apps/trace-lib.sh ./trace_scripts/trace_lib.sh
 # ls trace_scripts
 
-#distribute
-
+#distribute trace libraries to the lower directories
 echo "Copying Trace scripts to their respective directories from the master location"
 for file in `ls trace_scripts`; do
     if [ $file == "trace_lib.sh" ]; then
