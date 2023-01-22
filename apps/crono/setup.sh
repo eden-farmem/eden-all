@@ -19,11 +19,15 @@
 echo "Copying Trace scripts to their respective directories from the master location"
 for file in `ls trace_scripts`; do
     if [ $file == "trace_lib.sh" ]; then
-        ln -s trace_scripts/$file crono/apps/trace-lib.sh
+        rm crono/apps/trace-lib.sh
+        trace_lib_full=`realpath trace_scripts/$file`
+        ln -s $trace_lib_full crono/apps/trace-lib.sh
         continue
     fi
     dir=`echo $file | cut -d "_" -f 1`
-    ln -s trace_scripts/$file ./crono/apps/$dir/trace.sh
+    rm ./crono/apps/$dir/trace.sh
+    trace_full=`realpath trace_scripts/$file`
+    ln -s $trace_full ./crono/apps/$dir/trace.sh
 done
 
     
