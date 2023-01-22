@@ -78,7 +78,7 @@ echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
 sudo sysctl -w vm.unprivileged_userfaultfd=1     # to run without sudo
 env="$env LD_PRELOAD=/home/e7liu/eden-all/eden/fltrace.so" # setting LD pre load
 env="$env FLTRACE_LOCAL_MEMORY_MB=1" # based on the mem fingerprint
-env="$env FLTRACE_MAX_MEMORY_MB=16000"                   # doesn't matter 
+env="$env FLTRACE_MAX_MEMORY_MB=75000"                   # doesn't matter 
 env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 ## env end ##
 
@@ -91,40 +91,40 @@ cwpd=$PWD
 
 
 
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d --cmd=cat
+### Run individual test cases ###
+cd "$cwpd"
+## Modify the program
+python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d --cmd=cat
 
-# ## Actually running the program ##
-# cd coreutils
-# ./tests/misc/cat-proc-modified.sh
-
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-self.sh -d --cmd=cat
-
-# ## Actually running the program ##
-# cd coreutils
-# ./tests/misc/cat-self-modified.sh
-
+## Actually running the program ##
+cd coreutils
+./tests/misc/cat-proc-modified.sh
 
 ### Run individual test cases ###
 cd "$cwpd"
 ## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-version.sh -d --cmd=sort
+python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-self.sh -d --cmd=cat
 
 ## Actually running the program ##
 cd coreutils
-./tests/misc/sort-version-modified.sh
+./tests/misc/cat-self-modified.sh
 
 
 ### Run individual test cases ###
-cd "$cwpd"
-## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/misc/uniq-collate.sh -d --cmd=uniq
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-version.sh -d --cmd=sort
 
-## Actually running the program ##
-cd coreutils
-./tests/misc/uniq-collate-modified.sh
+# ## Actually running the program ##
+# cd coreutils
+# ./tests/misc/sort-version-modified.sh
+
+
+# ### Run individual test cases ###
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/uniq-collate.sh -d --cmd=uniq
+
+# ## Actually running the program ##
+# cd coreutils
+# ./tests/misc/uniq-collate-modified.sh
