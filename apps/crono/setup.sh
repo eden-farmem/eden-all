@@ -7,6 +7,11 @@ pushd crono
 make -j 30
 popd
 
+pushd crono/apps/
+mv triangle_counting triangle-counting
+mv connected_components connected-components
+popd
+
 
 ### Uncomment this if you want to bring the files back to this directory
 #collect each of the scripts from the lower directories
