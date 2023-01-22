@@ -1,0 +1,3 @@
+name,percent,loc,floc,local,app,lmemp,input
+triangle_counting_100,100.0,-1,24,False,triangle_counting,100,native
+triangle_counting_90,100.0,-1,24,False,triangle_counting,90,native
