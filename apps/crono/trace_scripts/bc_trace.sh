@@ -2,7 +2,8 @@
 source ../trace-lib.sh "$@"
 
 echo "Starting between centrality"
-../bc 2 16384 16
+# ../bc 2 16384 16
+../bc 2 4096 16
 export -n LD_PRELOAD
 
 finish_exp
