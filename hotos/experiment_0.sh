@@ -25,8 +25,8 @@ popd () {
 }
 
 # percentage=("95" "90" "85" "80" "75" "70" "65" "60" "55" "50" "45" "40" "35" "30" "25" "20" "15" "10")
-# percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
-percentage=("90")
+percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
+# percentage=("90")
 
 function get_percentage_array() {
 
@@ -216,6 +216,7 @@ function run_analysis() {
     result_100_name="results_${app}_100.csv"
     result_95_name="results_${app}_95.csv"
     result_files=("$result_100_name" "$result_95_name")
+    percent=("100" "95")
 
     for file in ${result_files[@]}; do
         if [ -f data/${file} ]; then
@@ -231,7 +232,9 @@ function run_analysis() {
         fi
 
         #check if the files exist, if they do not then inject the header, otherwise run as normal
-        for file in ${result_files[@]}; do
+        for i in ${!result_files[@]}; do
+            file=${result_files[i]}
+            percent=${percent[i]}
             echo $file
             rel_file="../../${file}"
             if [ ! -f "$rel_file" ]; then
@@ -239,7 +242,7 @@ function run_analysis() {
             else
                 header_arg="-r"
             fi
-            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c 100 ${header_arg}  >> $rel_file
+            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${percent} ${header_arg}  >> $rel_file
             truncate -s-1 $rel_file
             echo "${app},${memory},native" >> $rel_file
 
@@ -268,13 +271,22 @@ function run_tests() {
     apps=(
         # "../apps/apache"
         # "../apps/nginx"
+        "../apps/crono/crono/apps/apsp"
+        "../apps/crono/crono/apps/bc"
         "../apps/crono/crono/apps/bfs"
+        "../apps/crono/crono/apps/community"
+        "../apps/crono/crono/apps/connected-components"
+        "../apps/crono/crono/apps/dfs"
+        "../apps/crono/crono/apps/pagerank"
+        "../apps/crono/crono/apps/sssp"
+        "../apps/crono/crono/apps/triangle-counting"
+        "../apps/crono/crono/apps/tsp"
     )
 
     #itterate through the tests    
     for app_dir in ${apps[@]}; do
         name=`basename $app_dir`
-        run_sweep $name $app_dir
+        # run_sweep $name $app_dir
         run_analysis $name
 
     done

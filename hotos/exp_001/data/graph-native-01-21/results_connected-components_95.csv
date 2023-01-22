@@ -1,0 +1,11 @@
+name,percent,loc,floc,local,app,lmemp,input
+connected-components_10,95.0,-1,3,False,connected-components,10,native
+connected-components_100,95.0,-1,2,False,connected-components,100,native
+connected-components_20,95.0,-1,3,False,connected-components,20,native
+connected-components_30,95.0,-1,3,False,connected-components,30,native
+connected-components_40,95.0,-1,3,False,connected-components,40,native
+connected-components_50,95.0,-1,3,False,connected-components,50,native
+connected-components_60,95.0,-1,3,False,connected-components,60,native
+connected-components_70,95.0,-1,3,False,connected-components,70,native
+connected-components_80,95.0,-1,3,False,connected-components,80,native
+connected-components_90,95.0,-1,2,False,connected-components,90,native
