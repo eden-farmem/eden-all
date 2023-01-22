@@ -1,1 +1,11 @@
-dfs,90,native
+name,percent,loc,floc,local,app,lmemp,input
+dfs_10,95.0,-1,12,False,dfs,10,native
+dfs_100,95.0,-1,7,False,dfs,100,native
+dfs_20,95.0,-1,12,False,dfs,20,native
+dfs_30,95.0,-1,14,False,dfs,30,native
+dfs_40,95.0,-1,13,False,dfs,40,native
+dfs_50,95.0,-1,10,False,dfs,50,native
+dfs_60,95.0,-1,10,False,dfs,60,native
+dfs_70,95.0,-1,9,False,dfs,70,native
+dfs_80,95.0,-1,9,False,dfs,80,native
+dfs_90,95.0,-1,8,False,dfs,90,native
