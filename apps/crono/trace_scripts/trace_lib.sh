@@ -19,13 +19,14 @@ usage="bash $1 [args]\n
 #Defaults
 SCRIPT_PATH=`realpath $0`
 SCRIPTDIR=`dirname ${SCRIPT_PATH}`
-ROOTDIR="${SCRIPTDIR}/../../../../../"
+ROOTDIR="${SCRIPTDIR}/../../../"
 EDENDIR="${ROOTDIR}/eden"
-DATADIR="${SCRIPTDIR}/data/"
+# DATADIR="${SCRIPTDIR}/data/"
 APPDIR="${SCRIPTDIR}/src/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
+MAX_REMOTE_MEMORY_BYTES=8000000000
 MAX_REMOTE_MEMORY_MB=8000
-LMEM=$((MAX_REMOTE_MEMORY_MB))
+LMEM=$((MAX_REMOTE_MEMORY_BYTES))
 NHANDLERS=1
 
 echo $SCRIPT_PATH
@@ -40,6 +41,9 @@ save_cfg() {
 
 finish_exp() {
     popd
+    d=`pwd`
+    DATADIR=data
+    echo "about to make a data dir in $d ${DATADIR}"
     mkdir -p ${DATADIR}
     mv ${expdir}/ $DATADIR/
     echo "successfully finished the script"
@@ -48,6 +52,7 @@ finish_exp() {
 
 #make the experiment dir
 start_exp() {
+    echo "gonna run exp in: `pwd`"
     expdir=$EXPNAME
     mkdir -p $expdir
     pushd $expdir
@@ -145,12 +150,13 @@ save_cfg "desc"             $README
 echo -e "$SETTINGS" > settings
 
 # run app with tool
+sudo sysctl -w vm.unprivileged_userfaultfd=1
 prefix="time"
 # if [[ $GDB ]]; then  prefix="gdb --args";   fi
 # ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
     # --num=${OPS} --benchmarks=${benchmark} &> app.out
 export LD_PRELOAD=${EDENDIR}/fltrace.so
-export FLTRACE_LOCAL_MEMORY_MB="$LMEM"
+export FLTRACE_LOCAL_MEMORY_BYTES="$LMEM"
 export FLTRACE_MAX_MEMORY_MB=${MAX_REMOTE_MEMORY_MB}
 export FLTRACE_NHANDLERS=${NHANDLERS}
 if [[ $SAMPLESPERSEC ]]; then 
@@ -158,6 +164,6 @@ if [[ $SAMPLESPERSEC ]]; then
 fi
 
 echo "export LD_PRELOAD=$LD_PRELOAD"
-echo "export FLTRACE_LOCAL_MEMORY_MB=$FLTRACE_LOCAL_MEMORY_MB"
+echo "export FLTRACE_LOCAL_MEMORY_BYTES=$FLTRACE_LOCAL_MEMORY_BYTES"
 echo "export FLTRACE_MAX_MEMORY_MB=${FLTRACE_MAX_MEMORY_MB}"
 echo "export FLTRACE_NHANDLERS=$FLTRACE_NHANDLERS"

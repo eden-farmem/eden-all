@@ -15,6 +15,8 @@
 #     popd
 # }
 
+EDEN_ROOT=`realpath ../`
+
 # nginx
 pushd () {
     command pushd "$@" > /dev/null
@@ -25,7 +27,8 @@ popd () {
 }
 
 # percentage=("95" "90" "85" "80" "75" "70" "65" "60" "55" "50" "45" "40" "35" "30" "25" "20" "15" "10")
-percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
+# percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
+percentage=("10" "5" "2" "1")
 # percentage=("90")
 
 function get_percentage_array() {
@@ -36,8 +39,7 @@ function get_percentage_array() {
     derrived_percentages=()
     for p in ${percentage[@]}; do
         v=$(( $one_hundred*$p/100 ))
-        v2=$(( $v/1000000 ))
-        derrived_percentages+=(${v2})
+        derrived_percentages+=(${v})
     done
 }
 
@@ -56,22 +58,22 @@ function most_recent_data_dir() {
 function hundred_mem() {
     latest_data_dir=$1
     pushd $latest_data_dir
-    line=`cat fault-stats-* | tail -1`
-    dict=`echo $line | awk '{split($0,b,","); for (key in b) { print b[key]}}' | grep "memory_allocd" `
-    hundred=`echo $dict | cut -d ":" -f 2`
-
+    fault_mem_script=${EDEN_ROOT}/scripts/parse_fltrace_stat.py
+    stats=`ls fault-stats-*`
+    hundred=`python ${fault_mem_script} --maxrss -i $stats`
+    # dict=`echo $line | awk '{split($0,b,","); for (key in b) { print b[key]}}' | grep "memory_allocd" `
+    # hundred=`echo $dict | cut -d ":" -f 2`
     if [ $hundred == "" ]; then
         echo "one hundred percent of memory not calculated correctly"
         exit 1
     fi
     echo $hundred
-    popd
 }
 
 #this returns the trace directory
 function run_trace_merge_tool() {
 
-    merge_script="/root/eden-all/scripts/parse_fltrace_samples.py"
+    merge_script="${EDEN_ROOT}/scripts/parse_fltrace_samples.py"
     if [ ! -f $merge_script ]; then
         echo "Merge script not found [${merge_script}] unable to process raw trace. Perahps the path is wrong?"
     fi
@@ -143,7 +145,7 @@ function run_sweep() {
     latest=`most_recent_data_dir data`
     #for this first experiment collect all other values based on 100% memory
     one_hundred_percent_memory=`hundred_mem $latest`
-    echo $one_hundred_percent_memory
+    echo "One hundered percent memory: $one_hundred_percent_memory for $app"
 
     local memory_percent_array
     get_percentage_array $one_hundred_percent_memory memory_percent_array
@@ -153,7 +155,7 @@ function run_sweep() {
     #now we have all values for lower memory percentages
 
     for i in ${!memory_percent_array[@]}; do
-        echo "running $app with memory percent ${memory_percent_array[i]}"
+        echo "running $app at ${percentage[i]}% local memory ${memory_percent_array[i]} ${one_hundred_percent_memory}"
         ./trace.sh --localmem="${memory_percent_array[i]}" --lmemp="${percentage[i]}"
         result_dirs+=(`run_trace_merge_tool`)
     done
@@ -171,11 +173,13 @@ function run_sweep() {
         cp -r ${result_dirs[i]} current_run/${memory}
     done
 
-    hotos_data_dir="/root/eden-all/hotos/data/$app"
+    mkdir -p ${EDEN_ROOT}/hotos/data
+    hotos_data_dir="${EDEN_ROOT}/hotos/data/$app"
     if [ -d "${hotos_data_dir}" ]; then
         rm -r "${hotos_data_dir}"
     fi
     cp -r current_run "/root/eden-all/hotos/data/$app"
+    rm -r current_run
     popd
 
 }
@@ -183,8 +187,8 @@ function run_sweep() {
 function run_merge_tool() {
     echo "running merge tool"
     directory=$1
-    merge_script="/root/eden-all/scripts/parse_fltrace_samples.py"
-    clean_script="/root/eden-all/fault-analysis/analysis/clean_trace.sh"
+    merge_script="${EDEN_ROOT}/scripts/parse_fltrace_samples.py"
+    clean_script="${EDEN_ROOT}/fault-analysis/analysis/clean_trace.sh"
     pushd $directory
 
     mkdir -p traces
@@ -211,7 +215,7 @@ function run_analysis() {
 
     dirs=`ls --format=single-column  data/$app`
 
-    fault_analysis_tool="/root/eden-all/fault-analysis/analysis/trace_codebase.py"
+    fault_analysis_tool="${EDEN_ROOT}/fault-analysis/analysis/trace_codebase.py"
 
     result_100_name="results_${app}_100.csv"
     result_95_name="results_${app}_95.csv"
@@ -264,6 +268,23 @@ function run_analysis() {
 
 }
 
+function run_delete() {
+    app_dir=$1
+    echo "Running Delete on app: $app_dir"
+    
+    if [ ! -d $app_dir ]; then
+        echo "${app_dir} does not exit. This test is going to fail"
+        return
+    fi
+
+    if [ ! -d ${app_dir}/data ]; then
+        echo "${app_dir}/data does not exit. so we will not delete."
+        return
+    fi
+
+    rm -r ${app_dir}/data
+}
+
 # run_sweep "apache" "../apps/apache"
 # run_analysis "apache"
 
@@ -273,26 +294,26 @@ function run_tests() {
         # "../apps/nginx"
         # "../apps/crono/crono/apps/apsp"
         # "../apps/crono/crono/apps/bc"
-        # "../apps/crono/crono/apps/bfs"
+        "../apps/crono/crono/apps/bfs"
         # "../apps/crono/crono/apps/community"
         # "../apps/crono/crono/apps/connected-components"
-        "../apps/crono/crono/apps/dfs"
-        "../apps/crono/crono/apps/pagerank"
-        "../apps/crono/crono/apps/sssp"
-        "../apps/crono/crono/apps/triangle-counting"
-        "../apps/crono/crono/apps/tsp"
+        # "../apps/crono/crono/apps/dfs"
+        # "../apps/crono/crono/apps/pagerank"
+        # "../apps/crono/crono/apps/sssp"
+        # "../apps/crono/crono/apps/triangle-counting"
+        # "../apps/crono/crono/apps/tsp"
     )
 
     #itterate through the tests    
     for app_dir in ${apps[@]}; do
         name=`basename $app_dir`
+        # run_delete $app_dir
         run_sweep $name $app_dir
         run_analysis $name
-
     done
 }
 
-run_tests
+run_tests -d
 
 # run_sweep "bfs" "../apps/crono/crono/apps/bfs"
 # run_analysis "bfs"
