@@ -91,8 +91,10 @@ def parse_type_1(lines, args):
 
             new_lines.append(new_command)
             pwd = os.getcwd()
-            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="{}"'\
-            .format(execution_number, test_suite_name))
+            #new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="{}"'\
+            #.format(execution_number, test_suite_name))
+            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -d --name="{}"'\
+            .format(test_suite_name))
 
             execution_number += 1
 

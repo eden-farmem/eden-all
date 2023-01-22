@@ -100,14 +100,14 @@ python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d --cmd=cat
 cd coreutils
 ./tests/misc/cat-proc-modified.sh
 
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-self.sh -d --cmd=cat
+### Run individual test cases ###
+cd "$cwpd"
+## Modify the program
+python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-self.sh -d --cmd=cat
 
-# ## Actually running the program ##
-# cd coreutils
-# ./tests/misc/cat-self-modified.sh
+## Actually running the program ##
+cd coreutils
+./tests/misc/cat-self-modified.sh
 
 
 ### Run individual test cases ###

@@ -23,7 +23,7 @@ def get_execution_number_from_file(name):
     with open(fname, "w") as f:
         f.write("{}\n".format(execution_number))
 
-    return execution_number
+    return str(execution_number)
 
 def main():
     if not os.path.exists(MERGE_SCRIPT):
