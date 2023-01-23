@@ -2,6 +2,7 @@ import argparse
 import os
 import stat
 import subprocess
+from defs import ROOT, ROOT_OUTPUT
 
 def findall(p, s):
     '''Yields all the positions of
@@ -48,14 +49,25 @@ def is_dummy_cases(line, cmd):
     return False
 
 
+def read_conf_from_init_sh(p = "{}/coreutils/tests/init.sh".format(ROOT)):
+    with open(p) as f:
+        for l in f:
+            l = l.strip()
+            if "FLTRACE_LOCAL_MEMORY_MB" in l and not l.startswith("#"):
+                i = l.index("#")
+                l = l[:i]
+                lm = l.split("=")[-1].strip().replace('"',"").replace("=","")
+                unit  = "mb"
+                #print("lm:", lm)
+    return lm, unit
+
+
 def parse_command_from_path(p):
     sh_name = os.path.basename(p)
     cmd = sh_name.split("-")[0]
     return cmd
 
 def parse_type_1(lines, args):
-    
-
 
     debug = args.d
 
@@ -128,6 +140,25 @@ def parse_type_1(lines, args):
         
         # doesn't matter cmd not in l
         else:
+            if "Exit $fail" in l:
+                # Write to new file
+                fname_only = os.path.basename(args.path) 
+                
+                fname_only = fname_only.replace(".sh","") + ""
+
+                lm, unit = read_conf_from_init_sh()
+                
+                # unzip tar xvf name ./folder
+                zip_cmd = "tar -cjf {} -C {}".format(
+                    os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}.tar.gz .".format(lm,unit)),
+                    os.path.join(ROOT_OUTPUT,fname_only),
+                )
+                if debug:
+                    print("[modift_test_sh/modify]:", zip_cmd)
+
+                    #/home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random.sh-lm10000" .tar.gz /home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random.sh
+                # new_lines.append()
+
             new_lines.append(l)
             continue
 
@@ -138,6 +169,12 @@ def parse_type_1(lines, args):
         for l in new_lines:
             f.write(l + "\n")
     subprocess.call(['chmod', '0777', '{}'.format(new_name)])
+
+    for i, l in enumerate(lines):
+        if "Exit $fail" in l:
+            break
+    else:
+        raise Exception("I Don't Know What To Do!")
             
     return True
 

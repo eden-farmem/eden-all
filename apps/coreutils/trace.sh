@@ -86,7 +86,7 @@ env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 
 ### Todos:
 ### Gzip results to somewhere
-### Get the max memory, and run the thing again (we might want to put the lines after the config in a separate file).
+### Get the max memory (5 - 100), and run the thing again (we might want to put the lines after the config in a separate file).
 
 
 # Insert a python file that adds the above env def to init.sh 
@@ -126,24 +126,24 @@ cwpd=$PWD
 # ./tests/misc/sort-version-modified.sh
 
 
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-benchmark-random.sh -d 
+### Run individual test cases ###
+cd "$cwpd"
+## Modify the program
+python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-benchmark-random.sh -d 
 
-# ## Actually running the program ##
-# cd coreutils
-# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-benchmark-random-modified.sh
+## Actually running the program ##
+cd coreutils
+env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-benchmark-random-modified.sh
 
 
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-spinlock-abuse.sh -d 
+### Run individual test cases ###
+cd "$cwpd"
+## Modify the program
+python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-spinlock-abuse.sh -d 
 
-# ## Actually running the program ##
-# cd coreutils
-# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-spinlock-abuse-modified.sh
+## Actually running the program ##
+cd coreutils
+env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-spinlock-abuse-modified.sh
 
 
 
