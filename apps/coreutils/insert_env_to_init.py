@@ -47,6 +47,7 @@ def insert(args):
     else:
         for i, l in enumerate(confs):
             if "FLTRACE_LOCAL_MEMORY_MB" in l:
+                # You are replacing =1 with =1, lmao
                 l = l.replace("=1", "={}".format(args.m))
                 confs[i] = l
                 break

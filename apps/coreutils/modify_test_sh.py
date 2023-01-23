@@ -148,16 +148,15 @@ def parse_type_1(lines, args):
 
                 lm, unit = read_conf_from_init_sh()
                 
-                # unzip tar xvf name ./folder
-                zip_cmd = "tar -cjf {} -C {}".format(
-                    os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}.tar.gz .".format(lm,unit)),
+                # unzip: tar -xf name.tar.gz --directory  ./folder
+                zip_cmd = "tar -cjf {} -C {} .".format(
+                    os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}.tar.gz".format(lm,unit)),
                     os.path.join(ROOT_OUTPUT,fname_only),
                 )
                 if debug:
-                    print("[modift_test_sh/modify]:", zip_cmd)
+                    print("[modift_test_sh/modify]: saving data with cmd {}".format(zip_cmd))
 
-                    #/home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random.sh-lm10000" .tar.gz /home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random.sh
-                # new_lines.append()
+                new_lines.append(zip_cmd)
 
             new_lines.append(l)
             continue

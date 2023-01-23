@@ -72,6 +72,7 @@ echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
 # gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 
+
 ## Definitions for the env variable ##
 ## Don't change the format below ##
 ## env start ##
@@ -85,12 +86,11 @@ env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 
 
 ### Todos:
-### Gzip results to somewhere
-### Get the max memory (5 - 100), and run the thing again (we might want to put the lines after the config in a separate file).
+### Get the max memory (5 - 100), and run the thing again (we might want to put the lines after the config in a separate file --> need to invoke -l then).
 
 
 # Insert a python file that adds the above env def to init.sh 
-python3 insert_env_to_init.py
+python3 insert_env_to_init.py -d
 
 cwpd=$PWD
 
