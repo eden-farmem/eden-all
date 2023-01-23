@@ -47,9 +47,30 @@ def is_dummy_cases(line, cmd):
 
     return False
 
+
+def parse_command_from_path(p):
+    sh_name = os.path.basename(p)
+    cmd = sh_name.split("-")[0]
+    return cmd
+
 def parse_type_1(lines, args):
-    cmd = args.cmd
+    
+
+
     debug = args.d
+
+    cmd = parse_command_from_path(args.path)
+    print("[modift_test_sh/parse_type_1] Auto parsing cmd from path: {}".format(cmd))
+
+    if args.cmd != None:
+        if cmd != args.cmd:
+            raise Exception("cmd ({}) != args.cmd {}".format(cmd, args.cmd))
+            
+        cmd = args.cmd
+        if debug:
+            print("[modift_test_sh/parse_type_1] Overwritting cmd ({}) with args.cmd : {}".format(cmd, args.cmd))
+    
+        
 
     test_suite_name = os.path.basename(args.path).replace(".sh", "").replace(".pl", "")
 
@@ -145,7 +166,7 @@ def main():
     parser = argparse.ArgumentParser(description='Arguments for insert env to init.sh')
     # add args
     parser.add_argument('--path', required=True, help="path to test_name.sh")
-    parser.add_argument('--cmd', required=True, help="current command")
+    parser.add_argument('--cmd', default=None, help="current command")
     parser.add_argument('-d', action="store_true", help='Print Debug')
     args = parser.parse_args()
     modify(args)
