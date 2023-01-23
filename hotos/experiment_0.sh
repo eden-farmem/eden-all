@@ -243,15 +243,17 @@ function run_analysis() {
             echo $file
             rel_file="../../${file}"
             if [ ! -f "$rel_file" ]; then
+                echo "first line"
                 header_arg="-R"
             else
                 header_arg="-r"
             fi
-            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${p} ${header_arg}  >> $rel_file
+            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${p} ${header_arg} -z >> $rel_file
             truncate -s-1 $rel_file
             echo "${app},${memory},native" >> $rel_file
 
             if [ $header_arg == "-R" ]; then
+                echo "running sed"
                 sed -i ' 1 s/.*/&,app,lmemp,input/' $rel_file
             fi
 
@@ -261,10 +263,10 @@ function run_analysis() {
 
     done
 
-    pushd data
-    mkdir -p latest_results
-    mv *.csv latest_results
-    popd
+    # pushd data
+    # mkdir -p latest_results
+    # mv *.csv latest_results
+    # popd
 
 
 }
@@ -319,6 +321,8 @@ function run_tests() {
         run_func $app_dir &
     done
     wait
+
+
 
 }
 
