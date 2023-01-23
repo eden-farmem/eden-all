@@ -27,8 +27,8 @@ popd () {
 }
 
 # percentage=("95" "90" "85" "80" "75" "70" "65" "60" "55" "50" "45" "40" "35" "30" "25" "20" "15" "10")
-# percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
-percentage=("10" "5" "2" "1")
+percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
+# percentage=("10")
 # percentage=("90")
 
 function get_percentage_array() {
@@ -178,7 +178,7 @@ function run_sweep() {
     if [ -d "${hotos_data_dir}" ]; then
         rm -r "${hotos_data_dir}"
     fi
-    cp -r current_run "/root/eden-all/hotos/data/$app"
+    cp -r current_run "${EDEN_ROOT}/hotos/data/$app"
     rm -r current_run
     popd
 
@@ -238,19 +238,22 @@ function run_analysis() {
         #check if the files exist, if they do not then inject the header, otherwise run as normal
         for i in ${!result_files[@]}; do
             file=${result_files[i]}
-            percent=${percent[i]}
+            p=${percent[i]}
+            echo $file $p
             echo $file
             rel_file="../../${file}"
             if [ ! -f "$rel_file" ]; then
+                echo "first line"
                 header_arg="-R"
             else
                 header_arg="-r"
             fi
-            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${percent} ${header_arg}  >> $rel_file
+            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${p} ${header_arg} -z >> $rel_file
             truncate -s-1 $rel_file
             echo "${app},${memory},native" >> $rel_file
 
             if [ $header_arg == "-R" ]; then
+                echo "running sed"
                 sed -i ' 1 s/.*/&,app,lmemp,input/' $rel_file
             fi
 
@@ -260,10 +263,10 @@ function run_analysis() {
 
     done
 
-    pushd data
-    mkdir -p latest_results
-    mv *.csv latest_results
-    popd
+    # pushd data
+    # mkdir -p latest_results
+    # mv *.csv latest_results
+    # popd
 
 
 }
@@ -288,29 +291,37 @@ function run_delete() {
 # run_sweep "apache" "../apps/apache"
 # run_analysis "apache"
 
+function run_func() {
+    app_dir=$1
+    name=`basename $app_dir`
+    # run_delete $app_dir
+    # run_sweep $name $app_dir
+    run_analysis $name
+
+}
+
 function run_tests() {
     apps=(
         # "../apps/apache"
         # "../apps/nginx"
-        # "../apps/crono/crono/apps/apsp"
-        # "../apps/crono/crono/apps/bc"
+        "../apps/crono/crono/apps/apsp"
+        "../apps/crono/crono/apps/bc"
         "../apps/crono/crono/apps/bfs"
-        # "../apps/crono/crono/apps/community"
-        # "../apps/crono/crono/apps/connected-components"
-        # "../apps/crono/crono/apps/dfs"
-        # "../apps/crono/crono/apps/pagerank"
-        # "../apps/crono/crono/apps/sssp"
-        # "../apps/crono/crono/apps/triangle-counting"
-        # "../apps/crono/crono/apps/tsp"
+        "../apps/crono/crono/apps/community"
+        "../apps/crono/crono/apps/connected-components"
+        "../apps/crono/crono/apps/dfs"
+        "../apps/crono/crono/apps/pagerank"
+        "../apps/crono/crono/apps/sssp"
+        "../apps/crono/crono/apps/triangle-counting"
+        "../apps/crono/crono/apps/tsp"
     )
 
     #itterate through the tests    
     for app_dir in ${apps[@]}; do
-        name=`basename $app_dir`
-        # run_delete $app_dir
-        run_sweep $name $app_dir
-        run_analysis $name
+        run_func $app_dir &
     done
+    wait
+
 }
 
 run_tests -d

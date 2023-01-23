@@ -2,7 +2,7 @@
 source ../trace-lib.sh "$@"
 
 echo "Starting Triange Counting"
-../triangle_counting_lock 1 1 ../../../web-Google.txt
+../triangle_counting_lock 1 4 ../../../web-Google.txt
 export -n LD_PRELOAD
 
 finish_exp

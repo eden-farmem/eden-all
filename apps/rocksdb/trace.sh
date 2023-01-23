@@ -21,6 +21,7 @@ usage="bash $1 [args]\n
 SCRIPT_PATH=`realpath $0`
 SCRIPTDIR=`dirname ${SCRIPT_PATH}`
 ROOTDIR="${SCRIPTDIR}/../../"
+ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
 APPDIR="${SCRIPTDIR}/rocksdb/"
@@ -28,7 +29,7 @@ EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 MAX_REMOTE_MEMORY_MB=16000
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
 NHANDLERS=1
-OPS=3000
+OPS=300000
 BENCH=all
 
 # save settings
@@ -67,6 +68,14 @@ case $i in
 
     -ms=*|--maxsamples=*)
     SAMPLESPERSEC=${i#*=}
+    ;;
+
+    -m|--merge)
+    MERGE_TRACES=1
+    ;;
+
+    -a|--analyze)
+    ANALYZE_TRACES=1
     ;;
 
     # ROCKSDB-SPECIFIC SETTINGS
@@ -150,10 +159,10 @@ fi
 # figure out benchmark
 benchmark=
 case $BENCH in
-"all")              benchmark="fillseq,fillrandom,readseq,readrandom,readreverse,stats";;\
-"readseq")          benchmark="fillseq,fillrandom,readseq,stats";;\
-"readrandom")       benchmark="fillseq,fillrandom,readrandom,stats";;\
-"readreverse")      benchmark="fillseq,fillrandom,readreverse,stats";;\
+"all")              benchmark="fillrandom,readseq,readrandom,readreverse,updaterandom,appendrandom,seekrandom,deleteseq,deleterandom,stats";;
+"readseq")          benchmark="fillseq,fillrandom,readseq,stats";;
+"readrandom")       benchmark="fillseq,fillrandom,readrandom,stats";;
+"readreverse")      benchmark="fillseq,fillrandom,readreverse,stats";;
 *)                  echo "Unknown rocksdb benchmark"; exit;;
 esac
 
@@ -163,10 +172,52 @@ if [[ $GDB ]]; then  prefix="gdb --args";   fi
 ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
     --num=${OPS} --benchmarks=${benchmark} | tee app.out
 
-# TODO: parse trace
+# back to app dir
+popd
 
+# post-processing
+if [[ $MERGE_TRACES ]]; then
+
+    # locate the binary
+    binfile=${APPDIR}/build/db_bench
+    if [ ! -f ${binfile} ]; then 
+        echo "binary not found at ${binpath}"
+        exit 1
+    fi
+
+    # locate fault samples data
+    faultsin=$(ls ${expdir}/fault-samples-*.out | head -1)
+    if [ ! -f ${faultsin} ]; then 
+        echo "no fault-samples-*.out found for ${APP} at ${expdir}"
+        exit 1
+    fi
+
+    mkdir -p ${expdir}/traces
+    if [ -f ${expdir}/traces/000_000.txt ]; then
+        echo "traces already exist for ${APP} at ${expdir}"
+        continue
+    fi
+
+    # merge traces
+    allfaultsin=$(ls ${expdir}/fault-samples-*.out)
+    python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_samples.py -i ${allfaultsin}    \
+        -b ${binfile} > ${expdir}/traces/000_000.txt
+
+    # clean output
+    if [ -f ${expdir}/traces/000_000.txt ]; then
+        bash ${TOOLDIR}/analysis/clean_trace.sh ${expdir}/traces/000_000.txt
+    fi
+fi
+
+if [[ $ANALYZE_TRACES ]]; then
+    for cutoff in 100 95; do
+        python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
+           -R -n ${APP} -c ${cutoff} -z > ${expdir}/flocations_nozero_${cutoff}.txt
+        python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
+            -R -n ${APP} -c ${cutoff} > ${expdir}/flocations_${cutoff}.txt
+    done
+fi
 
 # run succeeded
-popd
 mkdir -p ${DATADIR}
 mv ${expdir}/ $DATADIR/

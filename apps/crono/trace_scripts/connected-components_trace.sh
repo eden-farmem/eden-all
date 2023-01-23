@@ -2,7 +2,7 @@
 source ../trace-lib.sh "$@"
 
 echo "Starting Connected Components"
-../connected_components_lock 1 1 ../../../web-Google.txt
+../connected_components_lock 1 4 ../../../web-Google.txt
 export -n LD_PRELOAD
 
 finish_exp

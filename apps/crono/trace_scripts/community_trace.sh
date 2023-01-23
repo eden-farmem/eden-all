@@ -2,7 +2,7 @@
 source ../trace-lib.sh "$@"
 
 echo "Starting Community detection"
-../community_lock 1 1 1 ../../../web-Google.txt
+../community_lock 1 4 1 ../../../web-Google.txt
 export -n LD_PRELOAD
 
 finish_exp

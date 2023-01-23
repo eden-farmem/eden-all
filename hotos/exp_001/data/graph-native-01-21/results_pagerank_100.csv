@@ -1,3 +1,11 @@
 name,percent,loc,floc,local,app,lmemp,input
-pagerank_100,100.0,-1,29,False,pagerank,100,native
-pagerank_90,95.0,-1,9,False,pagerank,90,native
+pagerank_10,100.0,-1,32,False,pagerank,10,native
+pagerank_100,100.0,-1,0,False,pagerank,100,native
+pagerank_20,100.0,-1,32,False,pagerank,20,native
+pagerank_30,100.0,-1,32,False,pagerank,30,native
+pagerank_40,100.0,-1,30,False,pagerank,40,native
+pagerank_50,100.0,-1,30,False,pagerank,50,native
+pagerank_60,100.0,-1,30,False,pagerank,60,native
+pagerank_70,100.0,-1,30,False,pagerank,70,native
+pagerank_80,100.0,-1,30,False,pagerank,80,native
+pagerank_90,100.0,-1,30,False,pagerank,90,native

@@ -123,14 +123,18 @@ for exp in $LS_CMD; do
     if [ ! -f $fltraceout ] && [ -f $fltracein ]; then 
         python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_stat.py -i ${fltracein} -o ${fltraceout}
     fi
+    faults=$(csv_column_sum "$fltraceout" "faults")
     faultsr=$(csv_column_mean "$fltraceout" "faults_r")
     faultsw=$(csv_column_mean "$fltraceout" "faults_w")
     faultswp=$(csv_column_mean "$fltraceout" "faults_wp")
+    faultszp=$(csv_column_sum "$fltraceout" "faults_zp")
+    evicts=$(csv_column_sum "$fltraceout" "evict_pages_done")
     mallocd=$(csv_column_max "$fltraceout" "memory_allocd_mb" | ftoi)
-    maxrss=$(csv_column_max "$fltraceout" "memory_used_mb" | ftoi)
+    maxrss=$(csv_column_max "$fltraceout" "memory_used" | ftoi)
     freed=$(csv_column_max "$fltraceout" "memory_freed_mb" | ftoi)
     vmsize=$(csv_column_max "$fltraceout" "vm_size_mb" | ftoi)
     vmrss=$(csv_column_max "$fltraceout" "vm_rss_mb" | ftoi)
+    suppressed=$(cat ${exp}/app.out | grep -o "fsampler_add_fault_sample() suppressed .* times" | awk '{ sum += $3 } END { print sum }')
 
     # SETTINGS
     HEADER="Exp";                   LINE="$name";
@@ -139,9 +143,14 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,LocalMem(MB)";  LINE="$LINE,${localmem}";
     HEADER="$HEADER,LocalMem(%)";   LINE="$LINE,${localmemp:-}";
     HEADER="$HEADER,Time(s)";       LINE="$LINE,${rtime}";
+    HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
+    HEADER="$HEADER,FaultsZP";      LINE="$LINE,${faultszp}";
+    HEADER="$HEADER,FaultsNoZP";    LINE="$LINE,$((faults-faultszp))";
     HEADER="$HEADER,FaultsR";       LINE="$LINE,${faultsr}";
     HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
     HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
+    HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
+    HEADER="$HEADER,Suppressed";    LINE="$LINE,${suppressed}";
     HEADER="$HEADER,Mallocd";       LINE="$LINE,$((mallocd))";
     HEADER="$HEADER,Freed";         LINE="$LINE,$((freed))";
     HEADER="$HEADER,MaxRSS";        LINE="$LINE,$((maxrss))";
