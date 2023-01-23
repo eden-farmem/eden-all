@@ -2,6 +2,7 @@ import argparse
 import os
 import stat
 import subprocess
+from defs import ROOT, ROOT_OUTPUT
 
 def findall(p, s):
     '''Yields all the positions of
@@ -41,13 +42,47 @@ def is_dummy_cases(line, cmd):
     if line.startswith("print_ver_"):
         return True
 
-    
+    # Not in perl for sort-benchmark-random
+    if "print sort(@list)" in line:
+        return True    
 
     return False
 
+
+def read_conf_from_init_sh(p = "{}/coreutils/tests/init.sh".format(ROOT)):
+    with open(p) as f:
+        for l in f:
+            l = l.strip()
+            if "FLTRACE_LOCAL_MEMORY_MB" in l and not l.startswith("#"):
+                i = l.index("#")
+                l = l[:i]
+                lm = l.split("=")[-1].strip().replace('"',"").replace("=","")
+                unit  = "mb"
+                #print("lm:", lm)
+    return lm, unit
+
+
+def parse_command_from_path(p):
+    sh_name = os.path.basename(p)
+    cmd = sh_name.split("-")[0]
+    return cmd
+
 def parse_type_1(lines, args):
-    cmd = args.cmd
+
     debug = args.d
+
+    cmd = parse_command_from_path(args.path)
+    print("[modift_test_sh/parse_type_1]: Auto parsing cmd from path: {}".format(cmd))
+
+    if args.cmd != None:
+        if cmd != args.cmd:
+            raise Exception("cmd ({}) != args.cmd {}".format(cmd, args.cmd))
+
+        cmd = args.cmd
+        if debug:
+            print("[modift_test_sh/parse_type_1]: Overwritting cmd ({}) with args.cmd : {}".format(cmd, args.cmd))
+    
+        
 
     test_suite_name = os.path.basename(args.path).replace(".sh", "").replace(".pl", "")
 
@@ -105,6 +140,24 @@ def parse_type_1(lines, args):
         
         # doesn't matter cmd not in l
         else:
+            if "Exit $fail" in l:
+                # Write to new file
+                fname_only = os.path.basename(args.path) 
+                
+                fname_only = fname_only.replace(".sh","") + ""
+
+                lm, unit = read_conf_from_init_sh()
+                
+                # unzip: tar -xf name.tar.gz --directory  ./folder
+                zip_cmd = "tar -cjf {} -C {} .".format(
+                    os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}.tar.gz".format(lm,unit)),
+                    os.path.join(ROOT_OUTPUT,fname_only),
+                )
+                if debug:
+                    print("[modift_test_sh/modify]: saving data with cmd {}".format(zip_cmd))
+
+                new_lines.append(zip_cmd)
+
             new_lines.append(l)
             continue
 
@@ -115,6 +168,12 @@ def parse_type_1(lines, args):
         for l in new_lines:
             f.write(l + "\n")
     subprocess.call(['chmod', '0777', '{}'.format(new_name)])
+
+    for i, l in enumerate(lines):
+        if "Exit $fail" in l:
+            break
+    else:
+        raise Exception("I Don't Know What To Do!")
             
     return True
 
@@ -143,7 +202,7 @@ def main():
     parser = argparse.ArgumentParser(description='Arguments for insert env to init.sh')
     # add args
     parser.add_argument('--path', required=True, help="path to test_name.sh")
-    parser.add_argument('--cmd', required=True, help="current command")
+    parser.add_argument('--cmd', default=None, help="current command")
     parser.add_argument('-d', action="store_true", help='Print Debug')
     args = parser.parse_args()
     modify(args)

@@ -3,9 +3,7 @@ import argparse
 import shutil
 import subprocess
 
-MERGE_SCRIPT = "/home/e7liu/eden-all/scripts/parse_fltrace_samples.py"
-FAULT_ANALYSIS_SCRIPT = "/home/e7liu/eden-all/fault-analysis/analysis/trace_codebase.py"
-ROOT_OUTPUT="/home/e7liu/eden-all/apps/coreutils/coreutils_output"
+from defs import *
 
 
 def get_execution_number_from_file(name):
@@ -152,7 +150,7 @@ def main():
         print("[in_folder_result_processing/main] Merging Traces with cmd: {}".format(merge_cmd))
 
     # performing fault analysis 100
-    f_analysis_100_cmd = "python3 {} -d {} -n {}_100 -c 100 -R".format(FAULT_ANALYSIS_SCRIPT, tracepath_current_execution, "{}-{}".format(args.name, execution_number.zfill(3))) 
+    f_analysis_100_cmd = "python3 {} -d {} -n {}_100 -c 100 -R -z".format(FAULT_ANALYSIS_SCRIPT, tracepath_current_execution, "{}-{}".format(args.name, execution_number.zfill(3))) 
     f_analysis_100_output_path = os.path.join(f_analysis_current_execution, "result.txt")
 
     with open(f_analysis_100_output_path, "w") as f_analysis_100_output_file:
@@ -167,7 +165,7 @@ def main():
         
 
     # performing fault analysis 95
-    f_analysis_95_cmd = "python3 {} -d {} -n {}_95 -c 95 -r".format(FAULT_ANALYSIS_SCRIPT, tracepath_current_execution, "{}-{}".format(args.name, execution_number.zfill(3))) 
+    f_analysis_95_cmd = "python3 {} -d {} -n {}_95 -c 95 -r -z".format(FAULT_ANALYSIS_SCRIPT, tracepath_current_execution, "{}-{}".format(args.name, execution_number.zfill(3))) 
     f_analysis_95_output_path = os.path.join(f_analysis_current_execution, "result.txt")
 
     with open(f_analysis_95_output_path, "a") as f_analysis_95_output_file:
