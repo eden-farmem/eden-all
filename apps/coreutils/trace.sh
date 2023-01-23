@@ -87,7 +87,7 @@ env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 ### Todos:
 ### Gzip results to somewhere
 ### Get the max memory, and run the thing again (we might want to put the lines after the config in a separate file).
-### You also shouldn't need to pass in the command
+
 
 # Insert a python file that adds the above env def to init.sh 
 python3 insert_env_to_init.py
@@ -97,14 +97,14 @@ cwpd=$PWD
 
 
 
-## Run individual test cases ###
-cd "$cwpd"
-## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d 
+# ## Run individual test cases ###
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d 
 
-## Actually running the program ##
-cd coreutils
-./tests/misc/cat-proc-modified.sh
+# ## Actually running the program ##
+# cd coreutils
+# ./tests/misc/cat-proc-modified.sh
 
 ### Run individual test cases ###
 # cd "$cwpd"
