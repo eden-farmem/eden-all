@@ -1,0 +1,11 @@
+name,percent,loc,floc,local,app,lmemp,input
+triangle-counting_10,100.0,-1,65,False,triangle-counting,10,native
+triangle-counting_100,100.0,-1,24,False,triangle-counting,100,native
+triangle-counting_20,100.0,-1,65,False,triangle-counting,20,native
+triangle-counting_30,100.0,-1,64,False,triangle-counting,30,native
+triangle-counting_40,100.0,-1,64,False,triangle-counting,40,native
+triangle-counting_50,100.0,-1,59,False,triangle-counting,50,native
+triangle-counting_60,100.0,-1,53,False,triangle-counting,60,native
+triangle-counting_70,100.0,-1,53,False,triangle-counting,70,native
+triangle-counting_80,100.0,-1,51,False,triangle-counting,80,native
+triangle-counting_90,100.0,-1,51,False,triangle-counting,90,native

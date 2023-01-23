@@ -9,7 +9,6 @@ usage="bash $1 [args]\n
 -lmp,--lmemp \t\t local memory percentage compared to app's max working set (only for logging)\n
 -h, --handlers \t\t number of handler cores for the tracing tool\n
 -ms, --maxsamples \t\t limit the number of samples collected per second\n
--ops, --rocksdbops \t\t rocksdb ops\n
 -b, --bench \t\t rocks db benchmark to run\n
 -f, --force \t\t force rebuild and re-run experiments\n
 -d, --debug \t\t build debug\n
@@ -20,17 +19,17 @@ usage="bash $1 [args]\n
 #Defaults
 SCRIPT_PATH=`realpath $0`
 SCRIPTDIR=`dirname ${SCRIPT_PATH}`
-ROOTDIR="${SCRIPTDIR}/../../"
+ROOTDIR="${SCRIPTDIR}/../../../"
 EDENDIR="${ROOTDIR}/eden"
-DATADIR="${SCRIPTDIR}/data/"
+# DATADIR="${SCRIPTDIR}/data/"
 APPDIR="${SCRIPTDIR}/src/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
-MAX_REMOTE_MEMORY_MB=100
-LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
+MAX_REMOTE_MEMORY_BYTES=8000000000
+MAX_REMOTE_MEMORY_MB=8000
+LMEM=$((MAX_REMOTE_MEMORY_BYTES))
 NHANDLERS=1
-#app specific
-OPS=3000
-BENCH=all
+
+echo $SCRIPT_PATH
 
 # save settings
 SETTINGS=
@@ -38,6 +37,26 @@ save_cfg() {
     name=$1
     value=$2
     SETTINGS="${SETTINGS}$name:$value\n"
+}
+
+finish_exp() {
+    popd
+    d=`pwd`
+    DATADIR=data
+    echo "about to make a data dir in $d ${DATADIR}"
+    mkdir -p ${DATADIR}
+    mv ${expdir}/ $DATADIR/
+    echo "successfully finished the script"
+}
+
+
+#make the experiment dir
+start_exp() {
+    echo "gonna run exp in: `pwd`"
+    expdir=$EXPNAME
+    mkdir -p $expdir
+    pushd $expdir
+    echo "running ${EXPNAME}"
 }
 
 # parse cli
@@ -68,15 +87,6 @@ case $i in
 
     -ms=*|--maxsamples=*)
     SAMPLESPERSEC=${i#*=}
-    ;;
-
-    # ROCKSDB-SPECIFIC SETTINGS
-    -ops=*|--rocksdbops=*)
-    OPS=${i#*=}
-    ;;
-
-    -b=*|--bench=*)
-    BENCH=${i#*=}
     ;;
 
     # OTHER
@@ -128,19 +138,9 @@ if [[ $FORCE ]]; then
     popd
 fi
 
-# initialize run
-sudo killall nginx
-sudo killall ab
-sleep 1
-
-
-expdir=$EXPNAME
-mkdir -p $expdir
-pushd $expdir
-echo "running ${EXPNAME}"
+start_exp
 
 # save config
-save_cfg "benchmark"        $BENCH
 save_cfg "ops"              $OPS
 save_cfg "localmem"         $LMEM
 save_cfg "localmempercent"  $LMEMP
@@ -149,62 +149,21 @@ save_cfg "samples"          $SAMPLESPERSEC
 save_cfg "desc"             $README
 echo -e "$SETTINGS" > settings
 
-
-
 # run app with tool
+sudo sysctl -w vm.unprivileged_userfaultfd=1
 prefix="time"
 # if [[ $GDB ]]; then  prefix="gdb --args";   fi
 # ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
     # --num=${OPS} --benchmarks=${benchmark} &> app.out
 export LD_PRELOAD=${EDENDIR}/fltrace.so
-export FLTRACE_LOCAL_MEMORY_MB="1"
+export FLTRACE_LOCAL_MEMORY_BYTES="$LMEM"
 export FLTRACE_MAX_MEMORY_MB=${MAX_REMOTE_MEMORY_MB}
 export FLTRACE_NHANDLERS=${NHANDLERS}
 if [[ $SAMPLESPERSEC ]]; then 
     export FLTRACE_MAX_SAMPLES_PER_SEC=$SAMPLESPERSEC
 fi
 
-echo "Starting NGINX"
-nginx -g "daemon off; master_process off;" &
-echo "Started NGINX"
-export -n LD_PRELOAD
-
-#run the apache benchmark tool
-NGINX_PORT=1080
-NGINX_RUNTIME=30
-CONCURRENCY=3
-BENCH_OUTPUT="apache_benchmark.log"
-ab_command='/root/dependencies/apachebench-for-multi-url/ab'
-# NGINX_BENCH_FLAGS=(
-#     "-t $NGINX_RUNTIME"
-#     '-n 1000000'
-#     '-c 5'
-#     '-r'
-#     "http://127.0.0.1:$NGINX_PORT/"
-# )
-
-sleep 2
-NGINX_BENCH_FLAGS=(
-    "-t $NGINX_RUNTIME"
-    '-n 100000'
-    '-r'
-    '-c 5'
-    '-L /root/eden-all/apps/nginx/url.txt'
-    "http://127.0.0.1/"
-)
-($ab_command ${NGINX_BENCH_FLAGS[@]} | tee $BENCH_OUTPUT-$i) &
-sleep $NGINX_RUNTIME
-sleep 3
-killall nginx
-
-# nginx_pid=$!
-# echo "nginx_pid $nginx_pid"
-# # strings /proc/$nginx_pid/environ
-# sleep $time_exp
-
-
-# run succeeded
-popd
-mkdir -p ${DATADIR}
-mv ${expdir}/ $DATADIR/
-echo "successfully finished the script"
+echo "export LD_PRELOAD=$LD_PRELOAD"
+echo "export FLTRACE_LOCAL_MEMORY_BYTES=$FLTRACE_LOCAL_MEMORY_BYTES"
+echo "export FLTRACE_MAX_MEMORY_MB=${FLTRACE_MAX_MEMORY_MB}"
+echo "export FLTRACE_NHANDLERS=$FLTRACE_NHANDLERS"

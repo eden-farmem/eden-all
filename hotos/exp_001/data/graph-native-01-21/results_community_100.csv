@@ -1,0 +1,11 @@
+name,percent,loc,floc,local,app,lmemp,input
+community_10,100.0,-1,78,False,community,10,native
+community_100,100.0,-1,26,False,community,100,native
+community_20,100.0,-1,75,False,community,20,native
+community_30,100.0,-1,75,False,community,30,native
+community_40,100.0,-1,76,False,community,40,native
+community_50,100.0,-1,73,False,community,50,native
+community_60,100.0,-1,63,False,community,60,native
+community_70,100.0,-1,65,False,community,70,native
+community_80,100.0,-1,60,False,community,80,native
+community_90,100.0,-1,59,False,community,90,native

@@ -1,0 +1,11 @@
+name,percent,loc,floc,local,app,lmemp,input
+bfs_10,95.0,-1,13,False,bfs,10,native
+bfs_100,95.0,-1,8,False,bfs,100,native
+bfs_20,95.0,-1,16,False,bfs,20,native
+bfs_30,95.0,-1,20,False,bfs,30,native
+bfs_40,95.0,-1,19,False,bfs,40,native
+bfs_50,95.0,-1,11,False,bfs,50,native
+bfs_60,95.0,-1,11,False,bfs,60,native
+bfs_70,95.0,-1,11,False,bfs,70,native
+bfs_80,95.0,-1,10,False,bfs,80,native
+bfs_90,95.0,-1,10,False,bfs,90,native

@@ -25,8 +25,8 @@ EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
 APPDIR="${SCRIPTDIR}/src/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
-MAX_REMOTE_MEMORY_MB=100
-LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
+MAX_REMOTE_MEMORY_MB=1000
+LMEM=$((MAX_REMOTE_MEMORY_MB))
 NHANDLERS=1
 #app specific
 OPS=3000
@@ -38,6 +38,13 @@ save_cfg() {
     name=$1
     value=$2
     SETTINGS="${SETTINGS}$name:$value\n"
+}
+
+kill_apps() {
+    # initialize run
+    sudo killall httpd
+    sudo killall ab
+    sleep 1
 }
 
 # parse cli
@@ -68,15 +75,6 @@ case $i in
 
     -ms=*|--maxsamples=*)
     SAMPLESPERSEC=${i#*=}
-    ;;
-
-    # ROCKSDB-SPECIFIC SETTINGS
-    -ops=*|--rocksdbops=*)
-    OPS=${i#*=}
-    ;;
-
-    -b=*|--bench=*)
-    BENCH=${i#*=}
     ;;
 
     # OTHER
@@ -128,10 +126,7 @@ if [[ $FORCE ]]; then
     popd
 fi
 
-# initialize run
-sudo killall nginx
-sudo killall ab
-sleep 1
+kill_apps
 
 
 expdir=$EXPNAME
@@ -149,53 +144,55 @@ save_cfg "samples"          $SAMPLESPERSEC
 save_cfg "desc"             $README
 echo -e "$SETTINGS" > settings
 
-
-
 # run app with tool
 prefix="time"
 # if [[ $GDB ]]; then  prefix="gdb --args";   fi
 # ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
     # --num=${OPS} --benchmarks=${benchmark} &> app.out
 export LD_PRELOAD=${EDENDIR}/fltrace.so
-export FLTRACE_LOCAL_MEMORY_MB="1"
+export FLTRACE_LOCAL_MEMORY_MB="$LMEM"
 export FLTRACE_MAX_MEMORY_MB=${MAX_REMOTE_MEMORY_MB}
 export FLTRACE_NHANDLERS=${NHANDLERS}
 if [[ $SAMPLESPERSEC ]]; then 
     export FLTRACE_MAX_SAMPLES_PER_SEC=$SAMPLESPERSEC
 fi
 
-echo "Starting NGINX"
-nginx -g "daemon off; master_process off;" &
-echo "Started NGINX"
+###########################################################################################
+####### APACHE WEBSERVER
+###########################################################################################
+
+echo "export LD_PRELOAD=$LD_PRELOAD"
+echo "export FLTRACE_LOCAL_MEMORY_MB=$FLTRACE_LOCAL_MEMORY_MB"
+echo "export FLTRACE_MAX_MEMORY_MB=${FLTRACE_MAX_MEMORY_MB}"
+echo "export FLTRACE_NHANDLERS=$FLTRACE_NHANDLERS"
+
+echo "Starting APACHE"
+../apache/httpd -X &
+
 export -n LD_PRELOAD
+ps -e | grep httpd
 
 #run the apache benchmark tool
-NGINX_PORT=1080
-NGINX_RUNTIME=30
+APACHE_PORT=1080
+APACHE_RUNTIME=15
 CONCURRENCY=3
 BENCH_OUTPUT="apache_benchmark.log"
 ab_command='/root/dependencies/apachebench-for-multi-url/ab'
-# NGINX_BENCH_FLAGS=(
-#     "-t $NGINX_RUNTIME"
-#     '-n 1000000'
-#     '-c 5'
-#     '-r'
-#     "http://127.0.0.1:$NGINX_PORT/"
-# )
 
-sleep 2
-NGINX_BENCH_FLAGS=(
-    "-t $NGINX_RUNTIME"
+APACHE_BENCH_FLAGS=(
     '-n 100000'
     '-r'
     '-c 5'
     '-L /root/eden-all/apps/nginx/url.txt'
-    "http://127.0.0.1/"
+    "http://127.0.0.1"
 )
-($ab_command ${NGINX_BENCH_FLAGS[@]} | tee $BENCH_OUTPUT-$i) &
-sleep $NGINX_RUNTIME
-sleep 3
-killall nginx
+
+sleep 2
+echo "($ab_command ${APACHE_BENCH_FLAGS[@]} | tee $BENCH_OUTPUT-$i)"
+($ab_command ${APACHE_BENCH_FLAGS[@]} | tee $BENCH_OUTPUT-$i) &
+sleep $APACHE_RUNTIME
+echo "About to kill apps"
+kill_apps
 
 # nginx_pid=$!
 # echo "nginx_pid $nginx_pid"
