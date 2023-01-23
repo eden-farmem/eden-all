@@ -26,15 +26,13 @@ check_for_stop() {
 # bash trace.sh -ops=30000000 -lm=1000000000 -b=readrandom
 # bash trace.sh -ops=30000000 -lm=1000000000 -b=readreverse
 
-# mem percent 419
-MAXRSS=419
-# for memp in `seq 100 -5 5`; do
+OPS=1000000
+MAXRSS=87671360
+for memp in `seq 100 -5 5`; do
     check_for_stop
     lmem=$(echo $memp $MAXRSS | awk '{ printf "%d", $1 * $2 / 100 }')
-
     echo "Profiling rocksdb - params: $MAXRSS, $memp, $lmem"
-    mem=$((lmem*1000000))
-    bash trace.sh -ops=3000000 -lm=$((lmem*1024*1024)) -lmp=${memp} -b=all -d="trace" -ms=1000
+    bash trace.sh -ops=${OPS} -lm=$lmem -lmp=${memp} -b=all -d="fulltrace" --merge --analyze
 done
 
 
