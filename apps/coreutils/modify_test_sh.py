@@ -60,15 +60,15 @@ def parse_type_1(lines, args):
     debug = args.d
 
     cmd = parse_command_from_path(args.path)
-    print("[modift_test_sh/parse_type_1] Auto parsing cmd from path: {}".format(cmd))
+    print("[modift_test_sh/parse_type_1]: Auto parsing cmd from path: {}".format(cmd))
 
     if args.cmd != None:
         if cmd != args.cmd:
             raise Exception("cmd ({}) != args.cmd {}".format(cmd, args.cmd))
-            
+
         cmd = args.cmd
         if debug:
-            print("[modift_test_sh/parse_type_1] Overwritting cmd ({}) with args.cmd : {}".format(cmd, args.cmd))
+            print("[modift_test_sh/parse_type_1]: Overwritting cmd ({}) with args.cmd : {}".format(cmd, args.cmd))
     
         
 
