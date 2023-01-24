@@ -123,7 +123,8 @@ def parse_type_1(lines, args):
                 new_command = l[:cmd_pos] + " " + "env $env" + " " + l[cmd_pos:]
             else:
                 new_command = "env $env" + " " + l[cmd_pos:]
-
+            
+            new_lines.append('. "{}/{}-modified-env.sh";'.format(os.path.abspath(os.path.dirname(args.path)),test_suite_name))
             new_lines.append(new_command)
             pwd = os.getcwd()
             #new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="{}"'\
