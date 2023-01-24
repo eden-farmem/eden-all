@@ -84,16 +84,36 @@ env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 # echo $env
 ## env end ##
 
+cwpd=$PWD
+
+# Insert a python file that adds the above env def to init.sh 
+python3 insert_env_to_init.py
+
+
+# python3 /home/e7liu/eden-all/scripts/parse_fltrace_stat.py --maxrss -i /home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random/raw/000/fault-stats-22748.out 
 
 ### Todos:
 ### Get the max memory (5 - 100), and run the thing again (we might want to put the lines after the config in a separate file --> need to invoke -l then).
+### Todos:
+### 1. Modify each test script so that they include a .sh before its execution
+### 2. In the .sh, run a python script that determines:
+    ### If this is the first run --> do nothing
+    ### If this is the second run --> generate percent * previous max foot print.
+### 3. Change naming conventions.
+    ### name-execution_number-lm
+    ### maybe you can write it to cat-self-modified-env.sh
 
+arr=("misc/cat-self" )
+echo ${arr[0]}
 
-# Insert a python file that adds the above env def to init.sh 
-python3 insert_env_to_init.py -d
+### Run individual test cases ###
+cd "$cwpd"
+## Modify the program
+python3 modify_test_sh.py --path=./coreutils/tests/${arr[0]}.sh -d 
 
-cwpd=$PWD
-
+## Actually running the program ##
+cd coreutils
+env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/${arr[0]}-modified.sh
 
 
 
@@ -126,25 +146,24 @@ cwpd=$PWD
 # ./tests/misc/sort-version-modified.sh
 
 
-### Run individual test cases ###
-cd "$cwpd"
-## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-benchmark-random.sh -d 
+# ### Run individual test cases ###
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-benchmark-random.sh -d 
 
-## Actually running the program ##
-cd coreutils
-env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-benchmark-random-modified.sh
+# ## Actually running the program ##
+# cd coreutils
+# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-benchmark-random-modified.sh
 
 
-### Run individual test cases ###
-cd "$cwpd"
-## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-spinlock-abuse.sh -d 
+# ### Run individual test cases ###
+# cd "$cwpd"
+# ## Modify the program
+# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-spinlock-abuse.sh -d 
 
-## Actually running the program ##
-cd coreutils
-env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-spinlock-abuse-modified.sh
-
+# ## Actually running the program ##
+# cd coreutils
+# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-spinlock-abuse-modified.sh
 
 
 # # ### Run individual test cases ###
