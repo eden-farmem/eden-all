@@ -4,24 +4,9 @@ import shutil
 import subprocess
 
 from defs import *
-from common import read_conf_from_init_sh
+from common import read_conf_from_init_sh, get_execution_number_from_file
 
-def get_execution_number_from_file(name):
-    # Saves exe number from prev run
-    fname = "{}-execution-number.txt".format(name)
-    exist = os.path.exists(fname)
-    if exist:
-        with open(fname) as f:
-            for line in f:
-                 execution_number = int(line.strip()) + 1
-                 break
-    else:
-        execution_number = 0
-    
-    with open(fname, "w") as f:
-        f.write("{}\n".format(execution_number))
 
-    return str(execution_number)
 
 def main():
     if not os.path.exists(MERGE_SCRIPT):
@@ -68,7 +53,7 @@ def main():
         lm, unit = read_conf_from_init_sh()
         dirpath = os.path.join(ROOT_OUTPUT, args.name+"-lm{}{}".format(lm,unit))
     else:
-        dirpath = os.path.join(ROOT_OUTPUT, args.name)
+        dirpath = os.path.join(ROOT_OUTPUT, args.name+"-{}percent".format(args.percent))
 
 
     if os.path.exists(dirpath) and os.path.isdir(dirpath):

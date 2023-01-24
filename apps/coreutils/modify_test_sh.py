@@ -93,8 +93,8 @@ def cmd_save_output_as_gzip(args):
         
         # unzip: tar -xf name.tar.gz --directory  ./folder
         zip_cmd = "tar -cjf {} -C {} .".format(
-            os.path.join(ROOT_OUTPUT,fname_only+"-{}precent.tar.gz".format(args.percent)),
-            os.path.join(ROOT_OUTPUT,fname_only),
+            os.path.join(ROOT_OUTPUT,fname_only+"-{}percent.tar.gz".format(args.percent)),
+            os.path.join(ROOT_OUTPUT,fname_only+"-{}percent".format(args.percent)),
         )
         if debug:
             print("[modift_test_sh/modify]: saving data with cmd {}".format(zip_cmd))
@@ -159,13 +159,13 @@ def parse_type_1(lines, args):
             else:
                 new_command = "env $env" + " " + l[cmd_pos:]
             
-            #new_lines.append('. "{}/{}-modified-env.sh";'.format(os.path.abspath(os.path.dirname(args.path)),test_suite_name))
-            new_lines.append(new_command)
+            new_command_with_auto_update_max_mem = '{}; updated_lm=`python3 {}/prepare_lm_for_next_run.py --name={} --percent={}`; env="$env FLTRACE_LOCAL_MEMORY_BYTES=$updated_lm"; echo "[prepare_lm_for_next_run/updatedenv]: $env"'.format(new_command, ROOT, test_suite_name, args.percent) #  
+            new_lines.append(new_command_with_auto_update_max_mem)
+
             pwd = os.getcwd()
-            #new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="{}"'\
-            #.format(execution_number, test_suite_name))
-            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -d --name="{}"'\
-            .format(test_suite_name))
+            
+            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -d --name="{}" --percent={}'\
+            .format(test_suite_name, args.percent))
 
             execution_number += 1
 
