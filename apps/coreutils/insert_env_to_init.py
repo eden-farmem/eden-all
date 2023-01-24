@@ -46,10 +46,14 @@ def insert(args):
         raise Exception("Conf Not Detected")
     else:
         for i, l in enumerate(confs):
-            if "FLTRACE_LOCAL_MEMORY_MB" in l:
+            if "FLTRACE_LOCAL_MEMORY_BYTES" in l:
                 # You are replacing =1 with =1, lmao
-                l = l.replace("=1", "={}".format(args.m))
-                confs[i] = l
+                if args.m != None:
+                    # env="$env FLTRACE_LOCAL_MEMORY_BYTES=10000000000"
+                    lsplits = l.split("=")
+                    new_l = lsplits[0] + "=" + lsplits[1] + "=" + args.m + '='
+                    confs[i] = new_l
+                
                 break
         else:
             raise Exception("Conf Error")
@@ -90,8 +94,9 @@ def main():
     # add args
     parser.add_argument('--trace_sh_addr', default="./trace.sh", help="path to trace.sh")
     parser.add_argument('--init_sh_addr', default="./coreutils/tests/init.sh",help='path to init.sh')
-    parser.add_argument('-m', default="1", help='Local Mem')
+    parser.add_argument('-m', default=None, help='Local Mem in Bytes')
     parser.add_argument('-d', action="store_true", help='Print Debug')
+    parser.add_argument('--percent', default=0, type=int, help='percentage of max m')
     args = parser.parse_args()
     insert(args)
 
