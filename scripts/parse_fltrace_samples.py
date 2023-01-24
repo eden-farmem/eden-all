@@ -68,13 +68,17 @@ def main():
     FLAGSCOL="flags"
     if "kind" in df:
             FLAGSCOL="kind"
+
     # group by ip or trace
-    if 'trace' in df:
-        df = df.groupby(['trace', FLAGSCOL]).size().reset_index(name='count')
-        df = df.rename(columns={"trace": "ips"})
+    TRACECOL="ip"
+    if "trace" in df:
+        TRACECOL="trace"
+
+    if "pages" in df:
+        df = df.groupby([TRACECOL, FLAGSCOL])["pages"].sum().reset_index(name='count')
     else:
-        df = df.groupby(['ip', FLAGSCOL]).size().reset_index(name='count')
-        df = df.rename(columns={"ip": "ips"})
+        df = df.groupby([TRACECOL, FLAGSCOL]).size().reset_index(name='count')
+    df = df.rename(columns={TRACECOL: "ips"})
 
     df = df.sort_values("count", ascending=False)
     df["percent"] = (df['count'] / df['count'].sum()) * 100
