@@ -23,6 +23,7 @@ ROOTDIR="${SCRIPTDIR}/../../../"
 ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
+TOOLDIR="${ROOTDIR}/fault-analysis/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 MAX_REMOTE_MEMORY_MB=16000
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
@@ -152,11 +153,14 @@ if [[ $SAMPLESPERSEC ]]; then
 fi
 
 # run app with tool
+prefix="time -p"
 if [[ $GDB ]]; then  prefix="gdb --args";   fi
 
 # run app
 pkill memcached
-${prefix} env ${env} memcached -p $SERVER_PORT -u nobody 2>&1 | tee server.out &
+${prefix} env ${env} memcached -p $SERVER_PORT -u nobody -t 10  \
+    -m 4096000000 2>&1 | tee server.out &
+# memcached -p 7000 -u nobody
 sleep 5
 
 # run client
@@ -164,10 +168,11 @@ MC_BENCH_FLAGS=(
     '-h 127.0.0.1'
     "-p $SERVER_PORT"
     "-n ${OPS}"
-    '-c 5'
+    '-c 50'
     '-d 500'
+    '-r 1000000'
 )
-time -p ${SCRIPTDIR}/mc-benchmark/mc-benchmark ${MC_BENCH_FLAGS[@]} 2>&1 | tee client.out
+${SCRIPTDIR}/mc-benchmark/mc-benchmark ${MC_BENCH_FLAGS[@]} 2>&1 | tee client.out
 
 # kill server
 pkill memcached

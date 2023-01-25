@@ -23,6 +23,7 @@ ROOTDIR="${SCRIPTDIR}/../../../"
 ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
+TOOLDIR="${ROOTDIR}/fault-analysis/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 MAX_REMOTE_MEMORY_MB=16000
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
@@ -152,11 +153,12 @@ if [[ $SAMPLESPERSEC ]]; then
 fi
 
 # run app with tool
+prefix="time -p"
 if [[ $GDB ]]; then  prefix="gdb --args";   fi
 
 # run app
 pkill redis-server
-${prefix} env ${env} redis-server --maxclients 100000 --port $SERVER_PORT \
+${prefix} env ${env} redis-server --maxclients 100000 --port $SERVER_PORT   \
     --protected-mode no 2>&1 | tee server.out &
 sleep 5
 
@@ -168,6 +170,7 @@ REDIS_BENCH_FLAGS=(
     "-n ${OPS}"
     '-c 50'
     '-d 500'
+    '-r 1000000'
 )
 time -p redis-benchmark ${REDIS_BENCH_FLAGS[@]} 2>&1 | tee client.out
 

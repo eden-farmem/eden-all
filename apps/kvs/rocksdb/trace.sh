@@ -170,8 +170,8 @@ esac
 # run app with tool
 prefix="time"
 if [[ $GDB ]]; then  prefix="gdb --args";   fi
-${prefix} env ${env} ${APPDIR}/build/db_bench --db=log --threads=2   \
-    --num=${OPS} --benchmarks=${benchmark} 2>&1 | tee app.out
+${prefix} env ${env} ${APPDIR}/build/db_bench --db=log --threads=2      \
+    --num=${OPS} --benchmarks=${benchmark} --value_size=500 2>&1 | tee app.out
 
 # back to app dir
 popd

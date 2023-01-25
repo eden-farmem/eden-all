@@ -13,9 +13,10 @@ check_for_stop() {
 }
 
 # Run a set of experiments
-OPS=20000000
-MAXRSS=630000000
-for memp in `seq 100 -5 5`; do
+OPS=10000000
+MAXRSS=565000000
+# for memp in `seq 100 -5 5`; do
+for memp in 85; do
     check_for_stop
     lmem=$(echo $memp $MAXRSS | awk '{ printf "%d", $1 * $2 / 100 }')
     echo "Profiling rocksdb - params: $MAXRSS, $memp, $lmem"
