@@ -111,7 +111,7 @@ for exp in $LS_CMD; do
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];                    then    continue;   fi
     if [[ $TAG ]] && [[ "$tag" != "$TAG"  ]];                       then    continue;   fi
 
-    rtime=$(cat ${exp}/client.out | grep "^real " | awk '{ printf "%d", $2 }')
+    rtime=$(cat ${exp}/server.out | grep "^real " | awk '{ printf "%d", $2 }')
 
     # TOOL OUTPUT
     fltraceout=${exp}/fltrace_parsed
@@ -120,9 +120,9 @@ for exp in $LS_CMD; do
         python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_stat.py -i ${fltracein} -o ${fltraceout}
     fi
     faults=$(csv_column_sum "$fltraceout" "faults")
-    faultsr=$(csv_column_mean "$fltraceout" "faults_r")
-    faultsw=$(csv_column_mean "$fltraceout" "faults_w")
-    faultswp=$(csv_column_mean "$fltraceout" "faults_wp")
+    faultsr=$(csv_column_sum "$fltraceout" "faults_r")
+    faultsw=$(csv_column_sum "$fltraceout" "faults_w")
+    faultswp=$(csv_column_sum "$fltraceout" "faults_wp")
     faultszp=$(csv_column_sum "$fltraceout" "faults_zp")
     evicts=$(csv_column_sum "$fltraceout" "evict_pages_done")
     mallocd=$(csv_column_max "$fltraceout" "memory_allocd_mb" | ftoi)
