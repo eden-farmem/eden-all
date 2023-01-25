@@ -556,14 +556,15 @@ def parser_get_plots(parser, args):
         if not args.plabel:
             parser.error("If --labelincr is specified, plot labels must be "
                 "specified with -l/--plabel")
-        if len(args.plabel) < sum(args.labelincr):
-            parser.error("If plot labels and --labelincr are provided, sum of "
-                "label increments should not cross the number of plot labels")
+        if len(args.labelincr) != len(args.plabel) or sum(args.labelincr) != len(plots):
+            parser.error("If --labelincr are provided, they should match the "
+                "number of labels and the sum of label increments should match "
+                "the number of plots")
         plotidx = 0
         labelidx = 0
         for incr in args.labelincr:
-            for i in incr:
-                plots[plotidx].label = args.plabel[labelidx]
+            for i in range(incr):
+                plots[plotidx].label = "" if i != 0 else args.plabel[labelidx]
                 plotidx += 1
             labelidx += 1
 

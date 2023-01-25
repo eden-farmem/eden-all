@@ -9,8 +9,8 @@ usage="bash $1 [args]\n
 -lmp,--lmemp \t\t local memory percentage compared to app's max working set (only for logging)\n
 -h, --handlers \t\t number of handler cores for the tracing tool\n
 -ms, --maxsamples \t\t limit the number of samples collected per second\n
--ops, --rocksdbops \t\t rocksdb ops\n
--b, --bench \t\t rocks db benchmark to run\n
+-ops, --dbops \t\t number of db ops\n
+-b, --bench \t\t db benchmark to run\n
 -f, --force \t\t force rebuild and re-run experiments\n
 -d, --debug \t\t build debug\n
 -sf, --safemode \t\t build in safemode\n
@@ -20,11 +20,12 @@ usage="bash $1 [args]\n
 #Defaults
 SCRIPT_PATH=`realpath $0`
 SCRIPTDIR=`dirname ${SCRIPT_PATH}`
-ROOTDIR="${SCRIPTDIR}/../../"
+ROOTDIR="${SCRIPTDIR}/../../../"
 ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
-APPDIR="${SCRIPTDIR}/rocksdb/"
+APPDIR="${SCRIPTDIR}/leveldb/"
+TOOLDIR="${ROOTDIR}/fault-analysis/"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 MAX_REMOTE_MEMORY_MB=16000
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
@@ -78,8 +79,8 @@ case $i in
     ANALYZE_TRACES=1
     ;;
 
-    # ROCKSDB-SPECIFIC SETTINGS
-    -ops=*|--rocksdbops=*)
+    # LEVELDB-SPECIFIC SETTINGS
+    -ops=*|--dbops=*)
     OPS=${i#*=}
     ;;
 
@@ -159,18 +160,18 @@ fi
 # figure out benchmark
 benchmark=
 case $BENCH in
-"all")              benchmark="fillrandom,readseq,readrandom,readreverse,updaterandom,appendrandom,seekrandom,deleteseq,deleterandom,stats";;
+"all")              benchmark="fillrandom,readseq,readrandom,readreverse,seekrandom,deleteseq,deleterandom,stats";;
 "readseq")          benchmark="fillseq,fillrandom,readseq,stats";;
 "readrandom")       benchmark="fillseq,fillrandom,readrandom,stats";;
 "readreverse")      benchmark="fillseq,fillrandom,readreverse,stats";;
-*)                  echo "Unknown rocksdb benchmark"; exit;;
+*)                  echo "Unknown db benchmark"; exit;;
 esac
 
 # run app with tool
-prefix="time"
+prefix="time -p"
 if [[ $GDB ]]; then  prefix="gdb --args";   fi
-${prefix} env ${env} ${APPDIR}/build/db_bench --db=log   \
-    --num=${OPS} --benchmarks=${benchmark} | tee app.out
+${prefix} env ${env} ${APPDIR}/build/db_bench --db=log --threads=5    \
+    --num=${OPS} --benchmarks=${benchmark} 2>&1 | tee app.out
 
 # back to app dir
 popd

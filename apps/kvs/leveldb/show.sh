@@ -18,7 +18,7 @@ usage="\n
 SCRIPT_PATH=`realpath $0`
 SCRIPT_DIR=`dirname ${SCRIPT_PATH}`
 DATADIR="${SCRIPT_DIR}/data"
-ROOT_DIR="${SCRIPT_DIR}/../../"
+ROOT_DIR="${SCRIPT_DIR}/../../../"
 ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
 TRASH="${DATADIR}/trash"
 
@@ -117,6 +117,8 @@ for exp in $LS_CMD; do
     if [[ $DESC ]] && [[ "$desc" != "$DESC"  ]];                    then    continue;   fi
     if [[ $TAG ]] && [[ "$tag" != "$TAG"  ]];                       then    continue;   fi
 
+    rtime=$(cat ${exp}/app.out | grep "^real " | awk '{ printf "%d", $2 }')
+
     # TOOL OUTPUT
     fltraceout=${exp}/fltrace_parsed
     fltracein=$(ls ${exp}/fault-stats-*.out | head -1)
@@ -146,9 +148,9 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";
     HEADER="$HEADER,FaultsZP";      LINE="$LINE,${faultszp}";
     HEADER="$HEADER,FaultsNoZP";    LINE="$LINE,$((faults-faultszp))";
-    HEADER="$HEADER,FaultsR";       LINE="$LINE,${faultsr}";
-    HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
-    HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
+    # HEADER="$HEADER,FaultsR";       LINE="$LINE,${faultsr}";
+    # HEADER="$HEADER,FaultsW";       LINE="$LINE,${faultsw}";
+    # HEADER="$HEADER,FaultsWP";      LINE="$LINE,${faultswp}";
     HEADER="$HEADER,Evicts";        LINE="$LINE,${evicts}";
     HEADER="$HEADER,Suppressed";    LINE="$LINE,${suppressed}";
     HEADER="$HEADER,Mallocd";       LINE="$LINE,$((mallocd))";
