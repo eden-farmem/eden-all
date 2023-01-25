@@ -4,24 +4,9 @@ import shutil
 import subprocess
 
 from defs import *
+from common import read_conf_from_init_sh, get_execution_number_from_file
 
 
-def get_execution_number_from_file(name):
-    # Saves exe number from prev run
-    fname = "{}-execution-number.txt".format(name)
-    exist = os.path.exists(fname)
-    if exist:
-        with open(fname) as f:
-            for line in f:
-                 execution_number = int(line.strip()) + 1
-                 break
-    else:
-        execution_number = 0
-    
-    with open(fname, "w") as f:
-        f.write("{}\n".format(execution_number))
-
-    return str(execution_number)
 
 def main():
     if not os.path.exists(MERGE_SCRIPT):
@@ -41,6 +26,7 @@ def main():
     parser.add_argument('--name',  required=True, help="current test case name")
     parser.add_argument('-m', default="1", help='Local Mem')
     parser.add_argument('-d', action="store_true", help='Print Debug')
+    parser.add_argument('--percent', default=0, type=int, help='percentage of max m')
     
     # so -r overwrites the serial number
     parser.add_argument('-r', default=None, type=int, help="execution serial number")
@@ -63,7 +49,13 @@ def main():
         print("[in_folder_result_processing/main] ", args, os.getcwd())
 
     # create directories
-    dirpath = os.path.join(ROOT_OUTPUT, args.name)
+    if args.percent == 0:
+        lm, unit = read_conf_from_init_sh()
+        dirpath = os.path.join(ROOT_OUTPUT, args.name+"-lm{}{}".format(lm,unit))
+    else:
+        dirpath = os.path.join(ROOT_OUTPUT, args.name+"-{}percent".format(args.percent))
+
+
     if os.path.exists(dirpath) and os.path.isdir(dirpath):
         # shutil.rmtree(dirpath)
         pass

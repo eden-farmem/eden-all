@@ -1,0 +1,5 @@
+MERGE_SCRIPT = "/home/e7liu/eden-all/scripts/parse_fltrace_samples.py"
+FAULT_ANALYSIS_SCRIPT = "/home/e7liu/eden-all/fault-analysis/analysis/trace_codebase.py"
+ROOT_OUTPUT="/home/e7liu/eden-all/apps/coreutils/coreutils_output"
+ROOT="/home/e7liu/eden-all/apps/coreutils/"
+ROOT_EDEN = "/home/e7liu/eden-all/"

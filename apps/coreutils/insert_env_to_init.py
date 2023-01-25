@@ -1,5 +1,5 @@
 import argparse
-
+from common import compute_memory_usage_with_percent
 
 TEST_ENV = """
 cpwd="$PWD";
@@ -15,7 +15,9 @@ cd "$cpwd";
 
 
 def insert(args):
-    
+    test_script_name = args.name
+    if "/" in test_script_name:
+        test_script_name = test_script_name.split('/')[-1].strip()
 
     trace_sh_addr = args.trace_sh_addr
     init_sh_addr  = args.init_sh_addr
@@ -46,10 +48,17 @@ def insert(args):
         raise Exception("Conf Not Detected")
     else:
         for i, l in enumerate(confs):
-            if "FLTRACE_LOCAL_MEMORY_MB" in l:
+            if "FLTRACE_LOCAL_MEMORY_BYTES" in l:
                 # You are replacing =1 with =1, lmao
-                l = l.replace("=1", "={}".format(args.m))
-                confs[i] = l
+                if args.percent != 0:
+                    # Get percentage
+                    mem_bytes_percent = compute_memory_usage_with_percent(test_script_name, 0, args.percent, debug)
+                    
+                    # env="$env FLTRACE_LOCAL_MEMORY_BYTES=10000000000"
+                    lsplits = l.split("=")
+                    new_l = '{}={}={}" # modified'.format(lsplits[0],lsplits[1],mem_bytes_percent)
+                    confs[i] = new_l
+                
                 break
         else:
             raise Exception("Conf Error")
@@ -77,7 +86,7 @@ def insert(args):
         f.write("\n".join(init_sh))
     
     if debug:
-        print("[insert_env_to_init/modify] Appending:{}\n{}\n".format("### Custom Conf ###","\n".join(custom_conf)))
+        print("[insert_env_to_init/modify] Appending:\n{}\n{}\n".format("### Custom Conf ###","\n".join(custom_conf)))
     
     if debug:
         print("[insert_env_to_init/modify] Finished Editing Init\n")
@@ -90,8 +99,10 @@ def main():
     # add args
     parser.add_argument('--trace_sh_addr', default="./trace.sh", help="path to trace.sh")
     parser.add_argument('--init_sh_addr', default="./coreutils/tests/init.sh",help='path to init.sh')
-    parser.add_argument('-m', default="1", help='Local Mem')
+    parser.add_argument('-m', default=None, help='Local Mem in Bytes')
     parser.add_argument('-d', action="store_true", help='Print Debug')
+    parser.add_argument('--percent', default=0, type=int, help='percentage of max m')
+    parser.add_argument('--name', help="current test case name")
     args = parser.parse_args()
     insert(args)
 

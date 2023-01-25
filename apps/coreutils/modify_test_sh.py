@@ -3,6 +3,7 @@ import os
 import stat
 import subprocess
 from defs import ROOT, ROOT_OUTPUT
+from common import read_conf_from_init_sh
 
 def findall(p, s):
     '''Yields all the positions of
@@ -49,23 +50,57 @@ def is_dummy_cases(line, cmd):
     return False
 
 
-def read_conf_from_init_sh(p = "{}/coreutils/tests/init.sh".format(ROOT)):
-    with open(p) as f:
-        for l in f:
-            l = l.strip()
-            if "FLTRACE_LOCAL_MEMORY_MB" in l and not l.startswith("#"):
-                i = l.index("#")
-                l = l[:i]
-                lm = l.split("=")[-1].strip().replace('"',"").replace("=","")
-                unit  = "mb"
-                #print("lm:", lm)
-    return lm, unit
+
 
 
 def parse_command_from_path(p):
     sh_name = os.path.basename(p)
     cmd = sh_name.split("-")[0]
     return cmd
+
+
+def cmd_save_output_as_gzip(args):
+    debug = args.d 
+
+    # First time running the program
+    if args.percent == 0:
+        # Write to new file
+        fname_only = os.path.basename(args.path) 
+        
+        fname_only = fname_only.replace(".sh","") + ""
+
+        # safely read from init, everyone is the same
+        lm, unit = read_conf_from_init_sh()
+        
+        # unzip: tar -xf name.tar.gz --directory  ./folder
+        zip_cmd = "tar -cjf {} -C {} .".format(
+            os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}.tar.gz".format(lm,unit)),
+            os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}".format(lm,unit)),
+        )
+        if debug:
+            print("[modift_test_sh/modify]: saving data with cmd {}".format(zip_cmd))
+        
+        return zip_cmd
+    
+    # If not running the program for the first time
+    # max memory should dynamically computed based on previous results (folder name)
+    # so you user percentage as folder name
+    else:
+        # Write to new file
+        fname_only = os.path.basename(args.path) 
+        
+        fname_only = fname_only.replace(".sh","") + ""
+        
+        # unzip: tar -xf name.tar.gz --directory  ./folder
+        zip_cmd = "tar -cjf {} -C {} .".format(
+            os.path.join(ROOT_OUTPUT,fname_only+"-{}percent.tar.gz".format(args.percent)),
+            os.path.join(ROOT_OUTPUT,fname_only+"-{}percent".format(args.percent)),
+        )
+        if debug:
+            print("[modift_test_sh/modify]: saving data with cmd {}".format(zip_cmd))
+        
+        return zip_cmd
+
 
 def parse_type_1(lines, args):
 
@@ -124,13 +159,13 @@ def parse_type_1(lines, args):
             else:
                 new_command = "env $env" + " " + l[cmd_pos:]
             
-            new_lines.append('. "{}/{}-modified-env.sh";'.format(os.path.abspath(os.path.dirname(args.path)),test_suite_name))
-            new_lines.append(new_command)
+            new_command_with_auto_update_max_mem = '{}; updated_lm=`python3 {}/prepare_lm_for_next_run.py --name={} --percent={}`; env="$env FLTRACE_LOCAL_MEMORY_BYTES=$updated_lm"; echo "[prepare_lm_for_next_run/updatedenv]: $env"'.format(new_command, ROOT, test_suite_name, args.percent) #  
+            new_lines.append(new_command_with_auto_update_max_mem)
+
             pwd = os.getcwd()
-            #new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -r={} -d --name="{}"'\
-            #.format(execution_number, test_suite_name))
-            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -d --name="{}"'\
-            .format(test_suite_name))
+            
+            new_lines.append('python3 /home/e7liu/eden-all/apps/coreutils/in_folder_result_processing.py --wd="$PWD" -d --name="{}" --percent={}'\
+            .format(test_suite_name, args.percent))
 
             execution_number += 1
 
@@ -141,22 +176,9 @@ def parse_type_1(lines, args):
         
         # doesn't matter cmd not in l
         else:
+            # Before finishing
             if "Exit $fail" in l:
-                # Write to new file
-                fname_only = os.path.basename(args.path) 
-                
-                fname_only = fname_only.replace(".sh","") + ""
-
-                lm, unit = read_conf_from_init_sh()
-                
-                # unzip: tar -xf name.tar.gz --directory  ./folder
-                zip_cmd = "tar -cjf {} -C {} .".format(
-                    os.path.join(ROOT_OUTPUT,fname_only+"-lm{}{}.tar.gz".format(lm,unit)),
-                    os.path.join(ROOT_OUTPUT,fname_only),
-                )
-                if debug:
-                    print("[modift_test_sh/modify]: saving data with cmd {}".format(zip_cmd))
-
+                zip_cmd = cmd_save_output_as_gzip(args)
                 new_lines.append(zip_cmd)
 
             new_lines.append(l)
@@ -205,6 +227,7 @@ def main():
     parser.add_argument('--path', required=True, help="path to test_name.sh")
     parser.add_argument('--cmd', default=None, help="current command")
     parser.add_argument('-d', action="store_true", help='Print Debug')
+    parser.add_argument('--percent', default=0, type=int, help='percentage of max m')
     args = parser.parse_args()
     modify(args)
 

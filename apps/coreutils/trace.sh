@@ -72,13 +72,12 @@ echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
 # gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 
-
 ## Definitions for the env variable ##
 ## Don't change the format below ##
 ## env start ##
 sudo sysctl -w vm.unprivileged_userfaultfd=1     # to run without sudo
 env="$env LD_PRELOAD=/home/e7liu/eden-all/eden/fltrace.so" # setting LD pre load
-env="$env FLTRACE_LOCAL_MEMORY_MB=10000" # based on the mem fingerprint
+env="$env FLTRACE_LOCAL_MEMORY_BYTES=10000000000" # based on the mem fingerprint
 env="$env FLTRACE_MAX_MEMORY_MB=75000"                   # doesn't matter 
 env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 # echo $env
@@ -86,91 +85,55 @@ env="$env FLTRACE_NHANDLERS=1" # doesn't matter
 
 cwpd=$PWD
 
-# Insert a python file that adds the above env def to init.sh 
-python3 insert_env_to_init.py
 
 
 # python3 /home/e7liu/eden-all/scripts/parse_fltrace_stat.py --maxrss -i /home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random/raw/000/fault-stats-22748.out 
 
-### Todos:
-### Get the max memory (5 - 100), and run the thing again (we might want to put the lines after the config in a separate file --> need to invoke -l then).
-### Todos:
-### 1. Modify each test script so that they include a .sh before its execution
-### 2. In the .sh, run a python script that determines:
-    ### If this is the first run --> do nothing
-    ### If this is the second run --> generate percent * previous max foot print.
-### 3. Change naming conventions.
-    ### name-execution_number-lm
-    ### maybe you can write it to cat-self-modified-env.sh
+rm -r /home/e7liu/eden-all/apps/coreutils/coreutils_output/*
 
-arr=("misc/cat-self" )
+arr=("misc/sort-benchmark-random" "misc/cat-proc" )
+pvs=(0 5 10 15 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95)
+# arr=("misc/sort-benchmark-random" )
 echo ${arr[0]}
 
-### Run individual test cases ###
-cd "$cwpd"
-## Modify the program
-python3 modify_test_sh.py --path=./coreutils/tests/${arr[0]}.sh -d 
-
-## Actually running the program ##
-cd coreutils
-env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/${arr[0]}-modified.sh
 
 
+for i in "${arr[@]}"
+do
+    for p in "${pvs[@]}"
+    do 
+        ####### Run individual test cases #######
+        cd "$cwpd"
+        # Insert a python file that adds the above env def to init.sh 
+        python3 insert_env_to_init.py --percent=$p --name=$i
 
-# ## Run individual test cases ###
+        cd "$cwpd"
+        ## Modify the program
+        python3 modify_test_sh.py --path=./coreutils/tests/$i.sh -d --percent=$p
+
+        ## Actually running the program ##
+        cd coreutils
+        env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/$i-modified.sh
+        #########################################
+    done
+done
+
+
+
+
+
+# ####### Run individual test cases #######
+# cd "$cwpd"
+# # Insert a python file that adds the above env def to init.sh 
+# python3 insert_env_to_init.py --percent=$p --name=${arr[0]}
+
 # cd "$cwpd"
 # ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-proc.sh -d 
+# python3 modify_test_sh.py --path=./coreutils/tests/${arr[0]}.sh -d --percent=$p
 
 # ## Actually running the program ##
 # cd coreutils
-# ./tests/misc/cat-proc-modified.sh
-
-### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/cat-self.sh -d 
-
-# ## Actually running the program ##
-# cd coreutils
-# ./tests/misc/cat-self-modified.sh
+# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/${arr[0]}-modified.sh
+# #########################################
 
 
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-version.sh -d
-
-# ## Actually running the program ##
-# cd coreutils
-# ./tests/misc/sort-version-modified.sh
-
-
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-benchmark-random.sh -d 
-
-# ## Actually running the program ##
-# cd coreutils
-# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-benchmark-random-modified.sh
-
-
-# ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/sort-spinlock-abuse.sh -d 
-
-# ## Actually running the program ##
-# cd coreutils
-# env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/misc/sort-spinlock-abuse-modified.sh
-
-
-# # ### Run individual test cases ###
-# cd "$cwpd"
-# ## Modify the program
-# python3 modify_test_sh.py --path=./coreutils/tests/misc/uniq-collate.sh -d
-
-# ## Actually running the program ##
-# cd coreutils
-# ./tests/misc/uniq-collate-modified.sh
