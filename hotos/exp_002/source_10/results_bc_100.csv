@@ -1,0 +1,3 @@
+name,percent,loc,floc,local,app,lmemp,input
+bc_100,100.0,-1,0,True,bc,100,native
+bc_10,100.0,-1,7,True,bc,10,native
