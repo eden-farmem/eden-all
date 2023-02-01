@@ -30,9 +30,9 @@ popd () {
     command popd "$@" > /dev/null
 }
 
-# percentage=("95" "90" "85" "80" "75" "70" "65" "60" "55" "50" "45" "40" "35" "30" "25" "20" "15" "10" "5")
+percentage=("95" "90" "85" "80" "75" "70" "65" "60" "55" "50" "45" "40" "35" "30" "25" "20" "15" "10" "5")
 # percentage=("90" "80" "70" "60" "50" "40" "30" "20" "10")
-percentage=("10")
+# percentage=("10")
 # percentage=("90")
 
 function get_percentage_array() {
@@ -252,6 +252,12 @@ function run_analysis() {
     done
 
     for d in ${dirs[@]}; do
+
+        if ! echo $d | grep -q "run"; then
+            continue
+        fi
+
+
         pushd "${latest}/${app}/${d}"
         memory=`cat settings | grep localmempercent | cut -d ":" -f 2`
         if [ ! -d trace ] || [ ! -f trace/000_000.txt ]; then
@@ -271,7 +277,8 @@ function run_analysis() {
             else
                 header_arg="-r"
             fi
-            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${p} ${header_arg} -z --local >> $rel_file
+            # echo "Running ${fault_analysis_tool} -d trace -n ${app}_$memory -c $p $header_arg -z --local >> $rel_file"
+            python ${fault_analysis_tool} -d "trace" -n "${app}_$memory" -c ${p} ${header_arg} -z -g --local >> $rel_file
             truncate -s-1 $rel_file
             echo "${app},${memory},native" >> $rel_file
 
