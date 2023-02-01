@@ -89,19 +89,36 @@ cwpd=$PWD
 
 # python3 /home/e7liu/eden-all/scripts/parse_fltrace_stat.py --maxrss -i /home/e7liu/eden-all/apps/coreutils/coreutils_output/sort-benchmark-random/raw/000/fault-stats-22748.out 
 
-rm -r /home/e7liu/eden-all/apps/coreutils/coreutils_output/*
+# rm -r /home/e7liu/eden-all/apps/coreutils/coreutils_output/*
 
-arr=("misc/sort-benchmark-random" "misc/cat-proc" )
-pvs=(0 5 10 15 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95)
+
+# "misc/sort-compress-proc" is weird --> profiles bash
+# "misc/sort-benchmark-random" "misc/sort-spinlock-abuse"
+# "misc/sort-alex-seq"
+# "misc/tsort-basic-alex" "misc/tsort-large-alex" "misc/tsort-large-alex"
+
+## Doesn't work
+## "misc/cat-proc-alex" "misc/md5sum-bsd-alex" "pr/pr-tests-alex" "misc/sum-sysv-alex.sh" "misc/base64-basic-alex" "misc/join-basic-alex"
+## misc/base64-basic-alex misc/join-basic-alex
+arr=("misc/uniq-basic-alex" "misc/md5sum-bsd-alex" "pr/pr-tests-alex" "misc/sum-sysv-alex.sh" "misc/join-basic-alex") # 
+# pvs=(0 )
+# pvs=(0 5 10 15 20 25 50 )
+pvs=(0 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95)
 # arr=("misc/sort-benchmark-random" )
-echo ${arr[0]}
-
 
 
 for i in "${arr[@]}"
 do
+    # Get bash name
+    bash_name=`echo "$i" | cut -d "/" -f 2`
+    # echo "${bash_name}"
+
+    # Clean up old output
+    rm -r /home/e7liu/eden-all/apps/coreutils/coreutils_output/${bash_name}-*
+    
     for p in "${pvs[@]}"
     do 
+
         ####### Run individual test cases #######
         cd "$cwpd"
         # Insert a python file that adds the above env def to init.sh 
@@ -113,9 +130,11 @@ do
 
         ## Actually running the program ##
         cd coreutils
-        env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/$i-modified.sh
+        env RUN_EXPENSIVE_TESTS=yes env RUN_VERY_EXPENSIVE_TESTS=yes ./tests/$i-modified.sh
         #########################################
+
     done
+
 done
 
 

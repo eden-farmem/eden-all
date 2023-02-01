@@ -40,7 +40,11 @@ def has_proc_cmd(lines, cmd):
 def is_dummy_cases(line, cmd):
     if line.startswith("#"):
         return True
+    if line.strip().startswith("#"):
+        return True
     if line.startswith("print_ver_"):
+        return True
+    if "path_prepend_" in line:
         return True
 
     # Not in perl for sort-benchmark-random
@@ -151,6 +155,9 @@ def parse_type_1(lines, args):
 
             # Undefined cases
             if len(cmd_instances) >= 2 and len(cmd_instances) - len(dash_cmd_instances) > 1:
+                raise Exception("I Don't Know What To Do! {}".format(l))
+
+            if " \\" in l:
                 raise Exception("I Don't Know What To Do! {}".format(l))
 
             cmd_pos = cmd_instances[0]
