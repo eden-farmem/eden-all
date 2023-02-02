@@ -4,6 +4,8 @@ import os
 import sys
 import subprocess
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 # access op that resulted in the fault 
 class FaultOp(Enum):
@@ -25,6 +27,11 @@ def main():
     parser = argparse.ArgumentParser("Find and print traces specific to each trace file")
     parser.add_argument('-i', '--input', action='store', nargs='+', help="path to the input trace file(s)", required=True)
     parser.add_argument('-l', '--label', action='store', nargs='+', help="label for each input trace file(s)")
+    parser.add_argument('-p', '--ptile', action='store', type=int, choices=range(0,101), help="take top x% of locations", default=100)
+    parser.add_argument('-wl', '--writeleaves', action='store_true', help="write out all leaves to outfile")
+    parser.add_argument('-hm', '--heatmap', action='store_true', help="generate a heatmap to outfile")
+    parser.add_argument('-cb', '--colorbar', action='store_true', help="generate a colorbar on the heatmap")
+    parser.add_argument('-n', '--appname', action='store', help="name to add to the text on the heatmap")
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
 
@@ -33,6 +40,7 @@ def main():
         exit(1)
 
     # read in
+    origdfs=[]
     dfs = []
     for file in args.input:
         if not os.path.exists(file):
@@ -48,6 +56,15 @@ def main():
         tempdf['ip'] = tempdf['ips'].apply(lambda x: x.split('|')[2])
         tempdf = (tempdf.groupby(['ip'], as_index=False).agg(fcount=('count', 'sum'), trcount=('count', 'count')))
         tempdf = tempdf.sort_values("fcount", ascending=False)
+        origdfs.append(tempdf)
+
+        # apply %-ile
+        if args.ptile and not tempdf.empty:
+            tempdf['fcount_cumsum'] = tempdf['fcount'].cumsum()
+            tempdf['fcount_cdf'] = tempdf['fcount_cumsum'] / tempdf['fcount_cumsum'].iloc[-1]
+            ptile = tempdf['fcount_cdf'].searchsorted(args.ptile/100, side='left')
+            fcountptile = tempdf['fcount'].iloc[ptile] if not tempdf.empty else 0
+            tempdf = tempdf[tempdf['fcount'] >= fcountptile]
         dfs.append(tempdf)
 
     # result
@@ -58,6 +75,68 @@ def main():
     resdf['leaves'] = [df['trcount'].size for df in dfs]
     resdf['faults'] = [df['fcount'].sum() for df in dfs]
 
+    # find all unique traces
+    allleaves = pd.concat(dfs).drop_duplicates(['ip'])
+    resdf['totalleaves'] = [allleaves['trcount'].size for _ in dfs]
+
+    if args.writeleaves:
+        # write out all leaves and exit
+        scatterdf=pd.DataFrame()
+        scatterdf['xcol'] = [args.label[i] if args.label else i for i in range(len(dfs))]
+        leavescount = {}
+        for ip in allleaves['ip'].values:
+            leavescount[ip] = len([ip for df in dfs if ip in df['ip'].values])
+        leavesidx={ip: i for i,ip in enumerate(sorted(leavescount, key=leavescount.get, reverse=True))}
+        for ip, idx in leavesidx.items():
+            scatterdf[ip] = [idx if ip in df['ip'].values else None for df in dfs]
+        out = args.out if args.out else sys.stdout
+        scatterdf.to_csv(out, index=False, header=True)
+        return
+
+    if args.heatmap:
+        # generate heatmap and exit
+        heatmap=np.zeros((len(allleaves), len(dfs)))
+
+        # calculate percentage of faults each ip covers in each file
+        percentmap = {}
+        for i, df in enumerate(origdfs):
+            fcount = df['fcount'].sum()
+            for ip in allleaves['ip'].values:
+                if ip not in percentmap:
+                    percentmap[ip] = {}
+                percentmap[ip][i] = df[df['ip'] == ip]['fcount'].sum() * 100 / fcount if fcount else 0
+        
+        # sort by total percentages
+        sumpercent = {ip: sum(percentmap[ip].values()) for ip in percentmap}
+        leavesidx={ip: i for i,ip in enumerate(sorted(sumpercent, key=sumpercent.get, reverse=True))}
+
+        # arrange in sorted order
+        for ip in percentmap:
+            for i, _ in enumerate(dfs):
+                heatmap[leavesidx[ip]][i] = percentmap[ip][i]
+        
+        # plot heatmap
+        heatmap = np.flip(heatmap, axis=1)  # flip x-values
+        plt.rcParams["figure.figsize"] = (3.5 if args.colorbar else 3.2, 9)
+        cmap = plt.cm.get_cmap('gist_heat_r')  # reversed hot
+        # heatmap = np.where(heatmap == 0, np.nan, heatmap)
+        # cmap.set_bad('c')
+        plt.imshow(heatmap, cmap=cmap, origin='lower', interpolation='nearest',
+            aspect='auto', extent=[0, heatmap.shape[1], 1, heatmap.shape[0]+1],
+            vmin=0, vmax=50)
+        if args.colorbar:
+            cbar = plt.colorbar()
+            cbar.ax.get_yaxis().labelpad = 10
+            cbar.set_label('Fault Density', rotation=270)
+        plt.xticks([5, 10, 15], ["25", "50", "75"])
+        plt.xlabel("Local Memory %")
+        plt.ylabel("Faulting Locations")
+        # plt.yscale('log')
+        if args.appname:    plt.title(args.appname)
+        plt.tight_layout()
+        plt.savefig(args.out if args.out else "heatmap.pdf")
+        return
+       
     # find traces unique to each file compared to all other files
     commonleaves = []
     commonleaves_faults = []

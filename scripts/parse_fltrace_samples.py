@@ -7,7 +7,7 @@ import pandas as pd
 
 TIMECOL = "tstamp"
 
-# access op that resulted in the fault 
+# access op that resulted in the fault
 class FaultOp(Enum):
     READ = "read"
     WRITE = "write"
@@ -42,7 +42,9 @@ def main():
     parser.add_argument('-st', '--start', action='store', type=int,  help='start tstamp to filter data')
     parser.add_argument('-et', '--end', action='store', type=int, help='end tstamp to filter data')
     parser.add_argument('-fo', '--faultop', action='store', type=FaultOp, choices=list(FaultOp), help='filter for a specific fault op')
+    parser.add_argument('-fr', '--frcutoff', action='store', type=int,  help='cut off the seconds where fault rate per second is less than this')
     parser.add_argument('-b', '--binary', action='store', help='path to the binary file to locate code location')
+    parser.add_argument('-ma', '--maxaddrs', action='store_true', help='just return max uniq addrs')
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
 
@@ -59,10 +61,19 @@ def main():
     df = pd.concat(dfs, ignore_index=True)
 
     # filter
-    if args.start:  
+    if args.start:
         df = df[df[TIMECOL] >= args.start]
-    if args.end:    
+    if args.end:
         df = df[df[TIMECOL] <= args.end]
+
+    if args.frcutoff:
+        df["timesec"] = df[TIMECOL].floordiv(1000000)
+        if "pages" in df:
+            frate = df.groupby("timesec")["pages"].sum().reset_index(name='rate')
+        else:
+            frate = df.groupby("timesec").size().reset_index(name='rate')
+        frate = frate[frate["rate"] >= args.frcutoff]
+        df = df[df["timesec"].isin(frate["timesec"])]
 
     # op col renamd to flags
     FLAGSCOL="flags"
@@ -73,6 +84,13 @@ def main():
     TRACECOL="ip"
     if "trace" in df:
         TRACECOL="trace"
+
+    # return max uniq addrs if specified
+    if args.maxaddrs:
+        df = df[df[FLAGSCOL] < 32]  # filter out zero-page faults
+        df = df.groupby("addr").size().reset_index(name='count')
+        print(len(df.index))
+        return
 
     if "pages" in df:
         df = df.groupby([TRACECOL, FLAGSCOL])["pages"].sum().reset_index(name='count')
@@ -87,12 +105,14 @@ def main():
     # NOTE: adding more columns after grouping traces is fine
 
     # evaluate op and filter
-    df["op"] = df.apply(lambda r: get_fault_op(r[FLAGSCOL]).value, axis=1)
+    if df.empty:    df["op"] = []
+    else: df["op"] = df.apply(lambda r: get_fault_op(r[FLAGSCOL]).value, axis=1)
     if args.faultop is not None:
         df = df[df["op"] == args.faultop.value]
 
     # evaluate fault type
-    df["type"] = df.apply(lambda r: get_fault_type(r[FLAGSCOL]).value, axis=1)
+    if df.empty:    df["type"] = []
+    else: df["type"] = df.apply(lambda r: get_fault_type(r[FLAGSCOL]).value, axis=1)
 
     if args.binary:
         assert os.path.exists(args.binary)
