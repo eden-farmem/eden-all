@@ -334,16 +334,16 @@ function run_tests() {
     apps=(
         # "../apps/apache"
         # "../apps/nginx"
-        "../apps/crono/crono/apps/apsp"
-        "../apps/crono/crono/apps/bc"
-        "../apps/crono/crono/apps/bfs"
-        "../apps/crono/crono/apps/community"
-        "../apps/crono/crono/apps/connected-components"
-        "../apps/crono/crono/apps/dfs"
-        "../apps/crono/crono/apps/pagerank"
-        "../apps/crono/crono/apps/sssp"
+        # "../apps/crono/crono/apps/apsp"
+        # "../apps/crono/crono/apps/bc"
+        # "../apps/crono/crono/apps/bfs"
+        # "../apps/crono/crono/apps/community"
+        # "../apps/crono/crono/apps/connected-components"
+        # "../apps/crono/crono/apps/dfs"
+        # "../apps/crono/crono/apps/pagerank"
+        # "../apps/crono/crono/apps/sssp"
         "../apps/crono/crono/apps/triangle-counting"
-        "../apps/crono/crono/apps/tsp"
+        # "../apps/crono/crono/apps/tsp"
     )
 
     #itterate through the tests    
