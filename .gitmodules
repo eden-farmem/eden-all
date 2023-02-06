@@ -7,9 +7,6 @@
 [submodule "parsec"]
 	path = apps/parsec
 	url = git@gitlab.eng.vmware.com:kona/parsec-kona.git
-[submodule "fastswap"]
-	path = fastswap
-	url = git@gitlab.eng.vmware.com:kona/fastswap.git
 [submodule "aifm"]
 	path = aifm
 	url = git@gitlab.eng.vmware.com:kona/aifm.git
