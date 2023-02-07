@@ -2,4 +2,7 @@
 
 sudo apt-get install sysbench libpq-dev
 sudo apt-get install postgresql postgresql-contrib
-systemctl disable postgresql.service
+sudo systemctl disable postgresql.service
+
+# permissions for postgres user
+chmod 777 .

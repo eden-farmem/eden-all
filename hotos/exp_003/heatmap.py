@@ -87,8 +87,8 @@ def main():
     plt.xlabel("Local Memory %")
 
     # save
-    plt.show()
-    # plt.savefig("heatmap.pdf")
+    # plt.show()
+    plt.savefig("heatmap.pdf")
 
 if __name__ == "__main__":
     main()
