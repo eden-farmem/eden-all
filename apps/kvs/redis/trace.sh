@@ -158,7 +158,7 @@ if [[ $GDB ]]; then  prefix="gdb --args";   fi
 
 # run app
 pkill redis-server
-${prefix} env ${env} redis-server --maxclients 100000 --port $SERVER_PORT   \
+${prefix} env ${env} ${SCRIPTDIR}/redis/src/redis-server --maxclients 100000 --port $SERVER_PORT   \
     --protected-mode no 2>&1 | tee server.out &
 sleep 5
 
@@ -184,7 +184,7 @@ popd
 if [[ $MERGE_TRACES ]]; then
 
     # locate the binary
-    binfile=/usr/bin/redis-server
+    binfile=${SCRIPTDIR}/redis/src/redis-server
     if [ ! -f ${binfile} ]; then 
         echo "binary not found at ${binpath}"
         exit 1
@@ -217,9 +217,8 @@ fi
 if [[ $ANALYZE_TRACES ]]; then
     for cutoff in 100 95; do
         python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
-           -R -n ${APP} -c ${cutoff} -z > ${expdir}/flocations_nozero_${cutoff}.txt
-        python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
-            -R -n ${APP} -c ${cutoff} > ${expdir}/flocations_${cutoff}.txt
+           -c ${cutoff} -z -g -G ${expdir}/faulttree_${cutoff}
+        echo "fault tree saved to data/${expdir}/faulttree_${cutoff}.pdf"
     done
 fi
 

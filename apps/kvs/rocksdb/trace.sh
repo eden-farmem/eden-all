@@ -213,9 +213,8 @@ fi
 if [[ $ANALYZE_TRACES ]]; then
     for cutoff in 100 95; do
         python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
-           -R -n ${APP} -c ${cutoff} -z > ${expdir}/flocations_nozero_${cutoff}.txt
-        python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
-            -R -n ${APP} -c ${cutoff} > ${expdir}/flocations_${cutoff}.txt
+           -c ${cutoff} -z -g -G ${expdir}/faulttree_${cutoff}
+        echo "fault tree saved to data/${expdir}/faulttree_${cutoff}.pdf"
     done
 fi
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "running machine config"
+echo "setting up machine config after reboot"
 
 # Disable turbo: This is temporary and only works with intel pstate driver
 # https://askubuntu.com/questions/619875/disabling-intel-turbo-boost-in-ubuntu
@@ -10,6 +10,12 @@ echo "1" | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo
 # faults to determine NUMA node access patterns which interfere with 
 # the VDSO-based annotations
 echo 0 | sudo tee /proc/sys/kernel/numa_balancing
+
+# Disable sudo requirement for userfaultfd
+sudo sysctl -w vm.unprivileged_userfaultfd=1
+
+# Disable ASLR
+echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
 # disable freq scaling and set CPU to a static frequency
 # Note that tools with daemons such as cpufrequtils may affect this

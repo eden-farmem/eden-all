@@ -116,23 +116,28 @@ def main():
 
     if args.binary:
         assert os.path.exists(args.binary)
-        def addr2line(ips):
-            global processed
-            iplist = ips.split("|")
-            code = ""
-            if iplist:
-                code = subprocess   \
-                    .check_output(['addr2line', '-e', args.binary] + iplist) \
-                    .decode('utf-8') \
-                    .split("\n")
-                code = "<//>".join(code)
-            processed += 1
-            if processed % 100 == 0:
-                sys.stderr.write("processed {} unique traces\n".format(processed))
-            return code
 
-        sys.stderr.write("getting backtraces for {} ips\n".format(len(df)))
-        df['code'] = df['ips'].apply(addr2line)
+        # get all unique ips
+        iplists = df['ips'].str.split("|")
+        ips = set(sum(iplists, []))
+        ips.discard("")
+
+        # get code locations
+        sys.stderr.write("getting code locations for {} ips\n".format(len(ips)))
+        codemap = {}
+        code = subprocess   \
+            .check_output(['addr2line', '-e', args.binary] + list(ips)) \
+            .decode('utf-8') \
+            .split("\n")
+        codemap = dict(zip(ips, code))
+        # print(codemap)
+
+        # lookup code locations
+        def codelookup(ips):
+            iplist = ips.split("|")
+            code = "<//>".join([codemap[ip] for ip in iplist if ip in codemap])
+            return code
+        df['code'] = df['ips'].apply(codelookup)
     else:
         df['code'] = ""
 
