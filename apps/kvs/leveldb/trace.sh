@@ -26,6 +26,7 @@ EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data/"
 APPDIR="${SCRIPTDIR}/leveldb/"
 TOOLDIR="${ROOTDIR}/fault-analysis/"
+FLAMEGRAPHDIR=~/FlameGraph/   # Local path to https://github.com/brendangregg/FlameGraph
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 MAX_REMOTE_MEMORY_MB=16000
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
@@ -178,8 +179,8 @@ ${prefix} env ${env} ${APPDIR}/build/db_bench --db=log --threads=5      \
 popd
 
 # post-processing
+tracesfolded=${expdir}/traces/000_000.txt
 if [[ $MERGE_TRACES ]]; then
-
     # locate the binary
     binfile=${APPDIR}/build/db_bench
     if [ ! -f ${binfile} ]; then 
@@ -193,9 +194,16 @@ if [[ $MERGE_TRACES ]]; then
         echo "no fault-samples-*.out found for ${APP} at ${expdir}"
         exit 1
     fi
+    
+    #locate procmaps file
+    procmapflag=
+    procmaps=$(ls ${expdir}/procmaps-* 2>/dev/null | head -1)
+    if [ -f ${procmaps} ]; then 
+        procmapflag="-pm ${procmaps}"
+    fi
 
     mkdir -p ${expdir}/traces
-    if [ -f ${expdir}/traces/000_000.txt ]; then
+    if [ -f ${tracesfolded} ]; then
         echo "traces already exist for ${APP} at ${expdir}"
         continue
     fi
@@ -203,20 +211,19 @@ if [[ $MERGE_TRACES ]]; then
     # merge traces
     allfaultsin=$(ls ${expdir}/fault-samples-*.out)
     python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_samples.py -i ${allfaultsin}    \
-        -b ${binfile} > ${expdir}/traces/000_000.txt
-
-    # clean output
-    if [ -f ${expdir}/traces/000_000.txt ]; then
-        bash ${TOOLDIR}/analysis/clean_trace.sh ${expdir}/traces/000_000.txt
-    fi
+        -b ${binfile} ${procmapflag} > ${tracesfolded}
 fi
 
 if [[ $ANALYZE_TRACES ]]; then
-    for cutoff in 100 95; do
-        python3 ${TOOLDIR}/analysis/trace_codebase.py -d ${expdir}/traces   \
-           -c ${cutoff} -z -g -G ${expdir}/faulttree_${cutoff}
-        echo "fault tree saved to data/${expdir}/faulttree_${cutoff}.pdf"
-    done
+    # Make flame graph
+    APPNAME="leveldb"
+    if [ ! -d ${FLAMEGRAPHDIR} ]; then 
+        echo "Clone and update FLAMEGRAPHDIR to point to https://github.com/brendangregg/FlameGraph"
+    fi
+    python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR}/${APPNAME} -i ${tracesfolded} -o ${expdir}/flamegraph.dat
+    python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR}/${APPNAME} -i ${tracesfolded} -z -o ${expdir}/flamegraph-zero.dat
+    ${FLAMEGRAPHDIR}/flamegraph.pl ${expdir}/flamegraph.dat --title "${APPNAME}" > ${expdir}/flamegraph-${APPNAME}.svg
+    ${FLAMEGRAPHDIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNAME} (Allocation Faults)" > ${expdir}/flamegraph-${APPNAME}-zero.svg
 fi
 
 # run succeeded

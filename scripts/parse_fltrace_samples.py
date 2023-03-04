@@ -4,8 +4,55 @@ import os
 import sys
 import subprocess
 import pandas as pd
+import re
 
 TIMECOL = "tstamp"
+
+# parse /proc/<pid>/maps
+MAPS_LINE_RE = re.compile(r"""
+    (?P<addr_start>[0-9a-f]+)-(?P<addr_end>[0-9a-f]+)\s+  # Address
+    (?P<perms>\S+)\s+                                     # Permissions
+    (?P<offset>[0-9a-f]+)\s+                              # Map offset
+    (?P<dev>\S+)\s+                                       # Device node
+    (?P<inode>\d+)\s+                                     # Inode
+    (?P<pathname>.*)\s+                                   # Pathname
+""", re.VERBOSE)
+
+# proc map record
+class Record:
+    addr_start: int
+    addr_end: int
+    perms: str
+    offset: int
+    dev: str
+    inode: int
+    pathname: str
+
+    def parse(filename):
+        records = []
+        with open(filename) as fd:
+            for line in fd:
+                m = MAPS_LINE_RE.match(line)
+                if not m:
+                    print("Skipping: %s" % line)
+                    continue
+                addr_start, addr_end, perms, offset, dev, inode, pathname = m.groups()
+                r = Record()
+                r.addr_start = int(addr_start, 16)
+                r.addr_end = int(addr_end, 16)
+                r.offset = int(offset, 16)
+                r.perms = perms
+                r.dev = dev
+                r.inode = inode
+                r.pathname = pathname
+                records.append(r)
+        return records
+
+    def find_record(records, addr):
+        for r in records:
+            if addr >= r.addr_start and addr < r.addr_end:
+                return r
+        return None
 
 # access op that resulted in the fault
 class FaultOp(Enum):
@@ -36,6 +83,7 @@ def get_fault_type(flags):
     raise Exception("unknown type: {}".format(type))
 
 
+
 def main():
     parser = argparse.ArgumentParser("Process input and write csv-formatted data to stdout/output file")
     parser.add_argument('-i', '--input', action='store', nargs='+', help="path to the input/data file(s)", required=True)
@@ -44,6 +92,7 @@ def main():
     parser.add_argument('-fo', '--faultop', action='store', type=FaultOp, choices=list(FaultOp), help='filter for a specific fault op')
     parser.add_argument('-fr', '--frcutoff', action='store', type=int,  help='cut off the seconds where fault rate per second is less than this')
     parser.add_argument('-b', '--binary', action='store', help='path to the binary file to locate code location')
+    parser.add_argument('-pm', '--procmap', action='store', help='path to the proc maps file to locate unresolved libraries')
     parser.add_argument('-ma', '--maxaddrs', action='store_true', help='just return max uniq addrs')
     parser.add_argument('-o', '--out', action='store', help="path to the output file")
     args = parser.parse_args()
@@ -114,32 +163,51 @@ def main():
     if df.empty:    df["type"] = []
     else: df["type"] = df.apply(lambda r: get_fault_type(r[FLAGSCOL]).value, axis=1)
 
+    # get all unique ips
+    iplists = df['ips'].str.split("|")
+    ips = set(sum(iplists, []))
+    ips.discard("")
+
+    # if binary is available, look up code locations for the ips
+    codemap = {}
     if args.binary:
         assert os.path.exists(args.binary)
-
-        # get all unique ips
-        iplists = df['ips'].str.split("|")
-        ips = set(sum(iplists, []))
-        ips.discard("")
-
-        # get code locations
         sys.stderr.write("getting code locations for {} ips\n".format(len(ips)))
-        codemap = {}
         code = subprocess   \
-            .check_output(['addr2line', '-e', args.binary] + list(ips)) \
+            .check_output(['addr2line', '-p', '-i', '-e', args.binary]+list(ips)) \
             .decode('utf-8') \
+            .replace("\n (inlined by) ", "<<<")   \
             .split("\n")
+        code.remove("")
+        assert(len(code) == len(ips))
         codemap = dict(zip(ips, code))
         # print(codemap)
+    
+    # make a new code column
+    def codelookup(ips):
+        iplist = ips.split("|")
+        code = "<//>".join([codemap[ip] if ip in codemap else "??:0" for ip in iplist])
+        return code
+    df['code'] = df['ips'].apply(codelookup)
 
-        # lookup code locations
-        def codelookup(ips):
-            iplist = ips.split("|")
-            code = "<//>".join([codemap[ip] for ip in iplist if ip in codemap])
-            return code
-        df['code'] = df['ips'].apply(codelookup)
-    else:
-        df['code'] = ""
+    # if procmap is available, look up unresolved libraries
+    libmap = {}
+    if args.procmap:
+        assert os.path.exists(args.procmap)
+        records = Record.parse(args.procmap)
+        sys.stderr.write("looking up libraries for {} ips\n".format(len(ips)))
+        for ip in ips:
+            lib = Record.find_record(records, int(ip, 16))
+            if lib:
+                libmap[ip] = lib.pathname
+        # print(libmap)
+
+    # make a new lib column
+    def liblookup(ips):
+        iplist = ips.split("|")
+        lib = "<//>".join([libmap[ip] if ip in libmap else "??" for ip in iplist])
+        return lib
+    df['lib'] = df['ips'].apply(liblookup)
 
     # write out
     out = args.out if args.out else sys.stdout

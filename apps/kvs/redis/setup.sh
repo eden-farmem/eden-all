@@ -5,4 +5,4 @@ sudo sysctl vm.overcommit_memory=1
 git clone https://github.com/redis/redis
 cd redis
 git checkout 6.0.16
-make
+make MALLOC=libc

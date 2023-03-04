@@ -20,10 +20,10 @@ check_for_stop() {
 OPS=200000
 MAXRSS=112508928
 # for memp in `seq 100 -5 5`; do
-for memp in 5; do
+for memp in 10; do
     check_for_stop
     lmem=$(echo $memp $MAXRSS | awk '{ printf "%d", $1 * $2 / 100 }')
-    echo "Profiling rocksdb - params: $MAXRSS, $memp, $lmem"
+    echo "Profiling memcached - params: $MAXRSS, $memp, $lmem"
     bash trace.sh -ops=${OPS} -lm=$lmem -lmp=${memp} -d="fulltrace" --merge --analyze
 done
 

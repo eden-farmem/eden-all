@@ -1,0 +1,273 @@
+#
+# Build flame graph format from stack traces
+#
+
+import argparse
+import csv
+import os
+import re
+
+### Definitions
+class CodeFile:
+    """Source code file"""
+    def __init__(self, dirpath, name, local):
+        self.dirpath = dirpath
+        self.name = name
+        self.local = local
+
+    def __str__(self):
+        dirpath = self.dirpath + "/" if self.dirpath else ""
+        return "{}{}".format(dirpath, self.name)
+
+    def __eq__(self, other):
+        return self.dirpath == other.dirpath and self.name == other.name
+
+
+class CodePointer:
+    """Pointer to a code location"""
+
+    def __init__(self, ip):
+        self.ip = ip
+        self.tcount = 0     # unique traces containing this ip
+        self.fcount = 0     # number of faults at this ip
+        self.ops = set()    # ops seen at this code pointer
+
+        # fill these once
+        self.file = None
+        self.line = None
+        self.pd = None      # path discriminator
+        self.lib = None
+        self.inlineparents = []  # parent code pointers if inlined
+        self.originalcp = None    # original code pointer if inlined
+
+    def add_code_location(self, text, srcdir=None):
+        """Fill the code location details parsed from a string"""
+        # expected format: <filepath>:<line> (discriminator <pd>)
+        local = False
+        pattern = r"([^:]+):([0-9]+)\s*(\(discriminator ([0-9])\))*"
+        match = re.fullmatch(pattern, text)
+        assert match and len(match.groups()) == 4
+        filepath = match.groups()[0]
+        if srcdir and filepath.startswith(srcdir):
+            filepath = filepath[len(srcdir):].strip("/")
+            local = True
+        filename = filepath.split("/")[-1]
+        dirpath = filepath[:-len(filename)].rstrip("/")
+        file = CodeFile(dirpath, filename, local)
+        self.file = file
+        self.line = int(match.groups()[1])
+        self.pd = match.groups()[3] if match.groups()[3] else None
+
+    def __str__(self):
+        # customized for the flame graph format
+        if self.file is None:
+            if self.lib is None:
+                s = "Unknown:" + self.ip
+            else:
+                s = os.path.basename(self.lib) + ":" + self.ip
+        else:
+            s = "{}:{}".format(str(self.file), self.line)
+            # if self.pd:
+            #     s += " ({})".format(self.pd)
+        # suffix for coloring
+        originalcp = self.originalcp if self.originalcp else self
+        if len(originalcp.ops) == 1:
+            op = list(originalcp.ops)[0]
+            if op == "read":            s += "[r]"
+            elif op == "wrprotect":     s += "[p]"
+            elif op == "write":         s += "[w]"
+        elif "read" not in originalcp.ops:    s += "[w]"
+        return s
+
+    def __eq__(self, other):
+        return self.ip == other.ip
+
+
+class CodeLink:
+    """(Directed) Link between two code pointers"""
+
+    def __init__(self, left, right):
+        self.lip = left
+        self.rip = right
+        self.tcount = 0     # unique traces containing this link
+        self.fcount = 0     # number of faults with this link
+
+    def __str__(self):
+        return "{} -> {}".format(self.lip, self.rip)
+
+    def __eq__(self, other):
+        return self.lip == other.lip and self.rip == other.rip
+
+
+class Fault:
+    """Fault info for a single fault"""
+    trace = None            # stack trace, list of ips
+    count = None
+    op = None
+    type = None
+
+    def __eq__(self, other):
+        return "|".join(self.trace) == "|".join(other.trace)
+
+
+class FaultTraces:
+    """Fault traces for a single run"""
+    runid = None
+    faults = None           # list of faults
+    codepointers = None     # map from ip to code pointers
+    codelinks = None        # map from code pointer to code pointers
+    files = None            # set of all known source files
+    sigips = None           # ips that fall in the signal handler
+    libs = None             # set of all known libraries
+
+    def __init__(self):
+        self.faults = []
+        self.codepointers = {}
+        self.codelinks = {}
+        self.files = set()
+        self.libs = set()
+
+
+def parse_fault_from_csv_row(ftraces, row, srcdir=None):
+    """Parse fault info from a row the csv trace file"""
+    fault = Fault()
+    fault.trace = row["ips"].split("|")
+    fault.count = int(row["count"])
+    fault.op = row["op"]
+    fault.type = row["type"]
+    ftraces.faults.append(fault)
+
+    # parse libs if available
+    libs = [None] * len(fault.trace)
+    if "lib" in row:
+        libs = row["lib"].split("<//>")
+        assert(len(libs) == len(fault.trace))
+        ftraces.libs.update(libs)
+
+    # add code locations
+    previp = None
+    codes = row["code"].split("<//>")
+    assert len(codes) == len(fault.trace)
+    for ip, code, lib in zip(fault.trace, codes, libs):
+        if not ip:
+            continue
+
+        # add code pointer
+        if ip not in ftraces.codepointers:
+            ftraces.codepointers[ip] = CodePointer(ip)
+        codepointer = ftraces.codepointers[ip]
+
+        # parse and save location information
+        if codepointer.file is None:
+            if code and "??" not in code:
+                # main code location
+                mcode = code.split("<<<")[0]
+                codepointer.add_code_location(mcode, srcdir)
+                ftraces.files.add(str(codepointer.file))
+                # inlined locations
+                inlinedcodes = code.split("<<<")[1:]
+                for icode in inlinedcodes:
+                    if icode and "??" not in icode:
+                        # do not add these to global maps
+                        inlinedpointer = CodePointer(ip)
+                        inlinedpointer.add_code_location(icode, srcdir)
+                        inlinedpointer.originalcp = codepointer
+                        inlinedpointer.lib = lib
+                        ftraces.files.add(str(inlinedpointer.file))
+                        codepointer.inlineparents.append(inlinedpointer)
+            codepointer.lib = lib
+
+        codepointer.tcount += 1
+        codepointer.fcount += fault.count
+        codepointer.ops.add(fault.op)
+        ftraces.codepointers[ip] = codepointer
+
+        # save code link
+        if previp:
+            if (previp, ip) not in ftraces.codelinks:
+                ftraces.codelinks[(previp, ip)] = CodeLink(previp, ip)
+            codelink = ftraces.codelinks[(previp, ip)]
+            codelink.tcount += 1
+            codelink.fcount += fault.count
+        previp = ip
+
+    # delete ips that fall in the signal handler and check
+    # that they are the same in all traces
+    IPS_IN_SIGNAL_HANDLER = 2
+    sigips = []
+    for _ in range(IPS_IN_SIGNAL_HANDLER):
+        sigips.append(fault.trace.pop(0))
+    assert ftraces.sigips is None or sigips == ftraces.sigips
+    ftraces.sigips = sigips
+
+    # reverse the trace (we get it in bottom-up order)
+    if "" in fault.trace:
+        fault.trace.remove("")
+    fault.trace.reverse()
+
+### Main
+
+def main():
+    # parse args
+    parser = argparse.ArgumentParser("Build fault graph from trace files")
+    parser.add_argument('-i', '--input', action='store', nargs='+', help="path to the input trace file(s)", required=True)
+    parser.add_argument('-s', '--srcdir', action='store', help='base path to the app source code', default="")
+    parser.add_argument('-c', '--cutoff', action='store', type=int, help='pruning cutoff as percentage of total fault count')
+    parser.add_argument('-z', '--zero', action='store_true', help='consider only zero faults', default=False)
+    parser.add_argument('-o', '--output', action='store', help='path to the output flame graph data', required=True)
+    args = parser.parse_args()
+
+    # read in
+    traces = FaultTraces()
+    for file in args.input:
+        with open(file) as csvfile:
+            csvreader = csv.DictReader(csvfile)
+            for row in csvreader:
+                parse_fault_from_csv_row(traces, row, args.srcdir)
+
+    # print some info
+    print("Unique Traces: {}".format(len(traces.faults)))
+    print("Unique code locations: {}".format(len(traces.codepointers)))
+    knowncps = [cp for cp in traces.codepointers.values() if cp.file is not None]
+    print("Known code locations: {}".format(len(knowncps)))
+    print("Total source files: {}".format(len(traces.files)))
+
+    # filter for zero faults
+    if args.zero:
+        traces.faults = [f for f in traces.faults if f.type == "zero"]
+    else:
+        traces.faults = [f for f in traces.faults if f.type != "zero"]
+
+    # prune traces (simplest way to prune: remove all traces below 
+    # a certain fault count)
+    if args.cutoff:
+        traces.faults.sort(key=lambda f: f.count, reverse=True)
+        fsum = sum([f.count for f in traces.faults])
+        cutoff = fsum * args.cutoff / 100
+        fsum = 0
+        cutoffidx = len(traces.faults)
+        for i, f in enumerate(traces.faults):
+            fsum += f.count
+            if fsum >= cutoff:
+                cutoffidx = i
+                break
+        traces.faults = traces.faults[:cutoffidx]
+        print("Unique {}% Traces: {}".format(args.cutoff, len(traces.faults)))
+
+    # return in flamegraph format
+    with open(args.output, "w") as fp:
+        for f in traces.faults:
+            locations = []
+            for ip in f.trace:
+                cp = traces.codepointers[ip]
+                locations += [str(c) for c in reversed(cp.inlineparents)]
+                locations.append(str(cp))
+            tracestr = ";".join(locations)
+            fp.write("{} {}\n".format(tracestr, f.count))
+        print("Wrote {} traces to {}".format(len(traces.faults), args.output))
+
+    print(set([f.trace[0] for f in traces.faults]))
+
+
+if __name__ == "__main__":
+    main()
