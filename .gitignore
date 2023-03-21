@@ -7,6 +7,7 @@ sim/data/**
 !sim/data/**/*png
 tests/*/*/lat-*
 data
+data2
 *.out
 out
 __running__

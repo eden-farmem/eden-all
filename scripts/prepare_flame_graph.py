@@ -7,6 +7,23 @@ import csv
 import os
 import re
 
+## Exclude these file sections from the flame graph
+# E.g., to avoid recursive stacks. Hard-coding for now.
+EXCLUDED_SECTIONS = {
+    "qsort_custom.c": [(62, 71)],       #  sort recursive
+}
+
+## Exclude traces with these file sections from the flame graph
+EXCLUDED_TRACES = {
+    "assoc.c": [(211, 213)],            # memcached hash expand
+    "items.c": [
+        (959, 959),                     # memcached refcount wp
+        (481, 481),                     # memcached set path lru                
+    ],
+    "main.c": [(334, 334)],             # synthetic zipf                
+    "zipf.c": [(0, 5000)],              # synthetic zipf                
+}
+
 ### Definitions
 class CodeFile:
     """Source code file"""
@@ -58,8 +75,8 @@ class CodePointer:
         self.line = int(match.groups()[1])
         self.pd = match.groups()[3] if match.groups()[3] else None
 
-    def __str__(self):
-        # customized for the flame graph format
+    def flamegraph_name(self, leaf=False):
+        """ customized name for the flame graph viz. """
         if self.file is None:
             if self.lib is None:
                 s = "Unknown:" + self.ip
@@ -69,15 +86,39 @@ class CodePointer:
             s = "{}:{}".format(str(self.file), self.line)
             # if self.pd:
             #     s += " ({})".format(self.pd)
-        # suffix for coloring
-        originalcp = self.originalcp if self.originalcp else self
-        if len(originalcp.ops) == 1:
-            op = list(originalcp.ops)[0]
-            if op == "read":            s += "[r]"
-            elif op == "wrprotect":     s += "[p]"
-            elif op == "write":         s += "[w]"
-        elif "read" not in originalcp.ops:    s += "[w]"
+
+        if leaf:
+            # add suffix for coloring
+            originalcp = self.originalcp if self.originalcp else self
+            if len(originalcp.ops) == 1:
+                op = list(originalcp.ops)[0]
+                if op == "read":            s += "[r]"
+                elif op == "wrprotect":     s += "[p]"
+                elif op == "write":         s += "[w]"
+            elif "read" not in originalcp.ops:    s += "[w]"
         return s
+
+    def ignore(self):
+        """Ignore this code pointer when writing to the flame graph"""
+        ignore = False
+        if self.file and self.line: 
+            if self.file.name in EXCLUDED_SECTIONS:
+                for (start, end) in EXCLUDED_SECTIONS[self.file.name]:
+                    if start <= self.line <= end:
+                        ignore = True
+                        break
+        return ignore
+
+    def ignore_trace(self):
+        """Ignore traces with this code pointer when writing to the flame graph"""
+        ignore = False
+        if self.file and self.line: 
+            if self.file.name in EXCLUDED_TRACES:
+                for (start, end) in EXCLUDED_TRACES[self.file.name]:
+                    if start <= self.line <= end:
+                        ignore = True
+                        break
+        return ignore
 
     def __eq__(self, other):
         return self.ip == other.ip
@@ -258,12 +299,19 @@ def main():
     with open(args.output, "w") as fp:
         for f in traces.faults:
             locations = []
-            for ip in f.trace:
+            ignore = False
+            for i, ip in enumerate(f.trace):
                 cp = traces.codepointers[ip]
-                locations += [str(c) for c in reversed(cp.inlineparents)]
-                locations.append(str(cp))
+                if cp.ignore_trace():
+                    ignore = True
+                    break
+                if cp.ignore():
+                    continue
+                locations += [c.flamegraph_name() for c in reversed(cp.inlineparents)]
+                locations.append(cp.flamegraph_name(i == len(f.trace)-1))
             tracestr = ";".join(locations)
-            fp.write("{} {}\n".format(tracestr, f.count))
+            if not ignore:
+                fp.write("{} {}\n".format(tracestr, f.count))
         print("Wrote {} traces to {}".format(len(traces.faults), args.output))
 
     print(set([f.trace[0] for f in traces.faults]))

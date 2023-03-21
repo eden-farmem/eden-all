@@ -194,7 +194,7 @@ if [[ $MERGE_TRACES ]]; then
         echo "no fault-samples-*.out found for ${APP} at ${expdir}"
         exit 1
     fi
-    
+
     #locate procmaps file
     procmapflag=
     procmaps=$(ls ${expdir}/procmaps-* 2>/dev/null | head -1)
@@ -222,8 +222,8 @@ if [[ $ANALYZE_TRACES ]]; then
     fi
     python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR}/${APPNAME} -i ${tracesfolded} -o ${expdir}/flamegraph.dat
     python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR}/${APPNAME} -i ${tracesfolded} -z -o ${expdir}/flamegraph-zero.dat
-    ${FLAMEGRAPHDIR}/flamegraph.pl ${expdir}/flamegraph.dat --title "${APPNAME}" > ${expdir}/flamegraph-${APPNAME}.svg
-    ${FLAMEGRAPHDIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNAME} (Allocation Faults)" > ${expdir}/flamegraph-${APPNAME}-zero.svg
+    ${FLAMEGRAPHDIR}/flamegraph.pl ${expdir}/flamegraph.dat --title "${APPNAME}" --color=fault > ${expdir}/flamegraph-${APPNAME}.svg
+    ${FLAMEGRAPHDIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNAME} (Allocation Faults)" --color=fault > ${expdir}/flamegraph-${APPNAME}-zero.svg
 fi
 
 # run succeeded

@@ -160,7 +160,7 @@ if [[ $GDB ]]; then  prefix="gdb --args";   fi
 # run app
 pkill memcached
 ${prefix} env ${env} ${SCRIPTDIR}/memcached/memcached -p $SERVER_PORT -u nobody -t 10  \
-    -m 4096000000 2>&1 | tee server.out &
+    -m 4096000000 -o hashpower=28 2>&1 | tee server.out &
 # memcached -p 7000 -u nobody
 sleep 5
 

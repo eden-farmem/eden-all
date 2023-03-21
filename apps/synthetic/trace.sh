@@ -24,15 +24,20 @@ ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 EDENDIR="${ROOTDIR}/eden"
 DATADIR="${SCRIPTDIR}/data2/"
 TOOLDIR="${ROOTDIR}/fault-analysis/"
+SNAPPY_DIR="${SCRIPTDIR}/snappy-c"
 BINFILE="${SCRIPTDIR}/main.out"
 FLAMEGRAPHDIR=~/FlameGraph/   # Local path to https://github.com/brendangregg/FlameGraph
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')
 MAX_REMOTE_MEMORY_MB=16000
 LMEM=$((MAX_REMOTE_MEMORY_MB*1000000))
 NHANDLERS=1
-NKEYS=1000000
-MERGE_RDAHEAD=0
+CFGFILE="shenango.config"
+
+NCORES=1
 NTHREADS=1
+ZIPFS="0.1"
+NKEYS=1000
+NBLOBS=1000
 
 # save settings
 SETTINGS=
@@ -80,9 +85,25 @@ case $i in
     ANALYZE_TRACES=1
     ;;
 
-    # SORT-SPECIFIC SETTINGS
+    # APP-SPECIFIC SETTINGS
+    -c=*|--cores=*)
+    NCORES=${i#*=}
+    ;;
+
+    -t=*|--threads=*)
+    NTHREADS=${i#*=}
+    ;;
+
+    -zs=*|--zipfs=*)
+    ZIPFS=${i#*=}
+    ;;
+
     -nk=*|--nkeys=*)
     NKEYS=${i#*=}
+    ;;
+
+    -nb=*|--nblobs=*)
+    NBLOBS=${i#*=}
     ;;
 
     # OTHER
@@ -129,11 +150,25 @@ if [[ $FORCE ]]; then
     popd
 fi
 
-# compile
-LIBS="${LIBS} -lpthread -lm"
-CFLAGS="$CFLAGS -DMERGE_RDAHEAD=$MERGE_RDAHEAD"
+# rebuild snappy
 CFLAGS="$CFLAGS -g -no-pie -fno-pie"
-gcc main.c qsort_custom.c -D_GNU_SOURCE -Wall -O ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+if [[ $FORCE ]]; then 
+    pushd ${SNAPPY_DIR} 
+    make clean
+    make PROVIDED_CFLAGS="""$CFLAGS"""
+    popd
+fi
+
+# link snappy
+INC="${INC} -I${SNAPPY_DIR}/"
+LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
+
+# compile
+CFLAGS="$CFLAGS -DKEYS_PER_REQ=16"
+CFLAGS="$CFLAGS -DCOMPRESS=5"
+LIBS="${LIBS} -lpthread -lm"
+gcc -O0 -g -ggdb main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
+    ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
 
 # initialize run
 expdir=$EXPNAME
@@ -162,8 +197,8 @@ fi
 
 # run app with tool
 prefix="time -p"
-args="${NKEYS} ${NTHREADS}"
-if [[ $GDB ]]; then  prefix="gdb --args";   fi
+args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
+echo "args: ${args}"
 ${prefix} env ${env} ${BINFILE} ${args} 2>&1 | tee app.out
 
 # back to app dir
@@ -207,7 +242,7 @@ fi
 
 if [[ $ANALYZE_TRACES ]]; then
     # Make flame graph
-    APPNAME="psort"
+    APPNAME="synthetic"
     if [ ! -d ${FLAMEGRAPHDIR} ]; then 
         echo "Clone and update FLAMEGRAPHDIR to point to https://github.com/brendangregg/FlameGraph"
     fi

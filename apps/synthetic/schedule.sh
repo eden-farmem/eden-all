@@ -13,19 +13,18 @@ check_for_stop() {
 }
 
 # Run a set of experiments
-# OPS=20000000
-# MAXRSS=630000000
-OPS=2000000
-MAXRSS=503926784
-# OPS=200000
-# MAXRSS=112508928
+# NKEYS=10000000      # 2.5 GB
+# NBLOBS=400000       # 3 GB
+# MAXRSS=6922272768
+NKEYS=1000000
+NBLOBS=400000   
+MAXRSS=3902357504
 # for memp in `seq 100 -5 5`; do
-for memp in 50; do
+for memp in 10; do
     check_for_stop
     lmem=$(echo $memp $MAXRSS | awk '{ printf "%d", $1 * $2 / 100 }')
-    echo "Profiling memcached - params: $MAXRSS, $memp, $lmem"
-    bash trace.sh -ops=${OPS} -lm=$lmem -lmp=${memp} -d="fulltrace" --merge --analyze
+    echo "Profiling synthetic - params: $MAXRSS, $memp, $lmem"
+    bash trace.sh -nk=${NKEYS} -nb=${NBLOBS} -lm=$lmem -lmp=${memp} -d="fulltrace" --merge --analyze
 done
-
 
 rm -f ${RUNFILE}
