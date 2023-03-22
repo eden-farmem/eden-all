@@ -61,7 +61,7 @@ class CodePointer:
         """Fill the code location details parsed from a string"""
         # expected format: <filepath>:<line> (discriminator <pd>)
         local = False
-        pattern = r"([^:]+):([0-9]+)\s*(\(discriminator ([0-9])\))*"
+        pattern = r"([^:]*):([0-9?]+)\s*(\(discriminator ([0-9]+)\))*"
         match = re.fullmatch(pattern, text)
         assert match and len(match.groups()) == 4
         filepath = match.groups()[0]
@@ -71,24 +71,21 @@ class CodePointer:
         filename = filepath.split("/")[-1]
         dirpath = filepath[:-len(filename)].rstrip("/")
         file = CodeFile(dirpath, filename, local)
+        line = match.groups()[1]
+        if "?" in line:     line = 0
         self.file = file
-        self.line = int(match.groups()[1])
+        self.line = int(line)
         self.pd = match.groups()[3] if match.groups()[3] else None
 
     def flamegraph_name(self, leaf=False):
         """ customized name for the flame graph viz. """
-        if self.file is None:
-            if self.lib is None:
-                s = "Unknown:" + self.ip
-            else:
-                s = os.path.basename(self.lib) + ":" + self.ip
-        else:
-            s = "{}:{}".format(str(self.file), self.line)
-            # if self.pd:
-            #     s += " ({})".format(self.pd)
-
+        prefix = os.path.basename(self.lib) if self.lib else "Unknown"
+        filename = os.path.basename(self.file.name) if self.file else None
+        suffix = "{}:{}".format(filename, self.line) if filename else self.ip
+        s = "{}|{}".format(prefix, suffix)
+        if self.pd:   s += " ({})".format(self.pd)
+        # add suffix for coloring
         if leaf:
-            # add suffix for coloring
             originalcp = self.originalcp if self.originalcp else self
             if len(originalcp.ops) == 1:
                 op = list(originalcp.ops)[0]

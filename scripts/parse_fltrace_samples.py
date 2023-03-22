@@ -15,18 +15,19 @@ MAPS_LINE_RE = re.compile(r"""
     (?P<offset>[0-9a-f]+)\s+                              # Map offset
     (?P<dev>\S+)\s+                                       # Device node
     (?P<inode>\d+)\s+                                     # Inode
-    (?P<pathname>.*)\s+                                   # Pathname
+    (?P<path>.*)\s+                                   # path
 """, re.VERBOSE)
 
-# proc map record
+
 class Record:
+    """A line in /proc/<pid>/maps"""
     addr_start: int
     addr_end: int
     perms: str
     offset: int
     dev: str
     inode: int
-    pathname: str
+    path: str
 
     def parse(filename):
         records = []
@@ -36,15 +37,13 @@ class Record:
                 if not m:
                     print("Skipping: %s" % line)
                     continue
-                addr_start, addr_end, perms, offset, dev, inode, pathname = m.groups()
+                addr_start, addr_end, perms, offset, _, _, path = m.groups()
                 r = Record()
                 r.addr_start = int(addr_start, 16)
                 r.addr_end = int(addr_end, 16)
                 r.offset = int(offset, 16)
                 r.perms = perms
-                r.dev = dev
-                r.inode = inode
-                r.pathname = pathname
+                r.path = path
                 records.append(r)
         return records
 
@@ -54,34 +53,83 @@ class Record:
                 return r
         return None
 
-# access op that resulted in the fault
+
+class LibOrExe:
+    """A library or executable mapped into process memory"""
+    records: list
+    ips: list
+    path: str
+    base_addr: int
+    codemap: dict
+
+    def __init__(self, records):
+        """For libs collected from /proc/<pid>/maps"""
+        self.records = records
+        self.path = records[0].path
+        self.base_addr = min([r.addr_start for r in records])
+        self.ips = []
+        self.codemap = {}
+
+    def code_location(self, ipx):
+        """Lookup the library to find code location for an ip"""
+        assert ipx in self.ips, "ip does not fall in lib: " + ipx
+        if not self.codemap and self.ips:
+            ips = self.ips
+            # offset the ips if the lib is loaded at a high address
+            if self.base_addr >= 2**32:
+                ips_int = [int(ip, 16) for ip in self.ips]
+                ips = [hex(ip - self.base_addr) for ip in ips_int]
+            locations = lookup_code_locations(self.path, ips)
+            self.codemap = dict(zip(self.ips, locations))
+        return self.codemap[ipx]
+
+
+def lookup_code_locations(libpath, ips):
+    """Lookup a library using addr2line to find code location for each ip"""
+    assert os.path.exists(libpath), "can't locate lib: " + libpath
+    sys.stderr.write("looking up {} for {} ips\n".format(libpath, len(ips)))
+    locations = subprocess.check_output(     \
+        ['addr2line', '-p', '-i', '-e', libpath] + list(ips)) \
+        .decode('utf-8')    \
+        .replace("\n (inlined by) ", "<<<")   \
+        .split("\n")
+    locations.remove("")
+    assert(len(locations) == len(ips))
+    return locations
+
+
 class FaultOp(Enum):
+    """Enumerates the memory access operations that result in a fault"""
     READ = "read"
     WRITE = "write"
     WRPROTECT = "wrprotect"
+
+    def parse(flags):
+        """Get the access op from the flags column"""
+        op = flags & 0x1F
+        if op == 0:   return FaultOp.READ
+        if op == 1:   return FaultOp.WRITE
+        if op == 3:   return FaultOp.WRPROTECT
+        raise Exception("unknown op: {}".format(op))
+    
     def __str__(self):
         return self.value
 
-# fault type
+
 class FaultType(Enum):
+    """Enumerates the fault types (defined in fltrace)"""
     REGULAR = "regular"
     ZEROPAGE = "zero"
+
+    def parse(flags):
+        """Get the fault type from the flags column"""
+        type = flags >> 5
+        if type == 0:   return FaultType.REGULAR
+        if type == 1:   return FaultType.ZEROPAGE
+        raise Exception("unknown type: {}".format(type))
+
     def __str__(self):
         return self.value
-
-def get_fault_op(flags):
-    op = flags & 0x1F
-    if op == 0:   return FaultOp.READ
-    if op == 1:   return FaultOp.WRITE
-    if op == 3:   return FaultOp.WRPROTECT
-    raise Exception("unknown op: {}".format(op))
-
-def get_fault_type(flags):
-    type = flags >> 5
-    if type == 0:   return FaultType.REGULAR
-    if type == 1:   return FaultType.ZEROPAGE
-    raise Exception("unknown type: {}".format(type))
-
 
 
 def main():
@@ -109,20 +157,9 @@ def main():
         dfs.append(tempdf)
     df = pd.concat(dfs, ignore_index=True)
 
-    # filter
-    if args.start:
-        df = df[df[TIMECOL] >= args.start]
-    if args.end:
-        df = df[df[TIMECOL] <= args.end]
-
-    if args.frcutoff:
-        df["timesec"] = df[TIMECOL].floordiv(1000000)
-        if "pages" in df:
-            frate = df.groupby("timesec")["pages"].sum().reset_index(name='rate')
-        else:
-            frate = df.groupby("timesec").size().reset_index(name='rate')
-        frate = frate[frate["rate"] >= args.frcutoff]
-        df = df[df["timesec"].isin(frate["timesec"])]
+    # time filter
+    if args.start:  df = df[df[TIMECOL] >= args.start]
+    if args.end:    df = df[df[TIMECOL] <= args.end]
 
     # op col renamd to flags
     FLAGSCOL="flags"
@@ -141,66 +178,51 @@ def main():
         print(len(df.index))
         return
 
+    # group faults by trace
     if "pages" in df:
         df = df.groupby([TRACECOL, FLAGSCOL])["pages"].sum().reset_index(name='count')
     else:
         df = df.groupby([TRACECOL, FLAGSCOL]).size().reset_index(name='count')
     df = df.rename(columns={TRACECOL: "ips"})
-
     df = df.sort_values("count", ascending=False)
     df["percent"] = (df['count'] / df['count'].sum()) * 100
     df["percent"] = df["percent"].astype(int)
 
     # NOTE: adding more columns after grouping traces is fine
 
-    # evaluate op and filter
-    if df.empty:    df["op"] = []
-    else: df["op"] = df.apply(lambda r: get_fault_op(r[FLAGSCOL]).value, axis=1)
-    if args.faultop is not None:
-        df = df[df["op"] == args.faultop.value]
-
-    # evaluate fault type
-    if df.empty:    df["type"] = []
-    else: df["type"] = df.apply(lambda r: get_fault_type(r[FLAGSCOL]).value, axis=1)
+    # evaluate op & type
+    if df.empty:
+        df["op"] = []
+        df["type"] = []
+    else:
+        df["op"] = df.apply(lambda r: FaultOp.parse(r[FLAGSCOL]).value, axis=1)
+        df["type"] = df.apply(lambda r: FaultType.parse(r[FLAGSCOL]).value, axis=1)
+    
+    # filter by op
+    if args.faultop:    df = df[df["op"] == args.faultop.value]
 
     # get all unique ips
     iplists = df['ips'].str.split("|")
     ips = set(sum(iplists, []))
     ips.discard("")
 
-    # if binary is available, look up code locations for the ips
-    codemap = {}
-    if args.binary:
-        assert os.path.exists(args.binary)
-        sys.stderr.write("getting code locations for {} ips\n".format(len(ips)))
-        code = subprocess   \
-            .check_output(['addr2line', '-p', '-i', '-e', args.binary]+list(ips)) \
-            .decode('utf-8') \
-            .replace("\n (inlined by) ", "<<<")   \
-            .split("\n")
-        code.remove("")
-        assert(len(code) == len(ips))
-        codemap = dict(zip(ips, code))
-        # print(codemap)
-    
-    # make a new code column
-    def codelookup(ips):
-        iplist = ips.split("|")
-        code = "<//>".join([codemap[ip] if ip in codemap else "??:0" for ip in iplist])
-        return code
-    df['code'] = df['ips'].apply(codelookup)
-
-    # if procmap is available, look up unresolved libraries
+    # if procmap is available, look up library locations
     libmap = {}
+    libs = {}
     if args.procmap:
         assert os.path.exists(args.procmap)
         records = Record.parse(args.procmap)
-        sys.stderr.write("looking up libraries for {} ips\n".format(len(ips)))
         for ip in ips:
             lib = Record.find_record(records, int(ip, 16))
-            if lib:
-                libmap[ip] = lib.pathname
+            assert lib, "can't find lib for ip: {}".format(ip)
+            assert lib.path, "no lib file path for ip: {}".format(ip)
+            if lib.path not in libs:
+                librecs = [r for r in records if r.path == lib.path]
+                libs[lib.path] = LibOrExe(librecs)
+            libs[lib.path].ips.append(ip)
+            libmap[ip] = lib.path
         # print(libmap)
+        # print(libs)
 
     # make a new lib column
     def liblookup(ips):
@@ -209,10 +231,32 @@ def main():
         return lib
     df['lib'] = df['ips'].apply(liblookup)
 
+    # if binary is provided, use it to look up code locations
+    codemap = {}
+    if args.binary:
+        locations = lookup_code_locations(args.binary, ips)
+        codemap = dict(zip(ips, locations))
+        # print(codemap)
+    
+    # make a new code column
+    def codelookup(ips):
+        iplist = ips.split("|")
+        locations = []
+        for ip in iplist:
+            if ip in libmap:
+                lib = libs[libmap[ip]]
+                locations.append(lib.code_location(ip))
+            elif ip in codemap:
+                locations.append(codemap[ip])
+            else:
+                locations.append("??:?")
+        code = "<//>".join(locations)
+        return code
+    df['code'] = df['ips'].apply(codelookup)
+
     # write out
     out = args.out if args.out else sys.stdout
     df.to_csv(out, index=False, header=True)
 
 if __name__ == '__main__':
-    processed = 0
     main()
