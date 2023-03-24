@@ -57,8 +57,8 @@ def main():
 
     # filter
     for k in stats.keys():
-        if args.start:  stats[k] = filter(lambda x: x[0] >= args.start, stats[k])
-        if args.end:    stats[k] = filter(lambda x: x[0] <= args.end, stats[k])
+        if args.start:  stats[k] = list(filter(lambda x: x[0] >= args.start, stats[k]))
+        if args.end:    stats[k] = list(filter(lambda x: x[0] <= args.end, stats[k]))
 
     # # detect anamoly
     # mean = None
