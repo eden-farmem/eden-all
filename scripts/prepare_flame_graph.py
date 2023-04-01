@@ -77,12 +77,12 @@ class CodePointer:
         self.line = int(line)
         self.pd = match.groups()[3] if match.groups()[3] else None
 
-    def flamegraph_name(self, leaf=False):
+    def flamegraph_name(self, leaf=False, nolib=False):
         """ customized name for the flame graph viz. """
         prefix = os.path.basename(self.lib) if self.lib else "Unknown"
         filename = os.path.basename(self.file.name) if self.file else None
         suffix = "{}:{}".format(filename, self.line) if filename else self.ip
-        s = "{}|{}".format(prefix, suffix)
+        s = "{}|{}".format(prefix, suffix) if not nolib else suffix
         if self.pd:   s += " ({})".format(self.pd)
         # add suffix for coloring
         if leaf:
@@ -253,6 +253,8 @@ def main():
     parser.add_argument('-c', '--cutoff', action='store', type=int, help='pruning cutoff as percentage of total fault count')
     parser.add_argument('-z', '--zero', action='store_true', help='consider only zero faults', default=False)
     parser.add_argument('-o', '--output', action='store', help='path to the output flame graph data', required=True)
+    # flamegraph formatting options
+    parser.add_argument('-nl', '--nolib', action='store_true', help='do not include library name', default=False)
     args = parser.parse_args()
 
     # read in
@@ -304,8 +306,10 @@ def main():
                     break
                 if cp.ignore():
                     continue
-                locations += [c.flamegraph_name() for c in reversed(cp.inlineparents)]
-                locations.append(cp.flamegraph_name(i == len(f.trace)-1))
+                locations += [c.flamegraph_name(nolib=args.nolib)   \
+                    for c in reversed(cp.inlineparents)]
+                is_leaf = (i == len(f.trace)-1)
+                locations.append(cp.flamegraph_name(is_leaf, args.nolib))
             tracestr = ";".join(locations)
             if not ignore:
                 fp.write("{} {}\n".format(tracestr, f.count))
