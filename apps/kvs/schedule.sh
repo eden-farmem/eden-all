@@ -2,8 +2,8 @@
 ## native
 APPS='rocksdb
 leveldb
-memcached'
-#redis
+memcached
+redis'
 
 
 #Defaults
@@ -18,14 +18,14 @@ for app in `echo ${APPS}`; do
     echo $app
 
     ### run
-    pushd ${app}
-    bash schedule.sh
-    popd
+    # pushd ${app}
+    # nohup bash schedule.sh &> out &
+    # popd
 
     ### show
-    # pushd ${app}
-    # bash show.sh
-    # popd
+    pushd ${app}
+    bash show.sh
+    popd
 
     ### plot
     # bash plot.sh -id=6 -a=$app &> plot_$app &

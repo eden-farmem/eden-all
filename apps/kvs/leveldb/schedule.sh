@@ -13,14 +13,14 @@ check_for_stop() {
 }
 
 # Run a set of experiments
-# OPS=1000000
-# MAXRSS=1324111488
-OPS=100000
-MAXRSS=213983232
+OPS=1000000
+MAXRSS=1324111488
+# OPS=100000
+# MAXRSS=213983232
 # OPS=10000
 # MAXRSS=38064128
 # for memp in `seq 100 -5 5`; do
-for memp in 5 25; do
+for memp in 10; do
     check_for_stop
     lmem=$(echo $memp $MAXRSS | awk '{ printf "%d", $1 * $2 / 100 }')
     echo "Profiling leveldb - params: $MAXRSS, $memp, $lmem"
