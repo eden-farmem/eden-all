@@ -5,8 +5,12 @@ import pandas as pd
 import numpy as np
 
 TIMECOL = "time"
-NON_CUMULATIVE_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size", "memory_used"]
-TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size", "memory_used"]
+VMSTAT_FIELDS = [ "vm_peak", "vm_size", "vm_lock", "vm_pin", "vm_hwm",
+    "vm_rss", "vm_data", "vm_stk", "vm_exe", "vm_lib", "vm_pte", "vm_swap" ]
+NON_CUMULATIVE_FIELDS = [TIMECOL, "rmalloc_size",
+    "rmunmap_size", "rmadv_size", "memory_used" ] + VMSTAT_FIELDS
+TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size", 
+    "memory_used", "vm_rss" ]
 
 def append_row(df, row):
     return pd.concat([
@@ -84,10 +88,13 @@ def main():
 
     # conversion
     for field in TO_MB_FIELDS:
+        new_field = field + "_mb"
         if field in tdf:
-            tdf[field + "_mb"] = (tdf[field] / 1024 / 1024).astype(int)
+            tdf[new_field] = (tdf[field] / 1024 / 1024).astype(int)
         if field in hdf:
-            hdf[field + "_mb"] = (hdf[field] / 1024 / 1024).astype(int)
+            hdf[new_field] = (hdf[field] / 1024 / 1024).astype(int)
+        if field in NON_CUMULATIVE_FIELDS:
+            NON_CUMULATIVE_FIELDS.append(new_field)
 
     # accumulated cols
     if len(tdf) > 1:
@@ -96,7 +103,7 @@ def main():
             if k not in NON_CUMULATIVE_FIELDS:
                 tdf[k] = tdf[k].diff()
         tdf = tdf.iloc[1:]    #drop first row
-        
+            
     if len(hdf) > 1:
         hdf[TIMECOL] = hdf[TIMECOL] - hdf[TIMECOL].iloc[0]
         for k in hdf:
@@ -115,6 +122,8 @@ def main():
             hdf['cpu_per'] = hdf['cpu_per'].replace(np.inf, 0).astype(int)
 
     # merge both
+    assert len(tdf) == len(hdf)
+    assert tdf[TIMECOL].all() == hdf[TIMECOL].all()
     df = pd.merge(tdf, hdf, on=TIMECOL, how='left', suffixes=('', '_h'))
     # print(df)
 
