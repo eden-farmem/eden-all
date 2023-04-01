@@ -59,7 +59,7 @@ def main():
 
     # conversion
     for field in TO_MB_FIELDS:
-        df[field] = (df[field] / 1024 / 1024).astype(int)
+        df[field + "_mb"] = (df[field] / 1024 / 1024).astype(int)
 
     # accumulated cols
     if not df.empty:
