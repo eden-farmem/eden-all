@@ -311,8 +311,6 @@ def main():
                 fp.write("{} {}\n".format(tracestr, f.count))
         print("Wrote {} traces to {}".format(len(traces.faults), args.output))
 
-    print(set([f.trace[0] for f in traces.faults]))
-
 
 if __name__ == "__main__":
     main()
