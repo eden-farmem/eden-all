@@ -16,3 +16,6 @@
 [submodule "fault-analysis"]
 	path = fault-analysis
 	url = git@github.com:eden-ucsd-vmware/fault-analysis.git
+[submodule "apps/synthetic-cpp/synthetic-aifm"]
+	path = apps/synthetic-cpp/synthetic-aifm
+	url = git@github.com:eden-ucsd-vmware/synthetic-aifm.git
