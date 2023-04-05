@@ -235,12 +235,9 @@ case $i in
     GDB=1
     CFLAGS="$CFLAGS -O0 -g -ggdb"
     ;;
-    
+
     -pfs|--pfsamples)
     KEEPBIN=1
-    CFLAGS="$CFLAGS -g"                 #for symbols
-    CFLAGS="$CFLAGS -no-pie -fno-pie"   #no PIE
-    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space #no ASLR
     SHEN_CFLAGS="$SHEN_CFLAGS -DFAULT_SAMPLER"
     ;;
 
@@ -267,10 +264,9 @@ done
 # RNIC NUMA node = 1
 NUMA_NODE=1
 BASECORE=14
-NIC_PCI_SLOT="0000:d8:00.1"
 RMEM_HANDLER_CORE=55
-FASTSWAP_RECLAIM_CPU=54
-SHENANGO_STATS_CORE=53
+FASTSWAP_RECLAIM_CPU=55
+SHENANGO_STATS_CORE=54
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
 NTHREADS=${NTHREADS:-$NCORES}
 
@@ -506,7 +502,8 @@ rmem_local_memory ${LMEM}
 rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}
 rmem_evict_ngens ${EVICT_GENS}
-rmem_evict_nprio ${EVICT_NPRIO}"""
+rmem_evict_nprio ${EVICT_NPRIO}
+rmem_fsampler_rate 10000"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
