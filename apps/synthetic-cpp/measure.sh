@@ -19,8 +19,6 @@ PLOTDIR=plots
 DATADIR=data
 PLOTEXT=png
 WARMUP=1
-WFLAG="--warmup"
-# NOPIE="--nopie"   #debug
 
 source ${ROOTDIR}/scripts/utils.sh
 
@@ -35,6 +33,10 @@ case $i in
     -w|--warmup)
     WARMUP=1
     WFLAG="--warmup"
+    ;;
+
+    -t|--trace)
+    TRACE=1
     ;;
 
     -h | --help)
@@ -53,13 +55,29 @@ done
 # settings
 mkdir -p $DATADIR
 
+## Workload (Debug)
+# CORES=1
+# THREADS=10
+# HASH_POWER_SHIFT=20
+# NUM_ARRAY_ENTRIES="(2<<15)"
+# EDEN_MAX=106
+# FASTSWAP_MAX=
+# ZIPFS=0.85
+# KPR=32
+
 ## Workload (AIFM)
-NKEYS=
-NBLOBS=
-EDEN_MAX=21824      # 21607+1%
+CORES=10     # was 10
+THREADS=40
+HASH_POWER_SHIFT=28
+NUM_ARRAY_ENTRIES="(2<<20)"
+EDEN_MAX=26626      #+1% EvT?
 FASTSWAP_MAX=
-CORES=2
-# ZIPFS=0.8
+KPR=32
+ZIPFS=0.85
+
+## use below params for maxrss
+# ZIPFS=0.1
+# INIT_ARRAY=1
 
 # create a stop button
 touch __running__
@@ -141,11 +159,15 @@ run_vary_lmem() {
     configure_for_fault_kind "$kind"
     configure_for_backend "$bkend"
     configure_for_evict_policy "$evp"
-    if [ "$rdahead" == "1" ];   then  OPTS="$OPTS --rdahead"; fi
+    if [ "$rdahead" == "1" ];   then  OPTS="$OPTS --rdahead";               fi
     if [[ $evictbs ]];          then  OPTS="$OPTS --batchevict=${evictbs}"; fi
-    if [[ $evgens ]];           then  OPTS="$OPTS --evictgens=${evgens}"; fi
-    if [[ $kpr ]];              then  OPTS="$OPTS --keyspreq=${kpr}"; fi
-    if [[ $evprio ]];           then  OPTS="$OPTS --prio"; fi
+    if [[ $evgens ]];           then  OPTS="$OPTS --evictgens=${evgens}";   fi
+    if [[ $kpr ]];              then  OPTS="$OPTS --keyspreq=${kpr}";       fi
+    if [[ $evprio ]];           then  OPTS="$OPTS --prio";                  fi    
+    if [[ $TRACE ]];            then  OPTS="$OPTS --pfsamples";             fi
+    if [[ $INIT_ARRAY ]];       then  OPTS="$OPTS --initarray";             fi
+    OPTS="$OPTS -hp=${HASH_POWER_SHIFT} -nae=${NUM_ARRAY_ENTRIES}"
+    OPTS="$OPTS -t=${threads} -zs=${zparams}"
     # OPTS="$OPTS --sampleepochs"
     # OPTS="$OPTS --safemode"
     # OPTS="$OPTS --pfsamples"
@@ -155,7 +177,9 @@ run_vary_lmem() {
     # run
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
-    for memp in 50; do
+    # for memp in 4 8 16 22 33 41 50 58 66 75 83 91 100; do
+    for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+    # for memp in 10; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -164,12 +188,9 @@ run_vary_lmem() {
             lmem=$((lmem_mb*1024*1024))
             lmemopt="-lm=${lmem} -lmp=${memp}"
         fi
-        echo bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}             \
-            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
-            ${lmemopt} -zs=${zparams} ${NOPIE} -d="""${desc}"""
-        bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG}                  \
-            -c=${cores} -t=${threads} -nk=${NKEYS} -nb=${NBLOBS}        \
-            ${lmemopt} -zs=${zparams} ${NOPIE} -d="""${desc}"""
+
+        echo bash run.sh ${OPTS} -c="$cores" -fl="""$CFLAGS""" ${WFLAG} ${lmemopt} -d="""${desc}"""
+        bash run.sh ${OPTS} -c="$cores" -fl="""$CFLAGS""" ${WFLAG} ${lmemopt} -d="""${desc}"""
     done
 }
 
@@ -224,16 +245,12 @@ ebs=                    # set eviction batch size
 evp=                    # set eviction policy
 evg=4                   # set eviction gens
 prio=                   # enable eviction priority
-kpr=${KEYS_PER_REQ}     # keys per request
-for c in ${CORES}; do
-    desc="test"
-    t=$((c*tpc))
-    # run_vary_lmem "uthr"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
-    # run_vary_lmem "eden-nh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "$prio"
-    run_vary_lmem "eden-bh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "$evp" "$evg" "$kpr" "prio"
-    # run_vary_lmem "eden-bh" "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "NONE" "$evg" "$kpr" "yes"
-    # run_vary_lmem "eden"    "local" "$op" "$c" "$t" "$zs" "$rd" "$ebs" "SC"   "$evg" "$kpr" "$prio"
-done
+desc="test"
+# run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-nh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
+run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "NONE" "$evg" "$KPR" "yes"
+# run_vary_lmem "eden"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "SC"   "$evg" "$KPR" "$prio"
 
 # Fastswap runs
 

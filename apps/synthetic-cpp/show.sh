@@ -154,9 +154,10 @@ for exp in $LS_CMD; do
     rmem=$(cat $exp/settings | grep "rmem:" | awk -F: '{ print $2 }')
     sched=$(cat $exp/settings | grep "scheduler:" | awk -F: '{ print $2 }')
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
-    nkeys=$(cat $exp/settings | grep "keys:" | awk -F: '{ print $2 }')
-    nblobs=$(cat $exp/settings | grep "blobs:" | awk -F: '{ print $2 }')
+    hashpower=$(cat $exp/settings | grep "hashpower:" | awk -F: '{ print $2 }')
+    narrayents=$(cat $exp/settings | grep "narray:" | awk -F: '{ print $2 }')
     zipfs=$(cat $exp/settings | grep "zipfs:" | awk -F: '{ print $2 }')
+    kpr=$(cat $exp/settings | grep "kpr:" | awk -F: '{ print $2 }')
     rdahead=$(cat $exp/settings | grep "rdahead:" | awk -F: '{ print $2 }')
     evictbs=$(cat $exp/settings | grep "evictbatch:" | awk -F: '{ print $2 }')
     evictpol=$(cat $exp/settings | grep "evictpolicy:" | awk -F: '{ print $2 }')
@@ -193,9 +194,7 @@ for exp in $LS_CMD; do
         rstart=$(cat $exp/run_start 2>/dev/null)
         rend=$(cat $exp/run_end 2>/dev/null)
         rtime=$((rend-rstart))
-        xput=$(grep "mops =" $exp/app.out | sed -n "s/^.*mops =://p")
-        xputpercore=
-        if [[ $xput ]]; then xputpercore=$((xput/cores));   fi
+        xput=$(grep "mops =" $exp/app.out | sed -n "s/^.*mops = //p")
 
         # if runtime is zero, exclude  
         if [[ $FILTER_GOOD ]] && (! [[ $rtime ]] || [ $rtime -le 0 ]); then continue; fi
@@ -245,7 +244,8 @@ for exp in $LS_CMD; do
             evpopped=$(csv_column_mean "$edenout" "evict_pages_popped")
             netreads=$(csv_column_mean "$edenout" "net_reads")
             netwrite=$(csv_column_mean "$edenout" "net_writes")
-            mallocd=$(csv_column_max "$edenout" "rmalloc_size")
+            mallocd=$(csv_column_max "$edenout" "memory_allocd_mb")
+            freed=$(csv_column_max "$edenout" "memory_freed_mb")
             steals=$(csv_column_mean "$edenout" "steals")
             hsteals=$(csv_column_mean "$edenout" "steals_h")
             waitretries=$(csv_column_mean "$edenout" "wait_retries")
@@ -308,6 +308,9 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Backend";       LINE="$LINE,${backend}";
     HEADER="$HEADER,CPU";           LINE="$LINE,${cores}";
     HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
+    HEADER="$HEADER,HashPower";     LINE="$LINE,${hashpower}";
+    HEADER="$HEADER,ArrayEnts";     LINE="$LINE,${narrayents}";
+    HEADER="$HEADER,KeysPerReq";    LINE="$LINE,${kpr}";
     HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
     HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
     HEADER="$HEADER,ZipfS";         LINE="$LINE,${zipfs}";
@@ -336,12 +339,12 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
         HEADER="$HEADER,AnnotHits";     LINE="$LINE,${annothits}";
         HEADER="$HEADER,HitR";          LINE="$LINE,${hitr}";
-        HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
 
         HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
         HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
         HEADER="$HEADER,rCPU%";         LINE="$LINE,${reclaimcpu}";
         HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
+        HEADER="$HEADER,Freed";         LINE="$LINE,${freed}";
         HEADER="$HEADER,MemUsed";       LINE="$LINE,${memused}M";
 
         # steals

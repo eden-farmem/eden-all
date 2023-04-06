@@ -9,8 +9,7 @@ VMSTAT_FIELDS = [ "vm_peak", "vm_size", "vm_lock", "vm_pin", "vm_hwm",
     "vm_rss", "vm_data", "vm_stk", "vm_exe", "vm_lib", "vm_pte", "vm_swap" ]
 NON_CUMULATIVE_FIELDS = [TIMECOL, "rmalloc_size",
     "rmunmap_size", "rmadv_size", "memory_used" ] + VMSTAT_FIELDS
-TO_MB_FIELDS = ["rmalloc_size", "rmunmap_size", "rmadv_size", 
-    "memory_used", "vm_rss" ]
+TO_MB_FIELDS = ["memory_allocd", "memory_freed", "memory_used", "vm_rss" ]
 
 def append_row(df, row):
     return pd.concat([

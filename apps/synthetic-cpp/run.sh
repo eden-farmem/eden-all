@@ -84,10 +84,12 @@ LRU_BUMP_THR=0.5
 SHENANGO=1
 
 NCORES=1
+NTHREADS=40
 ZIPFS="0.85"
 HASH_POWER_SHIFT=20
-NUM_ARRAY_ENTRIES=100000
+NUM_ARRAY_ENTRIES="(1<<15)"
 LMEM=1000000000    # 1GB
+KEYS_PER_REQ=32
 
 # save settings
 CFGSTORE=
@@ -200,13 +202,17 @@ case $i in
     HASH_POWER_SHIFT=${i#*=}
     ;;
 
-    -az=*|--arrsize=*)
+    -nae=*|--numarrent=*)
     NUM_ARRAY_ENTRIES=${i#*=}
     ;;
 
     -kpr=*|--keyspreq=*)
     KEYS_PER_REQ=${i#*=}
     CFLAGS="$CFLAGS -DKEYS_PER_REQ=$KEYS_PER_REQ"
+    ;;
+
+    -ia|--initarray)
+    CFLAGS="$CFLAGS -DINITIALIZE_ARRAY"
     ;;
 
     -lm=*|--localmem=*)
@@ -271,7 +277,6 @@ RMEM_HANDLER_CORE=55
 FASTSWAP_RECLAIM_CPU=55
 SHENANGO_STATS_CORE=54
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
-NTHREADS=${NTHREADS:-$NCORES}
 
 # helpers
 start_cpu_sar() {
@@ -435,15 +440,19 @@ if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     popd
     pushd shim
     make clean
-    make -j ${DEBUG}
+    make -j ${DEBUG} NUMA_NODE=${NUMA_NODE}
     popd
     popd
 fi
 
 # figure out input size
-sed "s/constexpr static uint64_t kNumArrayEntries = .*/constexpr static uint64_t kNumArrayEntries = $NUM_ARRAY_ENTRIES;/g" main.cpp -i
-sed "s/constexpr static uint32_t kLocalHashTableNumEntriesShift = .*/constexpr static uint32_t kLocalHashTableNumEntriesShift = $HASH_POWER_SHIFT;/g" main.cpp -i    
-sed "s/constexpr static uint32_t kNumKVPairs = .*/constexpr static uint32_t kNumKVPairs = (1 << $HASH_POWER_SHIFT);/g" main.cpp -i    
+mainfile=${APPDIR}/main.cpp
+sed "s/constexpr static uint32_t kNumArrayEntries = .*/constexpr static uint32_t kNumArrayEntries = $NUM_ARRAY_ENTRIES;/g" ${mainfile} -i
+sed "s/constexpr static uint32_t kLocalHashTableNumEntriesShift = .*/constexpr static uint32_t kLocalHashTableNumEntriesShift = $HASH_POWER_SHIFT;/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumKVPairs = .*/constexpr static uint32_t kNumKVPairs = (1 << $((HASH_POWER_SHIFT-1)));/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumKeysPerRequest = .*/constexpr static uint32_t kNumKeysPerRequest = ${KEYS_PER_REQ};/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumMutatorThreads = .*/constexpr static uint32_t kNumMutatorThreads = ${NTHREADS};/g" ${mainfile} -i    
+sed "s/constexpr static double kZipfParamS = .*/constexpr static double kZipfParamS = ${ZIPFS};/g" ${mainfile} -i 
 
 # build app
 pushd ${APPDIR}
@@ -466,9 +475,10 @@ pushd $expdir
 echo "running ${EXPNAME}"
 save_cfg "cores"        $NCORES
 save_cfg "threads"      $NTHREADS
-save_cfg "keys"         $NKEYS
-save_cfg "blobs"        $NBLOBS
+save_cfg "hashpower"    $HASH_POWER_SHIFT
+save_cfg "narray"       $NUM_ARRAY_ENTRIES
 save_cfg "zipfs"        $ZIPFS
+save_cfg "kpr"          $KEYS_PER_REQ
 save_cfg "warmup"       $WARMUP
 save_cfg "scheduler"    $SCHEDULER
 save_cfg "rmem"         $RMEM

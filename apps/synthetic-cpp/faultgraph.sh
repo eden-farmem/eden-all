@@ -14,7 +14,8 @@ DATADIR=${SCRIPTDIR}/data
 
 usage="\n
 -f, --force \t\t force parse and merge raw data again\n
--r, --run \t\t run id, picks the latest run by default\n"
+-r, --run \t\t run id, picks the latest run by default\n
+-l, --load \t\t generate graphs for loading phase\n"
 
 for i in "$@"
 do
@@ -25,6 +26,10 @@ case $i in
 
     -r=*|--run=*)
     RUNID="${i#*=}"
+    ;;
+
+    -l|--load)
+    PRELOAD="${i#*=}"
     ;;
 
     *)                      # unknown option
@@ -59,8 +64,13 @@ if [ -f ${procmaps} ]; then
     procmapflag="-pm ${procmaps}"
 fi
 
-if [ -f ${expdir}/run_start ]; then  stopt="-st $(cat ${expdir}/run_start)"; fi
-if [ -f ${expdir}/run_end ]; then  etopt="-et $(cat ${expdir}/run_end)"; fi
+if [[ $PRELOAD ]]; then
+    if [ -f ${expdir}/preload_start ]; then  stopt="-st $(cat ${expdir}/preload_start)"; fi
+    if [ -f ${expdir}/preload_end ]; then etopt="-et $(cat ${expdir}/preload_end)"; fi
+else
+    if [ -f ${expdir}/run_start ]; then  stopt="-st $(cat ${expdir}/run_start)"; fi
+    if [ -f ${expdir}/run_end ]; then  etopt="-et $(cat ${expdir}/run_end)"; fi
+fi
 echo "python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_samples.py -i ${allfaultsin} ${procmapflag} ${stopt} ${etopt} > ${tracesfolded}"
 python3 ${ROOT_SCRIPTS_DIR}/parse_fltrace_samples.py -i ${allfaultsin} ${procmapflag} ${stopt} ${etopt} > ${tracesfolded}
 
