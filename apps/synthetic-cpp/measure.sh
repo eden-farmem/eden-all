@@ -71,13 +71,13 @@ THREADS=40
 HASH_POWER_SHIFT=28
 NUM_ARRAY_ENTRIES="(2<<20)"
 EDEN_MAX=26626      #+1% EvT?
-FASTSWAP_MAX=
+FASTSWAP_MAX=26990
 KPR=32
 ZIPFS=0.85
+INIT_ARRAY=1
 
 ## use below params for maxrss
 # ZIPFS=0.1
-# INIT_ARRAY=1
 
 # create a stop button
 touch __running__
@@ -119,7 +119,7 @@ configure_max_local_mem() {
     "eden-nh")          MAXRSS=${EDEN_MAX};;
     "eden-bh")          MAXRSS=${EDEN_MAX};;
     "eden")             MAXRSS=${EDEN_MAX};;
-    "fswap")            MAXRSS=${FASTSWAP_MAX}; PINNED=$((cores*381));;
+    "fswap")            MAXRSS=${FASTSWAP_MAX};;
     *)                  echo "Unknown fault kind"; exit;;
     esac
 }
@@ -184,7 +184,6 @@ run_vary_lmem() {
         lmemopt=
         if [[ $MAXRSS ]]; then 
             lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
-            if [[ $PINNED ]]; then lmem_mb=$((lmem_mb+PINNED)); fi
             lmem=$((lmem_mb*1024*1024))
             lmemopt="-lm=${lmem} -lmp=${memp}"
         fi
@@ -245,14 +244,16 @@ ebs=                    # set eviction batch size
 evp=                    # set eviction policy
 evg=4                   # set eviction gens
 prio=                   # enable eviction priority
-desc="test"
+desc="rdma"
 # run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-nh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
-run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "NONE" "$evg" "$KPR" "yes"
 # run_vary_lmem "eden"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "SC"   "$evg" "$KPR" "$prio"
 
 # Fastswap runs
+# run_vary_lmem "uthr" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "fswap" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 
 # cleanup
 rm -f ${TEMP_PFX}*
