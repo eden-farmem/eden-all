@@ -318,6 +318,7 @@ stop_fsstat() {
 }
 kill_remnants() {
     sudo pkill iokerneld || true
+    sudo ipcrm -a
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"            # eden memcontrol
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"   # eden memserver
     # ssh ${MEMSERVER_SSH} "pkill rmserver; rm -f ~/scratch/rmserver"     # fastswap server
@@ -515,7 +516,7 @@ rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}
 rmem_evict_ngens ${EVICT_GENS}
 rmem_evict_nprio ${EVICT_NPRIO}
-rmem_fsampler_rate 10000"""
+rmem_fsampler_rate 1000"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
@@ -584,15 +585,6 @@ for retry in 1; do
         start_cpu_sar 1 "." ${CPUSTR}
     fi 
 
-    # run in gdb server if requested
-    if [[ $GDB ]]; then
-        if [ -z "$wrapper" ]; then
-            wrapper="gdbserver :1234 "
-        else
-            wrapper="gdbserver --wrapper $wrapper -- :1234 "
-        fi
-    fi
-
     # start memory stats for fastswap
     if [[ $FASTSWAP ]]; then
         start_memory_stat
@@ -606,9 +598,13 @@ for retry in 1; do
     if [[ $SHENANGO ]]; then    args="${CFGFILE} $args"; fi
     binfile=${APPDIR}/${BINFILE}
     echo sudo ${wrapper} ${binfile} ${args}
-    # sleep 300
-    sudo ${wrapper} ${binfile} ${args} 2>&1 | tee app.out &
-    # sudo ${wrapper} ${binfile} ${args}
+    if [[ $GDB ]]; then 
+        echo "run: cd $expdir && sudo gdb --args ${binfile} ${args}"
+        echo "waiting for gdb"
+        sleep 300
+    else
+       sudo ${wrapper} ${binfile} ${args} 2>&1 | tee app.out &
+    fi
 
     # wait for run to finish
     tries=0
@@ -631,7 +627,7 @@ for retry in 1; do
         while ps -p $pid > /dev/null; do
             sleep 1
             tries=$((tries+1))
-            if [[ $tries -gt 1000 ]]; then
+            if [[ $tries -gt 2000 ]]; then
                 echo "ran too long"
                 sudo kill -9 $pid
                 break

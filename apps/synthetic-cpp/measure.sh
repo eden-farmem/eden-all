@@ -6,8 +6,9 @@
 # 
 
 usage="\n
--w, --warmup \t run warmup for a few seconds before taking measurement\n
 -d, --debug \t\t build debug\n
+-t, --trace \t\t run with fault tracing\n
+-g, --gdb \t\t run with gdb\n
 -h, --help \t\t this usage information message\n"
 
 #Defaults
@@ -29,14 +30,13 @@ case $i in
     -d|--debug)
     CFLAGS="$CFLAGS -DDEBUG"
     ;;
-    
-    -w|--warmup)
-    WARMUP=1
-    WFLAG="--warmup"
-    ;;
 
     -t|--trace)
     TRACE=1
+    ;;
+
+    -g|--gdb)
+    GDBOPT="-g"
     ;;
 
     -h | --help)
@@ -56,8 +56,8 @@ done
 mkdir -p $DATADIR
 
 ## Workload (Debug)
-# CORES=1
-# THREADS=10
+# CORES=10
+# THREADS=40
 # HASH_POWER_SHIFT=20
 # NUM_ARRAY_ENTRIES="(2<<15)"
 # EDEN_MAX=106
@@ -74,10 +74,10 @@ EDEN_MAX=26626      #+1% EvT?
 FASTSWAP_MAX=
 KPR=32
 ZIPFS=0.85
+INIT_ARRAY=1
 
 ## use below params for maxrss
 # ZIPFS=0.1
-# INIT_ARRAY=1
 
 # create a stop button
 touch __running__
@@ -169,7 +169,7 @@ run_vary_lmem() {
     OPTS="$OPTS -hp=${HASH_POWER_SHIFT} -nae=${NUM_ARRAY_ENTRIES}"
     OPTS="$OPTS -t=${threads} -zs=${zparams}"
     # OPTS="$OPTS --sampleepochs"
-    # OPTS="$OPTS --safemode"
+    OPTS="$OPTS --safemode"
     # OPTS="$OPTS --pfsamples"
     rebuild_with_current_config
     echo $OPTS
@@ -178,8 +178,9 @@ run_vary_lmem() {
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
     # for memp in 4 8 16 22 33 41 50 58 66 75 83 91 100; do
-    for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
-    # for memp in 10; do
+    # for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+    # for memp in 100 91 83 75 66 58 50 41 33; do
+    for memp in 50; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -189,8 +190,8 @@ run_vary_lmem() {
             lmemopt="-lm=${lmem} -lmp=${memp}"
         fi
 
-        echo bash run.sh ${OPTS} -c="$cores" -fl="""$CFLAGS""" ${WFLAG} ${lmemopt} -d="""${desc}"""
-        bash run.sh ${OPTS} -c="$cores" -fl="""$CFLAGS""" ${WFLAG} ${lmemopt} -d="""${desc}"""
+        echo bash run.sh ${OPTS} -c="$cores" -fl="""$CFLAGS""" ${GDBOPT} ${lmemopt} -d="""${desc}"""
+        bash run.sh ${OPTS} -c="$cores" -fl="""$CFLAGS""" ${GDBOPT} ${lmemopt} -d="""${desc}"""
     done
 }
 
@@ -211,8 +212,8 @@ run_vary_cores() {
     for cores in 1 2 3 4 5; do 
         check_for_stop
         threads=$((cores*thrpc))
-        bash run.sh ${OPTS} -fl="""$CFLAGS""" ${WFLAG} -c=${cores} -t=${threads}    \
-            -nk=${NKEYS} -nb=${NBLOBS} -zs=${zparams} ${NOPIE} -d="""${desc}"""
+        bash run.sh ${OPTS} -fl="""$CFLAGS""" ${GDBOPT} -c=${cores} -t=${threads}    \
+            -nk=${NKEYS} -nb=${NBLOBS} -zs=${zparams} ${GDBOPT} -d="""${desc}"""
     done
 }
 
@@ -249,8 +250,34 @@ desc="test"
 # run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-nh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
-# run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "NONE" "$evg" "$KPR" "yes"
-# run_vary_lmem "eden"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "SC"   "$evg" "$KPR" "$prio"
+
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "yes"
+# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "$evp" "$evg" "$KPR" "yes"
+# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "yes"
+
+
+# INIT_ARRAY=1
+# desc="rdma"
+# for rmem in "eden-bh"; do 
+#     for evp in ""; do 
+#         for prio in "yes" ""; do 
+#             run_vary_lmem "$rmem" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32" "$evp" "$evg" "$KPR" "$prio"
+#         done
+#     done 
+# done
+
+# INIT_ARRAY=
+# desc="rdma-noinit"
+# for rmem in "eden"; do 
+#     for evp in "SC"; do 
+#         for prio in "yes"; do 
+#             run_vary_lmem "$rmem" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32" "$evp" "$evg" "$KPR" "$prio"
+#         done
+#     done 
+# done
 
 # Fastswap runs
 

@@ -189,12 +189,18 @@ for exp in $LS_CMD; do
         # gather numbers
         preload_start=$(cat $exp/preload_start 2>/dev/null)
         preload_end=$(cat $exp/preload_end 2>/dev/null)
-        ptime=$((preload_end-preload_start))
-
+        if [[ $preload_start ]] && [[ $preload_end ]]; then
+            ptime=$((preload_end-preload_start))
+        fi
         rstart=$(cat $exp/run_start 2>/dev/null)
         rend=$(cat $exp/run_end 2>/dev/null)
-        rtime=$((rend-rstart))
+        if [[ $rstart ]] && [[ $rend ]]; then
+            rtime=$((rend-rstart))
+        fi
         xput=$(grep "mops =" $exp/app.out | sed -n "s/^.*mops = //p")
+        if [[ $xput ]]; then 
+            xput=$(echo $xput | awk '{printf "%d", $1*1000000}')
+        fi
 
         # if runtime is zero, exclude  
         if [[ $FILTER_GOOD ]] && (! [[ $rtime ]] || [ $rtime -le 0 ]); then continue; fi
@@ -256,6 +262,9 @@ for exp in $LS_CMD; do
             reclaimcpu=$(csv_column_mean "$edenout" "cpu_per_h")
             bkendwait=$(csv_column_mean "$edenout" "backend_wait_cycles")
             hitr=
+            if [[ $annothits ]]; then
+                hitr=$(echo "scale=2; $annothits / $((annothits+faults))" | bc)
+            fi
         elif [ "$rmem" == "fastswap" ]; then
             fstat_out=${exp}/fstat_parsed
             fstat_in=${exp}/fstat.out 
@@ -287,7 +296,7 @@ for exp in $LS_CMD; do
         # SHENANGO
         shenangoout=${exp}/runtime_parsed_s${sampleid}
         shenangoin=${exp}/runtime.out 
-        if ([[ $FORCE ]] || [ ! -f $shenangoout ]) && [ -f $shenangoin ]; then 
+        if ([[ $FORCE ]] || [ ! -f $shenangoout ]) && [ -f $shenangoin ] && [[ $rstart ]] && [[ $rend ]]; then 
             python ${ROOT_SCRIPTS_DIR}/parse_shenango_runtime.py -i ${shenangoin}   \
                 -o ${shenangoout}  -st=${rstart} -et=${rend} 
         fi
@@ -320,8 +329,8 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,EvPr";          LINE="$LINE,${evictprio}";
     # HEADER="$HEADER,EvG";           LINE="$LINE,${evictgens}";
     if [ -z "$BASIC" ]; then
-        # HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime}";
-        # HEADER="$HEADER,Runtime";       LINE="$LINE,${rtime}";
+        HEADER="$HEADER,PreloadTime";   LINE="$LINE,${ptime}";
+        HEADER="$HEADER,Runtime";       LINE="$LINE,${rtime}";
         HEADER="$HEADER,Xput";          LINE="$LINE,${xput:-}";
         # HEADER="$HEADER,XputPerCore";   LINE="$LINE,${xputpercore}";
         HEADER="$HEADER,Faults";        LINE="$LINE,${faults}";

@@ -113,12 +113,12 @@ def main():
     if not tdf.empty:
         if 'total_cycles' in tdf and tdf['total_cycles'].iloc[0] > 0:
             tdf['cpu_per'] = tdf['work_cycles'] * 100 / tdf['total_cycles']
-            tdf['cpu_per'] = tdf['cpu_per'].replace(np.inf, 0).astype(int)
+            # tdf['cpu_per'] = tdf['cpu_per'].replace(np.inf, 0).astype(int)
     
     if not hdf.empty:
         if 'total_cycles' in hdf and hdf['total_cycles'].iloc[0] > 0:
             hdf['cpu_per'] = hdf['work_cycles'] * 100 / hdf['total_cycles']
-            hdf['cpu_per'] = hdf['cpu_per'].replace(np.inf, 0).astype(int)
+            # hdf['cpu_per'] = hdf['cpu_per'].replace(np.inf, 0).astype(int)
 
     # merge both
     assert len(tdf) == len(hdf)
