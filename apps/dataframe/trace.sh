@@ -135,7 +135,8 @@ if [[ $FORCE ]]; then
     if [[ $SAFEMODE ]];     then    OPTS="$OPTS SAFEMODE=1";            fi
     if [[ $GDB ]];          then    OPTS="$OPTS GDB=1";                 fi
     if [[ $DEBUG ]];        then    OPTS="$OPTS DEBUG=1";               fi
-    make fltrace.so -j ${DEBUG} ${OPTS}
+    make clean
+    make fltrace.so -j ${OPTS}
     popd
 fi
 

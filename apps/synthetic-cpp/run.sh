@@ -38,7 +38,8 @@ DATADIR="${SCRIPT_DIR}/data/"
 ROOT_DIR="${SCRIPT_DIR}/../../"
 ROOT_SCRIPTS_DIR="${ROOT_DIR}/scripts/"
 FASTSWAP_DIR="${ROOT_DIR}/fastswap"
-BINFILE="${SCRIPT_DIR}/main.out"
+APPDIR=${SCRIPT_DIR}/synthetic-aifm
+BINFILE="main"
 RCNTRL_SSH="sc07"
 RCNTRL_IP="192.168.100.81"
 RCNTRL_PORT="9202"
@@ -46,7 +47,7 @@ MEMSERVER_SSH=$RCNTRL_SSH
 MEMSERVER_IP=$RCNTRL_IP
 MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/eden"
-SNAPPY_DIR="${SCRIPT_DIR}/snappy-c"
+SNAPPY_DIR="${APPDIR}/snappy-c"
 EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
 TMP_FILE_PFX="tmp_syn_"
 CFGFILE="shenango.config"
@@ -78,12 +79,17 @@ RDAHEAD=no
 EVICT_GENS=1
 PRIO=no
 EVICT_NPRIO=1
+PRIO_TYPE=
+LRU_BUMP_THR=0.5
+SHENANGO=1
 
 NCORES=1
-ZIPFS="0.1"
-NKEYS=1000
-NBLOBS=1000
+NTHREADS=40
+ZIPFS="0.85"
+HASH_POWER_SHIFT=20
+NUM_ARRAY_ENTRIES="(1<<15)"
 LMEM=1000000000    # 1GB
+KEYS_PER_REQ=32
 
 # save settings
 CFGSTORE=
@@ -114,31 +120,23 @@ case $i in
     CFLAGS="$CFLAGS ${i#*=}"
     ;;
 
-    -s|--shenango)
-    SHENANGO=1
-    ;;
-
     -e|--eden)
     EDEN=1
-    SHENANGO=1
     ;;
     
     -h|--hints)
     EDEN=1
     HINTS=1
-    SHENANGO=1
     ;;
 
     -bh|--bhints)
     EDEN=1
     HINTS=1
     BHINTS=1
-    SHENANGO=1
     ;;
 
     -fs|--fastswap)
     FASTSWAP=1
-    #SHENANGO=1
     ;;
 
     -be=*|--batchevict=*)
@@ -158,6 +156,14 @@ case $i in
     PRIO=yes
     EVICT_NPRIO=2
     CFLAGS="$CFLAGS -DSET_PRIORITY"
+    ;;
+
+    -prt=*|--priotype=*)
+    PRIO_TYPE=${i#*=}
+    ;;
+
+    -lthr=*|--lrubumpthr=*)
+    LRU_BUMP_THR=${i#*=}
     ;;
 
     -se|--sampleepochs)
@@ -192,17 +198,21 @@ case $i in
     ZIPFS=${i#*=}
     ;;
 
-    -nk=*|--nkeys=*)
-    NKEYS=${i#*=}
+    -hp=*|--hpshift=*)
+    HASH_POWER_SHIFT=${i#*=}
     ;;
 
-    -nb=*|--nblobs=*)
-    NBLOBS=${i#*=}
+    -nae=*|--numarrent=*)
+    NUM_ARRAY_ENTRIES=${i#*=}
     ;;
 
     -kpr=*|--keyspreq=*)
     KEYS_PER_REQ=${i#*=}
     CFLAGS="$CFLAGS -DKEYS_PER_REQ=$KEYS_PER_REQ"
+    ;;
+
+    -ia|--initarray)
+    CFLAGS="$CFLAGS -DINITIALIZE_ARRAY"
     ;;
 
     -lm=*|--localmem=*)
@@ -237,7 +247,6 @@ case $i in
     ;;
 
     -pfs|--pfsamples)
-    KEEPBIN=1
     SHEN_CFLAGS="$SHEN_CFLAGS -DFAULT_SAMPLER"
     ;;
 
@@ -250,7 +259,7 @@ case $i in
     exit
     ;;
 
-    *)                      # unknown option
+    *)  # unknown option
     echo "Unknown Option: $i"
     echo -e $usage
     exit
@@ -268,7 +277,6 @@ RMEM_HANDLER_CORE=55
 FASTSWAP_RECLAIM_CPU=55
 SHENANGO_STATS_CORE=54
 SHENANGO_EXCLUDE=${SHENANGO_STATS_CORE},${FASTSWAP_RECLAIM_CPU}
-NTHREADS=${NTHREADS:-$NCORES}
 
 # helpers
 start_cpu_sar() {
@@ -310,6 +318,7 @@ stop_fsstat() {
 }
 kill_remnants() {
     sudo pkill iokerneld || true
+    sudo ipcrm -a
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"            # eden memcontrol
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"   # eden memserver
     # ssh ${MEMSERVER_SSH} "pkill rmserver; rm -f ~/scratch/rmserver"     # fastswap server
@@ -345,15 +354,6 @@ if [[ $EDEN ]]; then
     RMEM="eden-nh"
     CFLAGS="$CFLAGS -DEDEN -DREMOTE_MEMORY"
 
-    # until deadline
-    pushd ${SHENANGO_DIR}
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    if [[ $branch != "synthetic" ]]; then
-        echo "ERROR! use only the synthetic branch until the deadline"
-        exit 1
-    fi
-    popd
-
     # hints
     if [[ $HINTS ]]; then
         RMEM="eden"
@@ -375,6 +375,16 @@ if [[ $EDEN ]]; then
         # because eviction-specific hints are defined in a header file 
         CFLAGS="$CFLAGS -D${EVICT_POLICY}_EVICTION"
         SHEN_CFLAGS="$SHEN_CFLAGS -D${EVICT_POLICY}_EVICTION"
+        SHEN_CFLAGS="$SHEN_CFLAGS -DLRU_EVICTION_BUMP_THR=${LRU_BUMP_THR}"
+    fi
+
+    # eviction priority type
+    if [[ $PRIO_TYPE ]]; then
+        if [[ $PRIO_TYPE != "LINEAR" ]] && [[ $PRIO_TYPE != "EXPONENTIAL" ]]; then
+            echo "ERROR! invalid custom evict priority type ${PRIO_TYPE}. Allowed: LINEAR, EXPONENTIAL"
+            exit 1
+        fi
+        SHEN_CFLAGS="$SHEN_CFLAGS -DEVPRIORITY_${PRIO_TYPE}"
     fi
 fi
 
@@ -423,34 +433,36 @@ if [[ $FORCE ]] && [[ $SHENANGO ]]; then
     if ! [[ $NO_STATS ]];   then    OPTS="$OPTS STATS_CORE=${SHENANGO_STATS_CORE}"; fi
     OPTS="$OPTS NUMA_NODE=${NUMA_NODE} EXCLUDE_CORES=${SHENANGO_EXCLUDE}"
     make all -j ${DEBUG} ${OPTS} PROVIDED_CFLAGS="""$SHEN_CFLAGS"""
-    popd
-fi
 
-# rebuild snappy
-if [[ $FORCE ]]; then 
-    pushd ${SNAPPY_DIR} 
+    # synthetic also requires cpp binding and memory shim
+    pushd bindings/cc
     make clean
-    make PROVIDED_CFLAGS="""$CFLAGS"""
+    make -j ${DEBUG}
+    popd
+    pushd shim
+    make clean
+    make -j ${DEBUG} NUMA_NODE=${NUMA_NODE}
+    popd
     popd
 fi
 
-# link shenango
-if [[ $SHENANGO ]]; then
-	SCHEDULER="shenango"
-	CFLAGS="${CFLAGS} -DSHENANGO"
-    INC="${INC} -I${SHENANGO_DIR}/inc"
-    LIBS="${LIBS} ${SHENANGO_DIR}/libruntime.a  ${SHENANGO_DIR}/librmem.a ${SHENANGO_DIR}/libnet.a ${SHENANGO_DIR}/libbase.a -lrdmacm -libverbs"
-    LDFLAGS="${LDFLAGS} -lpthread -T${SHENANGO_DIR}/base/base.ld -no-pie -lm"
-fi
+# figure out input size
+mainfile=${APPDIR}/main.cpp
+sed "s/constexpr static uint32_t kNumArrayEntries = .*/constexpr static uint32_t kNumArrayEntries = $NUM_ARRAY_ENTRIES;/g" ${mainfile} -i
+sed "s/constexpr static uint32_t kLocalHashTableNumEntriesShift = .*/constexpr static uint32_t kLocalHashTableNumEntriesShift = $HASH_POWER_SHIFT;/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumKVPairs = .*/constexpr static uint32_t kNumKVPairs = (1 << $((HASH_POWER_SHIFT-1)));/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumKeysPerRequest = .*/constexpr static uint32_t kNumKeysPerRequest = ${KEYS_PER_REQ};/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumMutatorThreads = .*/constexpr static uint32_t kNumMutatorThreads = ${NTHREADS};/g" ${mainfile} -i    
+sed "s/constexpr static double kZipfParamS = .*/constexpr static double kZipfParamS = ${ZIPFS};/g" ${mainfile} -i 
 
-# link snappy
-INC="${INC} -I${SNAPPY_DIR}/"
-LIBS="${LIBS} ${SNAPPY_DIR}/libsnappyc.so"
-
-# compile
-LIBS="${LIBS} -lpthread -lm"
-gcc -O0 -g -ggdb main.c utils.c hopscotch.c zipf.c aes.c -D_GNU_SOURCE \
-    ${INC} ${LIBS} ${CFLAGS} ${LDFLAGS} -o ${BINFILE}
+# build app
+pushd ${APPDIR}
+if [[ $FORCE ]]; then make clean; fi
+OPTS=
+if [[ $EDEN ]]; then OPTS="$OPTS EDEN_SHIM=1"; fi
+CFLAGS="$CFLAGS -DSTARTING_CORE_ID=$((BASECORE+1))"
+make -j$(nproc) ${OPTS} PROVIDED_CXXFLAGS="""$CFLAGS"""
+popd
 
 if [[ $BUILD_ONLY ]]; then 
     exit 0
@@ -464,9 +476,10 @@ pushd $expdir
 echo "running ${EXPNAME}"
 save_cfg "cores"        $NCORES
 save_cfg "threads"      $NTHREADS
-save_cfg "keys"         $NKEYS
-save_cfg "blobs"        $NBLOBS
+save_cfg "hashpower"    $HASH_POWER_SHIFT
+save_cfg "narray"       $NUM_ARRAY_ENTRIES
 save_cfg "zipfs"        $ZIPFS
+save_cfg "kpr"          $KEYS_PER_REQ
 save_cfg "warmup"       $WARMUP
 save_cfg "scheduler"    $SCHEDULER
 save_cfg "rmem"         $RMEM
@@ -503,7 +516,7 @@ rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}
 rmem_evict_ngens ${EVICT_GENS}
 rmem_evict_nprio ${EVICT_NPRIO}
-rmem_fsampler_rate 10000"""
+rmem_fsampler_rate 1000"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
@@ -572,15 +585,6 @@ for retry in 1; do
         start_cpu_sar 1 "." ${CPUSTR}
     fi 
 
-    # run in gdb server if requested
-    if [[ $GDB ]]; then
-        if [ -z "$wrapper" ]; then
-            wrapper="gdbserver :1234 "
-        else
-            wrapper="gdbserver --wrapper $wrapper -- :1234 "
-        fi
-    fi
-
     # start memory stats for fastswap
     if [[ $FASTSWAP ]]; then
         start_memory_stat
@@ -590,9 +594,17 @@ for retry in 1; do
     fi
 
     # run
-    args="${CFGFILE} ${NCORES} ${NTHREADS} ${NKEYS} ${NBLOBS} ${ZIPFS}"
-    echo sudo ${wrapper} ${BINFILE} ${args} 
-    nohup sudo ${wrapper} ${BINFILE} ${args} 2>&1 | tee app.out &
+    args=
+    if [[ $SHENANGO ]]; then    args="${CFGFILE} $args"; fi
+    binfile=${APPDIR}/${BINFILE}
+    echo sudo ${wrapper} ${binfile} ${args}
+    if [[ $GDB ]]; then 
+        echo "run: cd $expdir && sudo gdb --args ${binfile} ${args}"
+        echo "waiting for gdb"
+        sleep 300
+    else
+       sudo ${wrapper} ${binfile} ${args} 2>&1 | tee app.out &
+    fi
 
     # wait for run to finish
     tries=0
@@ -615,7 +627,7 @@ for retry in 1; do
         while ps -p $pid > /dev/null; do
             sleep 1
             tries=$((tries+1))
-            if [[ $tries -gt 1000 ]]; then
+            if [[ $tries -gt 2000 ]]; then
                 echo "ran too long"
                 sudo kill -9 $pid
                 break

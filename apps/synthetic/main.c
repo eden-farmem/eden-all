@@ -19,6 +19,11 @@
 #define KEYS_PER_REQ 		1
 #endif
 
+#ifndef MIN
+/* to run against older eden */
+#define MIN min
+#endif
+
 /* these decide how long the experiment runs and how many 
  * requests to generate. Adjust maximum expected performance 
  * per core (MAX_OPS_PER_CORE) appropriately to generate 
@@ -398,8 +403,8 @@ void main_thread(void* arg) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nblobs = nblobs;
-		targs[j].start = min(j * shard_sz, nkeys);
-		targs[j].len = min(shard_sz, nkeys - targs[j].start);
+		targs[j].start = MIN(j * shard_sz, nkeys);
+		targs[j].len = MIN(shard_sz, nkeys - targs[j].start);
 		WAITGROUP_ADD(workers_wg, 1);
 		ret = THREAD_CREATE(&workers[j], setup_table, &targs[j]);
 		ASSERTZ(ret);
@@ -414,8 +419,8 @@ void main_thread(void* arg) {
 		targs[j].tid = j;
 		targs[j].nkeys = nkeys;
 		targs[j].nblobs = nblobs;
-		targs[j].start = min(j * shard_sz, nblobs);
-		targs[j].len = min(shard_sz, nblobs - targs[j].start);
+		targs[j].start = MIN(j * shard_sz, nblobs);
+		targs[j].len = MIN(shard_sz, nblobs - targs[j].start);
 		WAITGROUP_ADD(workers_wg, 1);
 		ret = THREAD_CREATE(&workers[j], setup_blobs, &targs[j]);
 		ASSERTZ(ret);
@@ -458,8 +463,8 @@ void main_thread(void* arg) {
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
 		targs[j].nblobs = nblobs;
-		targs[j].start = min(j * shard_sz, nreqs);
-		targs[j].len = min(shard_sz, nreqs - targs[j].start);
+		targs[j].start = MIN(j * shard_sz, nreqs);
+		targs[j].len = MIN(shard_sz, nreqs - targs[j].start);
 		WAITGROUP_ADD(workers_wg, 1);
 		ret = THREAD_CREATE(&workers[j], prepare_workload, &targs[j]);
 		ASSERTZ(ret);
@@ -486,8 +491,8 @@ void main_thread(void* arg) {
 		targs[j].nkeys = nkeys;
 		targs[j].nreqs = nreqs;
 		targs[j].nblobs = nblobs;
-		targs[j].start = min(j * shard_sz, nreqs);
-		targs[j].len = min(shard_sz, nreqs - targs[j].start);
+		targs[j].start = MIN(j * shard_sz, nreqs);
+		targs[j].len = MIN(shard_sz, nreqs - targs[j].start);
 		targs[j].xput = 0;
 		WAITGROUP_ADD(workers_wg, 1);
 		ret = THREAD_CREATE(&workers[j], run, &targs[j]);

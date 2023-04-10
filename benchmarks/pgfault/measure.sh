@@ -146,18 +146,20 @@ set_fault_op_opts() {
 
 measure_xput_vary_cpu()
 {
-    name="nohints"
+    ## Only running for testing Eden; don't get numbers
+    TESTRUN="test-"
+
     # sc="shenango"
-    for bkend in "local"; do
-        for rmem in "hints+4" "hints-4"; do
+    for bkend in "rdma"; do
+        for rmem in "hints"; do
         # for rmem in "hints" "hints+1" "hints+2" "hints+4"; do
         # for rmem in "fswap"; do       # "fswap+1" "fswap+3" "fswap+7" ; do
             # for evict in "noevict" "evict" "evict2" "evict4" "evict8" "evict16" "evict32" "evict64"; do
             for evict in "evict"; do
                 # for op in "read" "write"; do
-                for op in "read" "write"; do
+                for op in "read"; do
                     # reset
-                    cfg=${rmem}-${evict}-${bkend}-${op}
+                    cfg=${TESTRUN}${rmem}-${evict}-${bkend}-${op}
                     CFLAGS=${CFLAGS_BEFORE}
                     OPTS=${OPTS_BEFORE}
                     LS=solid
@@ -177,8 +179,8 @@ measure_xput_vary_cpu()
                         # reloading fastswap everytime takes time
                         bash run.sh ${OPTS} -fl="""$CFLAGS""" --force --buildonly   #recompile
                         echo "cores,xput,reclaimcpu" > $datafile
-                        for cores in `seq 1 1 12`; do 
-                        # for cores in 1; do 
+                        # for cores in `seq 1 1 12`; do 
+                        for cores in 1; do 
                             rm -f result
                             bash run.sh ${OPTS} -t=${cores} -fl="""$CFLAGS""" ${PRELOAD}
                             xput=$(cat result 2>/dev/null)
@@ -209,7 +211,7 @@ measure_xput_vary_cpu()
 
     if [[ $PLOT ]]; then
         mkdir -p ${PLOTDIR}
-        plotname=${PLOTDIR}/fault_xput_cpu_${name}.${PLOTEXT}
+        plotname=${PLOTDIR}/fault_xput_cpu.${PLOTEXT}
         python ${PLOTSRC} ${plots}                  \
             -xc cores -xl "App CPU"                 \
             -yc xput -yl "MOPS" --ymul 1e-6         \

@@ -63,7 +63,9 @@ if [[ ! $SARFILE ]] || [[ ! $SARCOL ]]; then echo "must provide -sf and -sc"; ec
 if [ ! -f $SARFILE ];then   echo "no file found at path: ${SARFILE}";  exit 1;    fi
 
 # get header/cols
-header=$(cat $SARFILE | tail -n+3 | grep -w "$SARCOL" | head -n1)
+# header=$(cat $SARFILE | tail -n+3 | grep -w "$SARCOL" | head -n1)
+headerlines=$(cat $SARFILE | tail -n+3 | grep -w "$SARCOL")
+header=$(echo "$headerlines" | head -n1)
 if [ -z "$header" ]; then   echo "can't find '$SARCOL'"; exit 1;    fi
 cols=$(echo $header | awk '{for (i=0; i<=NF; i++) {
         switch(i) {
