@@ -70,7 +70,9 @@ CORES=10     # was 10
 THREADS=40
 HASH_POWER_SHIFT=28
 NUM_ARRAY_ENTRIES="(2<<20)"
-EDEN_MAX=26626      #+1% EvT?
+KVENTRIES_SHIFT=27
+VALUE_SIZE=4
+EDEN_MAX=26750      #+1% EvT?
 FASTSWAP_MAX=26990
 KPR=32
 ZIPFS=0.85
@@ -167,9 +169,11 @@ run_vary_lmem() {
     if [[ $TRACE ]];            then  OPTS="$OPTS --pfsamples";             fi
     if [[ $INIT_ARRAY ]];       then  OPTS="$OPTS --initarray";             fi
     OPTS="$OPTS -hp=${HASH_POWER_SHIFT} -nae=${NUM_ARRAY_ENTRIES}"
+    OPTS="$OPTS -vs=${VALUE_SIZE} -kes=${KVENTRIES_SHIFT}"
     OPTS="$OPTS -t=${threads} -zs=${zparams}"
+    # OPTS="$OPTS --priotype=EXPONENTIAL"
     # OPTS="$OPTS --sampleepochs"
-    OPTS="$OPTS --safemode"
+    # OPTS="$OPTS --safemode"
     # OPTS="$OPTS --pfsamples"
     rebuild_with_current_config
     echo $OPTS
@@ -178,9 +182,8 @@ run_vary_lmem() {
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
     # for memp in 4 8 16 22 33 41 50 58 66 75 83 91 100; do
-    # for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
-    # for memp in 100 91 83 75 66 58 50 41 33; do
-    for memp in 50; do
+    for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+    # for memp in 33; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -245,38 +248,30 @@ ebs=                    # set eviction batch size
 evp=                    # set eviction policy
 evg=4                   # set eviction gens
 prio=                   # enable eviction priority
-desc="rdma"
+desc="test"
+
+## basic
 # run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-nh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
-run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 
-# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "$evp" "$evg" "$KPR" "$prio"
-# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "$prio"
-# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "yes"
-# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "$prio"
-# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "$evp" "$evg" "$KPR" "yes"
-# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32"   "SC"   "$evg" "$KPR" "yes"
+## prio
+for vs_kent in 4,27 100,25 200,24 400,23 800,22 1600,21 3200,20; do 
+VALUE_SIZE=$(echo $vs_kent | cut -d, -f1)
+KVENTRIES_SHIFT=$(echo $vs_kent | cut -d, -f2)
+echo "VALUE_SIZE=$VALUE_SIZE KVENTRIES_SHIFT=$KVENTRIES_SHIFT"
+desc="dne:${VALUE_SIZE}B"
+# for try in 1 2 3; do 
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "yes"
+# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "yes"
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "yes"
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "$prio"
+run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "NONE"   "$evg" "$KPR" "yes"
+done
 
-
-# INIT_ARRAY=1
-# desc="rdma"
-# for rmem in "eden-bh"; do 
-#     for evp in ""; do 
-#         for prio in "yes" ""; do 
-#             run_vary_lmem "$rmem" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32" "$evp" "$evg" "$KPR" "$prio"
-#         done
-#     done 
-# done
-
-# INIT_ARRAY=
-# desc="rdma-noinit"
-# for rmem in "eden"; do 
-#     for evp in "SC"; do 
-#         for prio in "yes"; do 
-#             run_vary_lmem "$rmem" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "32" "$evp" "$evg" "$KPR" "$prio"
-#         done
-#     done 
-# done
+## vary zipfs
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "0.5" "1"   "32"   "$evp" "$evg" "$KPR" "yes"
 
 # Fastswap runs
 # run_vary_lmem "uthr" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"

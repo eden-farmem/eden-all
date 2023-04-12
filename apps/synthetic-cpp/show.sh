@@ -187,11 +187,13 @@ for exp in $LS_CMD; do
 
     if [ -z "$BASIC" ]; then
         # gather numbers
+        ptime=
         preload_start=$(cat $exp/preload_start 2>/dev/null)
         preload_end=$(cat $exp/preload_end 2>/dev/null)
         if [[ $preload_start ]] && [[ $preload_end ]]; then
             ptime=$((preload_end-preload_start))
         fi
+        rtime=
         rstart=$(cat $exp/run_start 2>/dev/null)
         rend=$(cat $exp/run_end 2>/dev/null)
         if [[ $rstart ]] && [[ $rend ]]; then

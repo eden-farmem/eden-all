@@ -87,9 +87,12 @@ NCORES=1
 NTHREADS=40
 ZIPFS="0.85"
 HASH_POWER_SHIFT=20
+KVENTRIES_SHIFT=19
 NUM_ARRAY_ENTRIES="(1<<15)"
 LMEM=1000000000    # 1GB
 KEYS_PER_REQ=32
+VALUE_SIZE=4
+
 
 # save settings
 CFGSTORE=
@@ -200,6 +203,14 @@ case $i in
 
     -hp=*|--hpshift=*)
     HASH_POWER_SHIFT=${i#*=}
+    ;;
+
+    -vs=*|--valsize=*)
+    VALUE_SIZE=${i#*=}
+    ;;
+
+    -kes=*|--kventshift=*)
+    KVENTRIES_SHIFT=${i#*=}
     ;;
 
     -nae=*|--numarrent=*)
@@ -317,6 +328,7 @@ stop_fsstat() {
     if [[ $pid ]]; then  sudo kill ${pid}; fi
 }
 kill_remnants() {
+    if [[ $BINFILE ]]; then sudo pkill ${BINFILE} || true; fi
     sudo pkill iokerneld || true
     sudo ipcrm -a
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"            # eden memcontrol
@@ -376,6 +388,10 @@ if [[ $EDEN ]]; then
         CFLAGS="$CFLAGS -D${EVICT_POLICY}_EVICTION"
         SHEN_CFLAGS="$SHEN_CFLAGS -D${EVICT_POLICY}_EVICTION"
         SHEN_CFLAGS="$SHEN_CFLAGS -DLRU_EVICTION_BUMP_THR=${LRU_BUMP_THR}"
+    fi
+
+    if [ "$PRIO" == "yes" ]; then
+        SHEN_CFLAGS="$SHEN_CFLAGS -DEVICTION_DNE_ON"
     fi
 
     # eviction priority type
@@ -450,7 +466,8 @@ fi
 mainfile=${APPDIR}/main.cpp
 sed "s/constexpr static uint32_t kNumArrayEntries = .*/constexpr static uint32_t kNumArrayEntries = $NUM_ARRAY_ENTRIES;/g" ${mainfile} -i
 sed "s/constexpr static uint32_t kLocalHashTableNumEntriesShift = .*/constexpr static uint32_t kLocalHashTableNumEntriesShift = $HASH_POWER_SHIFT;/g" ${mainfile} -i    
-sed "s/constexpr static uint32_t kNumKVPairs = .*/constexpr static uint32_t kNumKVPairs = (1 << $((HASH_POWER_SHIFT-1)));/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kNumKVPairs = .*/constexpr static uint32_t kNumKVPairs = (1 << $KVENTRIES_SHIFT);/g" ${mainfile} -i    
+sed "s/constexpr static uint32_t kValueLen = .*/constexpr static uint32_t kValueLen = $VALUE_SIZE;/g" ${mainfile} -i    
 sed "s/constexpr static uint32_t kNumKeysPerRequest = .*/constexpr static uint32_t kNumKeysPerRequest = ${KEYS_PER_REQ};/g" ${mainfile} -i    
 sed "s/constexpr static uint32_t kNumMutatorThreads = .*/constexpr static uint32_t kNumMutatorThreads = ${NTHREADS};/g" ${mainfile} -i    
 sed "s/constexpr static double kZipfParamS = .*/constexpr static double kZipfParamS = ${ZIPFS};/g" ${mainfile} -i 
@@ -478,6 +495,8 @@ save_cfg "cores"        $NCORES
 save_cfg "threads"      $NTHREADS
 save_cfg "hashpower"    $HASH_POWER_SHIFT
 save_cfg "narray"       $NUM_ARRAY_ENTRIES
+save_cfg "entriesshift" $KVENTRIES_SHIFT
+save_cfg "valsize"      $VALUE_SIZE
 save_cfg "zipfs"        $ZIPFS
 save_cfg "kpr"          $KEYS_PER_REQ
 save_cfg "warmup"       $WARMUP
@@ -516,7 +535,7 @@ rmem_evict_threshold ${EVICT_THRESHOLD}
 rmem_evict_batch_size ${EVICT_BATCH_SIZE}
 rmem_evict_ngens ${EVICT_GENS}
 rmem_evict_nprio ${EVICT_NPRIO}
-rmem_fsampler_rate 1000"""
+rmem_fsampler_rate 100000"""
 echo "$shenango_cfg" > $CFGFILE
 popd
 
@@ -530,8 +549,8 @@ if [[ $FASTSWAP ]]; then
     sudo bash -c "echo ${LMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
 fi
 
-# for retry in {1..3}; do
-for retry in 1; do
+for retry in {1..3}; do
+# for retry in 1; do
     # prepare for run
     kill_remnants
 
@@ -637,8 +656,8 @@ for retry in 1; do
 
         # if we're here, the run has mostly succeeded
         # only retry if we have silenty failed because of rmem server
-        res=$(grep "Unknown event: is server running?" ${expdir}/app.out || true)
-        if [ -z "$res" ]; then 
+        res=$(grep "mops =" ${expdir}/app.out || true)
+        if [ -n "$res" ]; then 
             echo "no error; moving on"
             mv ${expdir} $DATADIR/
             echo "final results at $DATADIR/${expdir}"
