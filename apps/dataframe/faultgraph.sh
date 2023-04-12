@@ -35,6 +35,9 @@ case $i in
 esac
 done
 
+## saved run ids
+# run-04-10-13-42-09
+
 # take the latest run if not specified
 if [ -z "${RUNID}" ]; then
     RUNID=`ls -1 ${DATADIR} | grep "run-" | sort | tail -1`
@@ -70,5 +73,14 @@ if [ ! -d ${FLAMEGRAPHDIR} ]; then
 fi
 python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR} -i ${tracesfolded} --nolib -o ${expdir}/flamegraph.dat
 python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR} -i ${tracesfolded} --nolib -z -o ${expdir}/flamegraph-zero.dat
-${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph.dat --color=fault --width=1600 --fontsize=8 > ${expdir}/flamegraph.svg
-${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNAME} (Allocation Faults)" --color=fault --width=1600 --fontsize=8 > ${expdir}/flamegraph-zero.svg
+python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${SCRIPTDIR} -i ${tracesfolded} --nolib -nz -o ${expdir}/flamegraph-nonzero.dat
+${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph.dat --color=fault --width=1600 --fontsize=12 > ${expdir}/flamegraph.svg
+${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNAME} (Allocation Faults)" --color=fault --width=1600 --fontsize=12 > ${expdir}/flamegraph-zero.svg
+${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph-nonzero.dat --color=fault --width=1600 --fontsize=12 > ${expdir}/flamegraph-nonzero.svg
+
+# Also dump locations in plain 
+srcdir=${SCRIPTDIR}/dataframe
+# srcdir=${SCRIPTDIR}/dataframe/app
+python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -o ${expdir}/locations.dat
+python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -z -o ${expdir}/locations-zero.dat
+python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -nz -o ${expdir}/locations-nonzero.dat

@@ -6,6 +6,7 @@ import argparse
 import csv
 import os
 import re
+from collections import defaultdict
 
 ## Exclude these file sections from the flame graph
 # E.g., to avoid recursive stacks. Hard-coding for now.
@@ -57,7 +58,7 @@ class CodePointer:
         self.inlineparents = []  # parent code pointers if inlined
         self.originalcp = None    # original code pointer if inlined
 
-    def add_code_location(self, text, srcdir=None):
+    def add_code_location(self, text):
         """Fill the code location details parsed from a string"""
         # expected format: <filepath>:<line> (discriminator <pd>)
         local = False
@@ -65,9 +66,6 @@ class CodePointer:
         match = re.fullmatch(pattern, text)
         assert match and len(match.groups()) == 4
         filepath = match.groups()[0]
-        if srcdir and filepath.startswith(srcdir):
-            filepath = filepath[len(srcdir):].strip("/")
-            local = True
         filename = filepath.split("/")[-1]
         dirpath = filepath[:-len(filename)].rstrip("/")
         file = CodeFile(dirpath, filename, local)
@@ -81,6 +79,7 @@ class CodePointer:
         """ customized name for the flame graph viz. """
         prefix = os.path.basename(self.lib) if self.lib else "Unknown"
         filename = os.path.basename(self.file.name) if self.file else None
+        # filename = os.path.join(self.file.dirpath, self.file.name) if self.file else None
         suffix = "{}:{}".format(filename, self.line) if filename else self.ip
         s = "{}|{}".format(prefix, suffix) if not nolib else suffix
         if self.pd:   s += " ({})".format(self.pd)
@@ -196,24 +195,32 @@ def parse_fault_from_csv_row(ftraces, row, srcdir=None):
         codepointer = ftraces.codepointers[ip]
 
         # parse and save location information
+        local = False
         if codepointer.file is None:
             if code and "??" not in code:
                 # main code location
                 mcode = code.split("<<<")[0]
-                codepointer.add_code_location(mcode, srcdir)
+                codepointer.add_code_location(mcode)
                 ftraces.files.add(str(codepointer.file))
+
+                # figure out if this is local code based on the file path
+                if not srcdir or codepointer.file.dirpath.startswith(srcdir):
+                    local = True
+
                 # inlined locations
                 inlinedcodes = code.split("<<<")[1:]
                 for icode in inlinedcodes:
                     if icode and "??" not in icode:
                         # do not add these to global maps
                         inlinedpointer = CodePointer(ip)
-                        inlinedpointer.add_code_location(icode, srcdir)
+                        inlinedpointer.add_code_location(icode)
                         inlinedpointer.originalcp = codepointer
                         inlinedpointer.lib = lib
+                        inlinedpointer.local = (not srcdir or inlinedpointer.file.dirpath.startswith(srcdir))
                         ftraces.files.add(str(inlinedpointer.file))
                         codepointer.inlineparents.append(inlinedpointer)
             codepointer.lib = lib
+            codepointer.local = local
 
         codepointer.tcount += 1
         codepointer.fcount += fault.count
@@ -243,6 +250,22 @@ def parse_fault_from_csv_row(ftraces, row, srcdir=None):
         fault.trace.remove("")
     fault.trace.reverse()
 
+def get_locations_from_trace(ftraces, trace, nolib=False, annotleaf=False, local=False):
+    """Get code locations in text from a trace"""
+    locations = []
+    ignore = False
+    for i, ip in enumerate(trace):
+        cp = ftraces.codepointers[ip]
+        if cp.ignore_trace():
+            return None
+        locations += [c.flamegraph_name(nolib=nolib)   \
+            for c in reversed(cp.inlineparents) if (not local or c.local)]
+        if cp.ignore() or (local and not cp.local):
+            continue
+        is_leaf = annotleaf and (i == len(trace)-1)
+        locations.append(cp.flamegraph_name(is_leaf, nolib))
+    return locations
+
 ### Main
 
 def main():
@@ -252,6 +275,9 @@ def main():
     parser.add_argument('-s', '--srcdir', action='store', help='base path to the app source code', default="")
     parser.add_argument('-c', '--cutoff', action='store', type=int, help='pruning cutoff as percentage of total fault count')
     parser.add_argument('-z', '--zero', action='store_true', help='consider only zero faults', default=False)
+    parser.add_argument('-nz', '--nonzero', action='store_true', help='consider only non-zero faults', default=False)
+    parser.add_argument('-l', '--local', action='store_true', help='consider only local code locations', default=False)
+    parser.add_argument('-p', '--plain', action='store_true', help='write code locations and their count in plain text instead of flame graph', default=False)
     parser.add_argument('-o', '--output', action='store', help='path to the output flame graph data', required=True)
     # flamegraph formatting options
     parser.add_argument('-nl', '--nolib', action='store_true', help='do not include library name', default=False)
@@ -275,7 +301,7 @@ def main():
     # filter for zero faults
     if args.zero:
         traces.faults = [f for f in traces.faults if f.type == "zero"]
-    else:
+    if args.nonzero:
         traces.faults = [f for f in traces.faults if f.type != "zero"]
 
     # prune traces (simplest way to prune: remove all traces below 
@@ -294,24 +320,34 @@ def main():
         traces.faults = traces.faults[:cutoffidx]
         print("Unique {}% Traces: {}".format(args.cutoff, len(traces.faults)))
 
-    # return in flamegraph format
+    # write in plain text if requested
+    if args.plain:
+        codecounts = defaultdict(int)
+        for f in traces.faults:
+            locations = get_locations_from_trace(traces, f.trace, args.nolib, \
+                annotleaf=False, local=args.local)
+            assert locations, "Trace ignored"
+            cpname = locations[-1]
+            codecounts[cpname] += f.count
+        # print(codecounts)
+        codecounts = sorted(codecounts.items(), key=lambda x: x[1], reverse=True)
+        total = sum([v for _,v in codecounts])
+        pdf = {k: round(100*v/total, 2) for k,v in codecounts}
+        cdf = {k: round(100*sum([v for _,v in codecounts[:i+1]])/total, 2) \
+            for i,(k,v) in enumerate(codecounts)}
+        with open(args.output, "w") as fp:
+            fp.write("count,percent,cdf,code\n")
+            for cpname, count in codecounts:
+                fp.write("{},{},{},{}\n".format(count, pdf[cpname], cdf[cpname], cpname))
+        return
+
+    # return in flamegraph format (default)
     with open(args.output, "w") as fp:
         for f in traces.faults:
-            locations = []
-            ignore = False
-            for i, ip in enumerate(f.trace):
-                cp = traces.codepointers[ip]
-                if cp.ignore_trace():
-                    ignore = True
-                    break
-                if cp.ignore():
-                    continue
-                locations += [c.flamegraph_name(nolib=args.nolib)   \
-                    for c in reversed(cp.inlineparents)]
-                is_leaf = (i == len(f.trace)-1)
-                locations.append(cp.flamegraph_name(is_leaf, args.nolib))
-            tracestr = ";".join(locations)
-            if not ignore:
+            locations = get_locations_from_trace(traces, f.trace, args.nolib, \
+                annotleaf=True, local=args.local)
+            if locations is not None:
+                tracestr = ";".join(locations)
                 fp.write("{} {}\n".format(tracestr, f.count))
         print("Wrote {} traces to {}".format(len(traces.faults), args.output))
 

@@ -314,13 +314,13 @@ if [[ $EDEN ]]; then
     GIT_BRANCH="eden"
 
     # until deadline
-    pushd ${SHENANGO_DIR}
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    if [[ $branch != "master" ]]; then
-        echo "ERROR! we're using master branch for dataframe"
-        exit 1
-    fi
-    popd
+    # pushd ${SHENANGO_DIR}
+    # branch=$(git rev-parse --abbrev-ref HEAD)
+    # if [[ $branch != "master" ]]; then
+    #     echo "ERROR! we're using master branch for dataframe"
+    #     exit 1
+    # fi
+    # popd
 
     # hints
     if [[ $HINTS ]]; then
@@ -435,7 +435,7 @@ inputpath=
 case $INPUT in
     "debug")    inputpath=/home/ayelam/data/yellow_tripdata_2016-01_simple.csv;;
     "small")    inputpath=/home/ayelam/data/yellow_tripdata_2016-01.csv;;
-    "large")    echo "ERROR! not set"; exit 1;;
+    "large")    inputpath=/data/ssd1/home/ayelam/all.csv;;
     *)          inputpath=/home/ayelam/data/yellow_tripdata_2016-01_simple.csv;;
 esac
 if [ ! -f $inputpath ]; then

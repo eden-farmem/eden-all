@@ -55,14 +55,14 @@ done
 # EDEN_MAX=1
 
 ## Small
-INPUT=small
-FASTSWAP_MAX=
-EDEN_MAX=3077     #3076+1%EvT
+# INPUT=small
+# FASTSWAP_MAX=
+# EDEN_MAX=3077     #3076+1%EvT
 
 ## Large
-# INPUT=large
-# FASTSWAP_MAX=
-# EDEN_MAX=
+INPUT=large
+FASTSWAP_MAX=
+EDEN_MAX=30000
 
 # create a stop button
 touch __running__
@@ -157,7 +157,7 @@ run_vary_lmem() {
     # run
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
-    for memp in 10; do
+    for memp in 150; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -178,8 +178,11 @@ evg=        # set eviction gens
 desc="test"
 
 # eden runs
-# run_vary_lmem "eden-nh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
-run_vary_lmem "eden-bh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
+# run_vary_lmem "pthr" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
+# TRACE=1
+run_vary_lmem "eden-nh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
+# TRACE=
+# run_vary_lmem "eden-bh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
 
 # run_vary_lmem "eden-nh" "rdma"  1 1 "$rd" "$ebs" "$evp" "$evg"
 
