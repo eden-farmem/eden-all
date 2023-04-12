@@ -182,8 +182,8 @@ run_vary_lmem() {
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
     # for memp in 4 8 16 22 33 41 50 58 66 75 83 91 100; do
-    for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
-    # for memp in 33; do
+    # for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+    for memp in 100; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -256,18 +256,20 @@ desc="test"
 # run_vary_lmem "eden-bh" "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 
 ## prio
-for vs_kent in 4,27 100,25 200,24 400,23 800,22 1600,21 3200,20; do 
+for vs_kent in 100,25 200,24 400,23 800,22 1600,21 3200,20; do 
 VALUE_SIZE=$(echo $vs_kent | cut -d, -f1)
 KVENTRIES_SHIFT=$(echo $vs_kent | cut -d, -f2)
 echo "VALUE_SIZE=$VALUE_SIZE KVENTRIES_SHIFT=$KVENTRIES_SHIFT"
-desc="dne:${VALUE_SIZE}B"
+desc="varyval"
 # for try in 1 2 3; do 
+run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "yes"
 # run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "yes"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "yes"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "$prio"
-run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "NONE"   "$evg" "$KPR" "yes"
+# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "$prio"
+# run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "NONE"   "$evg" "$KPR" "yes"
 done
 
 ## vary zipfs

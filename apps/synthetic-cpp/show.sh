@@ -83,6 +83,10 @@ case $i in
     BACKEND="${i#*=}"
     ;;
 
+    -vs=*|--valsize=*)
+    VALSIZE="${i#*=}"
+    ;;
+
     -zs=*|--zipfs=*)
     ZIPFS="${i#*=}"
     ;;
@@ -156,6 +160,8 @@ for exp in $LS_CMD; do
     backend=$(cat $exp/settings | grep "backend:" | awk -F: '{ print $2 }')
     hashpower=$(cat $exp/settings | grep "hashpower:" | awk -F: '{ print $2 }')
     narrayents=$(cat $exp/settings | grep "narray:" | awk -F: '{ print $2 }')
+    valsize=$(cat $exp/settings | grep "valsize:" | awk -F: '{ print $2 }')
+    entriesshift=$(cat $exp/settings | grep "entriesshift:" | awk -F: '{ print $2 }')
     zipfs=$(cat $exp/settings | grep "zipfs:" | awk -F: '{ print $2 }')
     kpr=$(cat $exp/settings | grep "kpr:" | awk -F: '{ print $2 }')
     rdahead=$(cat $exp/settings | grep "rdahead:" | awk -F: '{ print $2 }')
@@ -179,6 +185,7 @@ for exp in $LS_CMD; do
     if [[ $RMEM ]] && [ "$RMEM" != "$rmem" ];               then    continue;   fi
     if [[ $SCHEDULER ]] && [ "$SCHEDULER" != "$sched" ];    then    continue;   fi
     if [[ $ZIPFS ]] && [ "$ZIPFS" != "$zipfs" ];            then    continue;   fi
+    if [[ $VALSIZE ]] && [ "$VALSIZE" != "$valsize" ];      then    continue;   fi
     if [[ $RDAHEAD ]] && [ "$RDAHEAD" != "$rdahead" ];      then    continue;   fi
     if [[ $EVPOL ]] && [ "$EVPOL" != "$evictpol" ];         then    continue;   fi
     if [[ $EVPRIO ]] && [ "$EVPRIO" != "$evictprio" ];      then    continue;   fi
@@ -325,6 +332,8 @@ for exp in $LS_CMD; do
     HEADER="$HEADER,Threads";       LINE="$LINE,${threads}";
     HEADER="$HEADER,HashPower";     LINE="$LINE,${hashpower}";
     HEADER="$HEADER,ArrayEnts";     LINE="$LINE,${narrayents}";
+    HEADER="$HEADER,ValSize";       LINE="$LINE,${valsize}";
+    HEADER="$HEADER,EntriesShft";   LINE="$LINE,${entriesshift}";
     HEADER="$HEADER,KeysPerReq";    LINE="$LINE,${kpr}";
     HEADER="$HEADER,Local_MB";      LINE="$LINE,${localmem}";
     HEADER="$HEADER,LMem%";         LINE="$LINE,${lmemper}";
