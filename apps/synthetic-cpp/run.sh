@@ -48,7 +48,6 @@ MEMSERVER_IP=$RCNTRL_IP
 MEMSERVER_PORT="9200"
 SHENANGO_DIR="${ROOT_DIR}/eden"
 SNAPPY_DIR="${APPDIR}/snappy-c"
-EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
 TMP_FILE_PFX="tmp_syn_"
 CFGFILE="shenango.config"
 
@@ -485,40 +484,47 @@ if [[ $BUILD_ONLY ]]; then
     exit 0
 fi
 
-# initialize run
-expdir=$EXPNAME
-mkdir -p $expdir
 
-pushd $expdir
-echo "running ${EXPNAME}"
-save_cfg "cores"        $NCORES
-save_cfg "threads"      $NTHREADS
-save_cfg "hashpower"    $HASH_POWER_SHIFT
-save_cfg "narray"       $NUM_ARRAY_ENTRIES
-save_cfg "entriesshift" $KVENTRIES_SHIFT
-save_cfg "valsize"      $VALUE_SIZE
-save_cfg "zipfs"        $ZIPFS
-save_cfg "kpr"          $KEYS_PER_REQ
-save_cfg "warmup"       $WARMUP
-save_cfg "scheduler"    $SCHEDULER
-save_cfg "rmem"         $RMEM
-save_cfg "backend"      $BACKEND
-save_cfg "localmem"     $LMEM
-save_cfg "lmemper"      $LMEMPER
-save_cfg "rdahead"      $RDAHEAD
-save_cfg "evictbatch"   $EVICT_BATCH_SIZE
-save_cfg "evictpolicy"  $EVICT_POLICY
-save_cfg "evictgens"    $EVICT_GENS
-save_cfg "evictprio"    $PRIO
-save_cfg "desc"         $README
-echo -e "$CFGSTORE" > settings
+for retry in {1..3}; do
+# for retry in 1; do
+    # prepare for run
+    kill_remnants
 
-# write shenango config
-__RMEM_OPT=0
-__HINTS_OPT=0
-if [[ $EDEN ]]; then    __RMEM_OPT=1;   fi
-if [[ $HINTS ]]; then   __HINTS_OPT=1;  fi
-shenango_cfg="""
+    # initialize run
+    EXPNAME=run-$(date '+%m-%d-%H-%M-%S')  #unique id
+    expdir=$EXPNAME
+    mkdir -p $expdir
+
+    pushd $expdir
+    echo "running ${EXPNAME}"
+    save_cfg "cores"        $NCORES
+    save_cfg "threads"      $NTHREADS
+    save_cfg "hashpower"    $HASH_POWER_SHIFT
+    save_cfg "narray"       $NUM_ARRAY_ENTRIES
+    save_cfg "entriesshift" $KVENTRIES_SHIFT
+    save_cfg "valsize"      $VALUE_SIZE
+    save_cfg "zipfs"        $ZIPFS
+    save_cfg "kpr"          $KEYS_PER_REQ
+    save_cfg "warmup"       $WARMUP
+    save_cfg "scheduler"    $SCHEDULER
+    save_cfg "rmem"         $RMEM
+    save_cfg "backend"      $BACKEND
+    save_cfg "localmem"     $LMEM
+    save_cfg "lmemper"      $LMEMPER
+    save_cfg "rdahead"      $RDAHEAD
+    save_cfg "evictbatch"   $EVICT_BATCH_SIZE
+    save_cfg "evictpolicy"  $EVICT_POLICY
+    save_cfg "evictgens"    $EVICT_GENS
+    save_cfg "evictprio"    $PRIO
+    save_cfg "desc"         $README
+    echo -e "$CFGSTORE" > settings
+
+    # write shenango config
+    __RMEM_OPT=0
+    __HINTS_OPT=0
+    if [[ $EDEN ]]; then    __RMEM_OPT=1;   fi
+    if [[ $HINTS ]]; then   __HINTS_OPT=1;  fi
+    shenango_cfg="""
 host_addr 192.168.0.100
 host_netmask 255.255.255.0
 host_gateway 192.168.0.1
@@ -536,23 +542,18 @@ rmem_evict_batch_size ${EVICT_BATCH_SIZE}
 rmem_evict_ngens ${EVICT_GENS}
 rmem_evict_nprio ${EVICT_NPRIO}
 rmem_fsampler_rate 100000"""
-echo "$shenango_cfg" > $CFGFILE
-popd
+    echo "$shenango_cfg" > $CFGFILE
+    popd
 
-# run machine setup
-sudo bash ${ROOT_SCRIPTS_DIR}/machine_config.sh
+    # run machine setup
+    sudo bash ${ROOT_SCRIPTS_DIR}/machine_config.sh
 
-# set localmem for fastswap
-if [[ $FASTSWAP ]]; then
-    sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
-    LOCALMEM=${LOCALMEM:-max}
-    sudo bash -c "echo ${LMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
-fi
-
-for retry in {1..3}; do
-# for retry in 1; do
-    # prepare for run
-    kill_remnants
+    # set localmem for fastswap
+    if [[ $FASTSWAP ]]; then
+        sudo mkdir -p /cgroup2/benchmarks/$APPNAME/
+        LOCALMEM=${LOCALMEM:-max}
+        sudo bash -c "echo ${LMEM} > /cgroup2/benchmarks/$APPNAME/memory.high"
+    fi
 
     # prepare remote memory servers for the run
     if [[ $EDEN ]] && [ "$BACKEND" == "rdma" ]; then
@@ -623,6 +624,7 @@ for retry in {1..3}; do
         sleep 300
     else
        sudo ${wrapper} ${binfile} ${args} 2>&1 | tee app.out &
+    #    sudo ${wrapper} ${binfile} ${args} 
     fi
 
     # wait for run to finish
