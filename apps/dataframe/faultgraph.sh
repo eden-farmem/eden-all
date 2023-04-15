@@ -1,5 +1,5 @@
 #!/bin/bash
-# set -e
+set -e
 
 #
 # Generate Fault Flame Graph for an experiment with fault samples
@@ -14,6 +14,7 @@ DATADIR=${SCRIPTDIR}/data
 
 usage="\n
 -f, --force \t\t force parse and merge raw data again\n
+-rm, --remove \t\t remove the samples data if everything goes well\n
 -r, --run \t\t run id, picks the latest run by default\n"
 
 for i in "$@"
@@ -27,6 +28,10 @@ case $i in
     RUNID="${i#*=}"
     ;;
 
+    -rm|--remove)
+    REMOVE=1
+    ;;
+
     *)                      # unknown option
     echo "Unkown Option: $i"
     echo -e $usage
@@ -36,7 +41,7 @@ esac
 done
 
 ## saved run ids
-# run-04-10-13-42-09
+# data/run-04-14-14-55-32   # full run
 
 # take the latest run if not specified
 if [ -z "${RUNID}" ]; then
@@ -83,4 +88,9 @@ srcdir=${SCRIPTDIR}/dataframe
 # srcdir=${SCRIPTDIR}/dataframe/app
 python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -o ${expdir}/locations.dat
 python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -z -o ${expdir}/locations-zero.dat
-python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -nz -o ${expdir}/locations-nonzero.dat
+python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -nz -o ${expdir}/locations-nonzero.
+
+# remove samples data
+if [ ! -z "${REMOVE}" ]; then
+    rm -f ${allfaultsin}
+fi

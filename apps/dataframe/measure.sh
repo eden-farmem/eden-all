@@ -62,7 +62,7 @@ done
 ## Large
 INPUT=large
 FASTSWAP_MAX=
-EDEN_MAX=30000
+EDEN_MAX=30091
 
 # create a stop button
 touch __running__
@@ -148,7 +148,7 @@ run_vary_lmem() {
     if [[ $evictbs ]];  then  OPTS="$OPTS --batchevict=${evictbs}"; fi
     if [[ $evgens ]];   then  OPTS="$OPTS --evictgens=${evgens}";   fi
     if [[ $INPUT ]];    then  OPTS="$OPTS --input=${INPUT}";        fi
-    if [[ $TRACE ]];    then  OPTS="$OPTS --pfsamples";                 fi
+    if [[ $TRACE ]];    then  OPTS="$OPTS --pfsamples";             fi
     # OPTS="$OPTS --sampleepochs"
     # OPTS="$OPTS --safemode"
     rebuild_with_current_config
@@ -156,8 +156,8 @@ run_vary_lmem() {
     
     # run
     configure_max_local_mem "$kind" "$cores"
-    # for memp in `seq 10 10 100`; do
-    for memp in 150; do
+    for memp in `seq 10 10 100`; do
+    # for memp in 10; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -175,14 +175,12 @@ rd=         # set custom read-ahead
 ebs=        # set eviction batch size
 evp=        # set eviction policy
 evg=        # set eviction gens
-desc="test"
+desc="lmem"
 
 # eden runs
 # run_vary_lmem "pthr" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
-# TRACE=1
-run_vary_lmem "eden-nh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
-# TRACE=
-# run_vary_lmem "eden-bh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
+# run_vary_lmem "eden-nh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
+run_vary_lmem "eden-bh" "rdma" 1 1 "$rd" "$ebs" "$evp" "$evg"
 
 # run_vary_lmem "eden-nh" "rdma"  1 1 "$rd" "$ebs" "$evp" "$evg"
 

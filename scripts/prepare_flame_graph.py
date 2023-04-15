@@ -328,6 +328,8 @@ def main():
                 annotleaf=False, local=args.local)
             assert locations, "Trace ignored"
             cpname = locations[-1]
+            if f.type == "zero":    cpname += " (zero)"
+            cpname += " ({})".format(f.op)
             codecounts[cpname] += f.count
         # print(codecounts)
         codecounts = sorted(codecounts.items(), key=lambda x: x[1], reverse=True)
