@@ -417,25 +417,25 @@ if [[ $FORCE ]] && [[ $SHENANGO ]]; then
 fi
 
 # make sure we have the right branch for dataframe
-pushd ${APPDIR}/
-git_branch=$(git rev-parse --abbrev-ref HEAD)
-if [ "$git_branch" != "$GIT_BRANCH" ]; then
-    # try and switch to the right one
-    git checkout ${GIT_BRANCH} || true
-    git_branch=$(git rev-parse --abbrev-ref HEAD)
-    if [ "$git_branch" != "$GIT_BRANCH" ]; then
-        echo "ERROR! cannot switch to the source branch: ${GIT_BRANCH}"
-        exit 1
-    fi
-fi
-popd
+# pushd ${APPDIR}/
+# git_branch=$(git rev-parse --abbrev-ref HEAD)
+# if [ "$git_branch" != "$GIT_BRANCH" ]; then
+#     # try and switch to the right one
+#     git checkout ${GIT_BRANCH} || true
+#     git_branch=$(git rev-parse --abbrev-ref HEAD)
+#     if [ "$git_branch" != "$GIT_BRANCH" ]; then
+#         echo "ERROR! cannot switch to the source branch: ${GIT_BRANCH}"
+#         exit 1
+#     fi
+# fi
+# popd
 
 # pick input
 inputpath=
 case $INPUT in
     "debug")    inputpath=/home/ayelam/data/yellow_tripdata_2016-01_simple.csv;;
     "small")    inputpath=/home/ayelam/data/yellow_tripdata_2016-01.csv;;
-    "large")    inputpath=/data/ssd1/home/ayelam/all.csv;;
+    "large")    inputpath=/home/ayelam/data/all.csv;;
     *)          inputpath=/home/ayelam/data/yellow_tripdata_2016-01_simple.csv;;
 esac
 if [ ! -f $inputpath ]; then
@@ -448,7 +448,9 @@ if [[ $FORCE ]]; then rm -rf ${APPDIR}/build; fi
 mkdir -p ${APPDIR}/build
 pushd ${APPDIR}/build
 CFLAGS="$CFLAGS -DINPUT=${inputpath}"
-cmake -E env CXXFLAGS="$CFLAGS" cmake -DCMAKE_BUILD_TYPE=${BUILD} -DCMAKE_CXX_COMPILER=g++-9 ..
+EDENOPT=
+if [[ $EDEN ]]; then EDENOPT="$EDENOPT -DEDEN_LIBS=ON"; fi
+cmake -E env CXXFLAGS="$CFLAGS" cmake -DCMAKE_BUILD_TYPE=${BUILD} -DCMAKE_CXX_COMPILER=g++-9 ${EDENOPT} ..
 make -j$(nproc)
 popd
 
@@ -470,7 +472,7 @@ save_cfg "rmem"     $RMEM
 save_cfg "shenango" $SHENANGO
 save_cfg "backend"  $BACKEND
 save_cfg "localmem" $LMEM
-save_cfg "lmemper"  $LMEMP
+save_cfg "lmemper"  $LMEMPER
 save_cfg "evictbatch"   $EVICT_BATCH_SIZE
 save_cfg "evictpolicy"  $EVICT_POLICY
 save_cfg "evictgens"    $EVICT_GENS
