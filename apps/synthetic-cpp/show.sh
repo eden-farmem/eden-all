@@ -206,7 +206,7 @@ for exp in $LS_CMD; do
         if [[ $rstart ]] && [[ $rend ]]; then
             rtime=$((rend-rstart))
         fi
-        xput=$(grep "mops =" $exp/app.out | sed -n "s/^.*mops = //p")
+        xput=$(grep "mops =" $exp/app.out | tail -1 | sed -n "s/^.*mops = //p")
         if [[ $xput ]]; then 
             xput=$(echo $xput | awk '{printf "%d", $1*1000000}')
         fi
@@ -379,10 +379,10 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,WaitRetries";   LINE="$LINE,${waitretries}";
 
         # Shenango
-        HEADER="$HEADER,Idle(ms)";      LINE="$LINE,$((sched_idle_cycles/(cores*2194*1000)))";
-        HEADER="$HEADER,BkIdle(ms)";    LINE="$LINE,$((bkendwait/(cores*2194*1000)))";
-        HEADER="$HEADER,Rtime(ms)";     LINE="$LINE,$((sched_time_cycles/(cores*2194*1000)))";
-        HEADER="$HEADER,Ptime(ms)";     LINE="$LINE,$((app_time_cycles/(cores*2194*1000)))";
+        # HEADER="$HEADER,Idle(ms)";      LINE="$LINE,$((sched_idle_cycles/(cores*2194*1000)))";
+        # HEADER="$HEADER,BkIdle(ms)";    LINE="$LINE,$((bkendwait/(cores*2194*1000)))";
+        # HEADER="$HEADER,Rtime(ms)";     LINE="$LINE,$((sched_time_cycles/(cores*2194*1000)))";
+        # HEADER="$HEADER,Ptime(ms)";     LINE="$LINE,$((app_time_cycles/(cores*2194*1000)))";
         HEADER="$HEADER,Rescheds";      LINE="$LINE,${rescheds}";
         HEADER="$HEADER,RTentries";     LINE="$LINE,${parks}";
         HEADER="$HEADER,Softirqs";      LINE="$LINE,${softirqs}";

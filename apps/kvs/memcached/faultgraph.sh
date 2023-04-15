@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# set -e
 
 #
 # Generate Fault Flame Graph for an experiment with fault samples
@@ -8,13 +8,12 @@ set -e
 PLOTEXT=pdf
 SCRIPT_PATH=`realpath $0`
 SCRIPTDIR=`dirname ${SCRIPT_PATH}`
-ROOTDIR="${SCRIPTDIR}/../../"
+ROOTDIR="${SCRIPTDIR}/../../../"
 ROOT_SCRIPTS_DIR="${ROOTDIR}/scripts/"
 DATADIR=${SCRIPTDIR}/data
 
 usage="\n
 -f, --force \t\t force parse and merge raw data again\n
--rm, --remove \t\t remove the samples data if everything goes well\n
 -r, --run \t\t run id, picks the latest run by default\n"
 
 for i in "$@"
@@ -28,10 +27,6 @@ case $i in
     RUNID="${i#*=}"
     ;;
 
-    -rm|--remove)
-    REMOVE=1
-    ;;
-
     *)                      # unknown option
     echo "Unkown Option: $i"
     echo -e $usage
@@ -41,7 +36,7 @@ esac
 done
 
 ## saved run ids
-# data/run-04-14-14-55-32   # full run
+# run-03-22-05-22-55
 
 # take the latest run if not specified
 if [ -z "${RUNID}" ]; then
@@ -84,13 +79,8 @@ ${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNA
 ${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph-nonzero.dat --color=fault --width=1600 --fontsize=12 > ${expdir}/flamegraph-nonzero.svg
 
 # Also dump locations in plain 
-srcdir=${SCRIPTDIR}/dataframe
+srcdir=${SCRIPTDIR}/memcached
 # srcdir=${SCRIPTDIR}/dataframe/app
 python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -o ${expdir}/locations.dat
 python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -z -o ${expdir}/locations-zero.dat
-python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -nz -o ${expdir}/locations-nonzero.
-
-# remove samples data
-if [ ! -z "${REMOVE}" ]; then
-    rm -f ${allfaultsin}
-fi
+python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -nz -o ${expdir}/locations-nonzero.dat
