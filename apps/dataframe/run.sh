@@ -43,6 +43,7 @@ RCNTRL_PORT="9202"
 MEMSERVER_SSH=$RCNTRL_SSH
 MEMSERVER_IP=$RCNTRL_IP
 MEMSERVER_PORT="9200"
+INPUT_LARGE_PATH=/data/ssd1/home/ayelam/all.csv
 
 if [ "`hostname`" == "sc2-hs2-b1640" ];
 then
@@ -53,6 +54,7 @@ then
     MEMSERVER_SSH=$RCNTRL_SSH
     RCNTRL_IP="192.168.100.108"
     MEMSERVER_IP=$RCNTRL_IP
+    INPUT_LARGE_PATH=/home/ayelam/data/all.csv
 fi
 
 NO_HYPERTHREADING="-noht"
@@ -281,7 +283,8 @@ stop_fsstat() {
     if [[ $pid ]]; then  sudo kill ${pid}; fi
 }
 kill_remnants() {
-    sudo pkill iokerneld || true
+    sudo pkill iokerneld || 
+    if [[ $BINFILE ]]; then sudo pkill ${BINFILE} || true; fi
     ssh ${RCNTRL_SSH} "pkill rcntrl; rm -f ~/scratch/rcntrl"                # eden memcontrol
     ssh ${MEMSERVER_SSH} "pkill memserver; rm -f ~/scratch/memserver"       # eden memserver
 }
@@ -326,6 +329,9 @@ if [[ $EDEN ]]; then
     if [[ $HINTS ]]; then
         RMEM="eden"
         CFLAGS="$CFLAGS -DREMOTE_MEMORY_HINTS"
+    else
+        # for shim-based zero fault hints
+        SHEN_CFLAGS="$SHEN_CFLAGS -DBLOCKING_HINTS"
     fi
 
     if [[ $BHINTS ]]; then
@@ -435,7 +441,7 @@ inputpath=
 case $INPUT in
     "debug")    inputpath=/home/ayelam/data/yellow_tripdata_2016-01_simple.csv;;
     "small")    inputpath=/home/ayelam/data/yellow_tripdata_2016-01.csv;;
-    "large")    inputpath=/home/ayelam/data/all.csv;;
+    "large")    inputpath=${INPUT_LARGE_PATH};;
     *)          inputpath=/home/ayelam/data/yellow_tripdata_2016-01_simple.csv;;
 esac
 if [ ! -f $inputpath ]; then

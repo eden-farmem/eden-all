@@ -52,7 +52,7 @@ done
 ## Debug/Quick
 # INPUT=debug
 # FASTSWAP_MAX=
-# EDEN_MAX=1
+# EDEN_MAX=100
 
 ## Small
 # INPUT=small
@@ -62,7 +62,7 @@ done
 ## Large
 INPUT=large
 FASTSWAP_MAX=
-EDEN_MAX=30091
+EDEN_MAX=31000  # was 27384 + 1% = 30091
 
 # create a stop button
 touch __running__
@@ -156,8 +156,8 @@ run_vary_lmem() {
     
     # run
     configure_max_local_mem "$kind" "$cores"
-    for memp in `seq 10 10 100`; do
-    # for memp in 10; do
+    # for memp in `seq 10 10 100`; do
+    for memp in 10 100; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -172,17 +172,15 @@ run_vary_lmem() {
 
 # defaults
 rd=         # set custom read-ahead
-ebs=        # set eviction batch size
+ebs=64      # set eviction batch size
 evp=        # set eviction policy
 evg=        # set eviction gens
-desc="lmem"
+desc="shimzero17"
 
 # eden runs
 # run_vary_lmem "pthr" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
-# run_vary_lmem "eden-nh" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
+# run_vary_lmem "eden-nh" "rdma" 1 1 "$rd" "$ebs" "$evp" "$evg"
 run_vary_lmem "eden-bh" "rdma" 1 1 "$rd" "$ebs" "$evp" "$evg"
-
-# run_vary_lmem "eden-nh" "rdma"  1 1 "$rd" "$ebs" "$evp" "$evg"
 
 # cleanup
 rm -f ${TMP_PFX}*
