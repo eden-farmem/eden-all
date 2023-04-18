@@ -259,7 +259,8 @@ for exp in $LS_CMD; do
             evpopped=$(csv_column_sum "$edenout" "evict_pages_popped")
             netreads=$(csv_column_sum "$edenout" "net_reads")
             netwrite=$(csv_column_sum "$edenout" "net_writes")
-            mallocd=$(csv_column_max "$edenout" "rmalloc_size_mb")
+            mallocd=$(csv_column_max "$edenout" "memory_allocd_mb")
+            freed=$(csv_column_max "$edenout" "memory_freed_mb")
             steals=$(csv_column_sum "$edenout" "steals")
             hsteals=$(csv_column_sum "$edenout" "steals_h")
             waitretries=$(csv_column_sum "$edenout" "wait_retries")
@@ -291,6 +292,7 @@ for exp in $LS_CMD; do
             netreads=$(csv_column_sum "$fstat_out" "loads")
             netwrite=$(csv_column_sum "$fstat_out" "succ_stores")
             mallocd=
+            freed=
 
             # reclaim cpu
             cpusarout=${exp}/cpu_reclaim_sar_parsed
@@ -344,6 +346,7 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,FaultsZP";      LINE="$LINE,${faultszp}";
         HEADER="$HEADER,FaultsP0";      LINE="$LINE,${faultsp0}";
         HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
+        HEADER="$HEADER,KFaults%"       LINE="$LINE,$((kfaults*100/(faults+1)))";
         HEADER="$HEADER,KFaultsR";      LINE="$LINE,${kfaultsr}";
         HEADER="$HEADER,KFaultsW";      LINE="$LINE,${kfaultsw}";
         HEADER="$HEADER,KFaultsWP";     LINE="$LINE,${kfaultswp}";
@@ -352,12 +355,12 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,EvPopped";      LINE="$LINE,${evpopped}";
         HEADER="$HEADER,AnnotHits";     LINE="$LINE,${annothits}";
         HEADER="$HEADER,HitR";          LINE="$LINE,${hitr}";
-        HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
 
         HEADER="$HEADER,NetReads";      LINE="$LINE,${netreads}";
         HEADER="$HEADER,NetWrites";     LINE="$LINE,${netwrite}";
         HEADER="$HEADER,rCPU%";         LINE="$LINE,${reclaimcpu}";
         HEADER="$HEADER,Mallocd";       LINE="$LINE,${mallocd}";
+        HEADER="$HEADER,Freed";       LINE="$LINE,${freed}";
         HEADER="$HEADER,MemUsed";       LINE="$LINE,${memused}M";
 
         # steals

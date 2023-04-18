@@ -462,7 +462,7 @@ if [[ $FORCE ]] && [[ $SHENANGO ]]; then
 fi
 
 # figure out input size
-mainfile=${APPDIR}/main.cpp
+mainfile=${APPDIR}/app/main.cpp
 sed "s/constexpr static uint32_t kNumArrayEntries = .*/constexpr static uint32_t kNumArrayEntries = $NUM_ARRAY_ENTRIES;/g" ${mainfile} -i
 sed "s/constexpr static uint32_t kLocalHashTableNumEntriesShift = .*/constexpr static uint32_t kLocalHashTableNumEntriesShift = $HASH_POWER_SHIFT;/g" ${mainfile} -i    
 sed "s/constexpr static uint32_t kNumKVPairs = .*/constexpr static uint32_t kNumKVPairs = (1 << $KVENTRIES_SHIFT);/g" ${mainfile} -i    
