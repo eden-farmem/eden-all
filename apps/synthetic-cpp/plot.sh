@@ -287,7 +287,7 @@ if [ "$PLOTID" == "3" ]; then
     cfg="varyvals"
     for valsize in 4 1600; do
         # for runcfg in "aifm" "fswap" "eden"; do
-        for runcfg in "aifm" "fswap" "eden" "eden-bh"; do
+        for runcfg in "aifm" "eden" "eden-basic"; do
         # for runcfg in "eden" "eden-pr"; do
         
             LABEL=
@@ -297,8 +297,8 @@ if [ "$PLOTID" == "3" ]; then
             case $runcfg in
             "aifm")                 rmem=aifm; name="AIFM"; LS=dashed; CMI=0; LABEL="AIFM(${valsize})";;
             "fswap")                pattern="04-14"; rmem=fastswap; name="fswap"; backend=rdma; cores=${CORES}; evb=; evp=; evprio=; desc="paper"; LS=dotted; CMI=0; LABEL="Fastswap(${valsize})";;
-            "eden")                 pattern="04-14"; rmem=eden; name="Eden"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; desc="test"; LS=solid; CMI=1; LABEL="Eden(${valsize})";;
-            "eden-basic")           pattern="04-14"; rmem=eden-bh; name="Eden-Basic"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=no; desc="test"; LS=dashdot; CMI=1; LABEL="EdenBasic(${valsize})";;
+            "eden")                 pattern="04-1[67]"; rmem=eden; name="Eden"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; desc="paper"; LS=solid; CMI=0; LABEL="Eden(${valsize})";;
+            "eden-basic")           pattern="04-1[67]"; rmem=eden-bh; name="Eden-Basic"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=no; desc="paper"; LS=dotted; CMI=1; LABEL="EdenBasic(${valsize})";;
             "eden-bh")              pattern="04-14"; rmem=eden-bh; name="Eden-Blocking"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; desc="test"; LS=dashdot; CMI=1; LABEL="EdenBH(${valsize})";;
             *)                      echo "Unknown config"; exit;;
             esac
@@ -403,16 +403,16 @@ if [ "$PLOTID" == "3" ]; then
     fi
     files="$files $plotname"
 
-    #plot faults
-    YLIMS="--ymin 0 --ymax 1300"
-    plotname=${plotdir}/synthetic_netreads_${cfg}_zs${ZIPFS}.${PLOTEXT}
-    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
-            -yce "NetReads" "NetReadsErr" -yl "Remote Page Fetches(KOPS)" --ymul 1e-3 ${YLIMS}   \
-            -xc "LMem%" -xl "Local Mem (%)" ${XLIMS}                    \
-            --size 6 6 -fs 11 -of $PLOTEXT -o $plotname
-    fi
-    files="$files $plotname"
+    # #plot faults
+    # YLIMS="--ymin 0 --ymax 1300"
+    # plotname=${plotdir}/synthetic_netreads_${cfg}_zs${ZIPFS}.${PLOTEXT}
+    # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+    #     python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+    #         -yce "NetReads" "NetReadsErr" -yl "Remote Page Fetches(KOPS)" --ymul 1e-3 ${YLIMS}   \
+    #         -xc "LMem%" -xl "Local Mem (%)" ${XLIMS}                    \
+    #         --size 6 6 -fs 11 -of $PLOTEXT -o $plotname
+    # fi
+    # files="$files $plotname"
 
     # #plot unhinted faults
     # YLIMS="--ymin 0 --ymax 200"
