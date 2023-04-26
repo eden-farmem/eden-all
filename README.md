@@ -1,12 +1,10 @@
-All application & other benchmarks for Eden and related systems
+## Hosts content and/or pointers to all Eden material
 
-#
-# TODOs (after the OSDI deadline)
-#
+[apps](./apps/): contains all the applications evaluated (either traced or thoroughly benchmarked) in the paper  
+[benchmarks](./benchmarks/): contains the code for micro-benchmarks  
+[doc](./doc/): contains the setup instructions, slides, etc.  
+[eden](./eden/): contains the code for Eden runtime  
+[fastswap](./fastswap/): contains Fastswap code with some of our changes  
+[scripts](./scripts/): all utility (parsing, plotting and other visualization) scripts for the results  
+[simulator](./simulator/): carries the code for an primitive far memory simulator  
 
-- Merge various forks created for individual apps
-- Consolidate setup scripts for each app to be machine-agnostic (to run on a different setup easily)
-- Fix Eden/Shenango bug in Memcached write path
-- Decouple fault tracing tool from Eden/Shenango so it could be used widely
-- Reproduce results on memcached without no-dirty changes for the rebuttal
-- Add/test malloc interposition in Shenango shim

@@ -1,7 +1,0 @@
-name,percent,loc,floc,local,app,lmemp,input
-streamcluster_95,95.0,-1,1,False,,streamcluster,5,native
-streamcluster_95,95.0,-1,2,False,,streamcluster,100,native
-streamcluster_95,95.0,-1,2,False,,streamcluster,95,native
-streamcluster_95,95.0,-1,2,False,,streamcluster,90,native
-streamcluster_95,95.0,-1,1,False,,streamcluster,85,native
-streamcluster_95,95.0,-1,1,False,,streamcluster,75,native

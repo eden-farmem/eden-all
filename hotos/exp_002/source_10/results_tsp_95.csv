@@ -1,3 +1,0 @@
-name,percent,loc,floc,local,app,lmemp,input
-tsp_100,95.0,-1,0,True,tsp,100,native
-tsp_10,95.0,-1,16,True,tsp,10,native

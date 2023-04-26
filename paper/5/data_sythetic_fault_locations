@@ -1,9 +1,0 @@
-ip,kind,count
-0x406839,read,12358
-0x7ffff7fc2651,read,9676
-0x7ffff7fc2806,read,8641
-0x40684d,read,135
-0x7ffff7d7ae1e,read,64
-0x40619f,write,2
-0x40619f,wrprotect,1
-0x4068ed,read,1
