@@ -285,10 +285,11 @@ if [ "$PLOTID" == "3" ]; then
 
     ## data
     cfg="varyvals"
-    for valsize in 4 1600; do
+    # for valsize in 4 1600; do
+    for valsize in 4; do
         # for runcfg in "aifm" "fswap" "eden"; do
-        for runcfg in "aifm" "fswap" "eden" "eden-bh"; do
-        # for runcfg in "eden" "eden-pr"; do
+        # for runcfg in "aifm" "eden" "eden-basic"; do
+        for runcfg in "eden"; do
         
             LABEL=
             LS=
@@ -297,8 +298,8 @@ if [ "$PLOTID" == "3" ]; then
             case $runcfg in
             "aifm")                 rmem=aifm; name="AIFM"; LS=dashed; CMI=0; LABEL="AIFM(${valsize})";;
             "fswap")                pattern="04-14"; rmem=fastswap; name="fswap"; backend=rdma; cores=${CORES}; evb=; evp=; evprio=; desc="paper"; LS=dotted; CMI=0; LABEL="Fastswap(${valsize})";;
-            "eden")                 pattern="04-14"; rmem=eden; name="Eden"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; desc="test"; LS=solid; CMI=1; LABEL="Eden(${valsize})";;
-            "eden-basic")           pattern="04-14"; rmem=eden-bh; name="Eden-Basic"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=no; desc="test"; LS=dashdot; CMI=1; LABEL="EdenBasic(${valsize})";;
+            "eden")                 pattern="04-1[67]"; rmem=eden; name="Eden"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; desc="paper"; LS=solid; CMI=0; LABEL="Eden(${valsize})";;
+            "eden-basic")           pattern="04-1[67]"; rmem=eden-bh; name="Eden-Basic"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=no; desc="paper"; LS=dotted; CMI=1; LABEL="EdenBasic(${valsize})";;
             "eden-bh")              pattern="04-14"; rmem=eden-bh; name="Eden-Blocking"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; desc="test"; LS=dashdot; CMI=1; LABEL="EdenBH(${valsize})";;
             *)                      echo "Unknown config"; exit;;
             esac
@@ -327,8 +328,9 @@ if [ "$PLOTID" == "3" ]; then
                         continue
                     fi
                 else
-                    echo "LMem%,Xput,XputErr,Faults,FaultsErr,NetReads,NetReadsErr,KFaults,KFaultsErr,HitR,Count,System,Backend,EvP,EvB,CPU,Zipfs" > $datafile
+                    echo "LMem%,Xput,XputErr,Faults,FaultsErr,NetReads,NetReadsErr,NetWrites,NetWritesErr,KFaults,KFaultsErr,HitR,Count,System,Backend,EvP,EvB,CPU,Zipfs" > $datafile
                     for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+                    # for memp in 50 22 4; do
                         tmpfile=${TMP_FILE_PFX}data
                         rm -f ${tmpfile}
                         echo bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$tmpfile -vs=${valsize}  \
@@ -343,10 +345,12 @@ if [ "$PLOTID" == "3" ]; then
                         fstd=$(csv_column_stdev $tmpfile "Faults")
                         nrmean=$(csv_column_mean $tmpfile "NetReads")
                         nrstd=$(csv_column_stdev $tmpfile "NetReads")
+                        nwmean=$(csv_column_mean $tmpfile "NetWrites")
+                        nwstd=$(csv_column_stdev $tmpfile "NetWrites")
                         kfmean=$(csv_column_mean $tmpfile "KFaults")
                         kfstd=$(csv_column_stdev $tmpfile "KFaultsErr")
                         hitrmean=$(csv_column_mean $tmpfile "HitR")
-                        echo ${memp},${xmean},${xstd},${fmean},${fstd},${nrmean},${nrerr},${kfmean},${kfstd},${hitrmean},${xnum},${rmem},${bkend},${evp},${evb},${cores},${zipfs} >> ${datafile}
+                        echo ${memp},${xmean},${xstd},${fmean},${fstd},${nrmean},${nrerr},${nwmean},${nwerr},${kfmean},${kfstd},${hitrmean},${xnum},${rmem},${bkend},${evp},${evb},${cores},${zipfs} >> ${datafile}
                     done
 
                     # compute and add normalized throughput column
@@ -403,16 +407,16 @@ if [ "$PLOTID" == "3" ]; then
     fi
     files="$files $plotname"
 
-    #plot faults
-    YLIMS="--ymin 0 --ymax 1300"
-    plotname=${plotdir}/synthetic_netreads_${cfg}_zs${ZIPFS}.${PLOTEXT}
-    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
-        python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
-            -yce "NetReads" "NetReadsErr" -yl "Remote Page Fetches(KOPS)" --ymul 1e-3 ${YLIMS}   \
-            -xc "LMem%" -xl "Local Mem (%)" ${XLIMS}                    \
-            --size 6 6 -fs 11 -of $PLOTEXT -o $plotname
-    fi
-    files="$files $plotname"
+    # #plot faults
+    # YLIMS="--ymin 0 --ymax 1300"
+    # plotname=${plotdir}/synthetic_netreads_${cfg}_zs${ZIPFS}.${PLOTEXT}
+    # if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+    #     python3 ${ROOTDIR}/scripts/plot.py ${plots}                     \
+    #         -yce "NetReads" "NetReadsErr" -yl "Remote Page Fetches(KOPS)" --ymul 1e-3 ${YLIMS}   \
+    #         -xc "LMem%" -xl "Local Mem (%)" ${XLIMS}                    \
+    #         --size 6 6 -fs 11 -of $PLOTEXT -o $plotname
+    # fi
+    # files="$files $plotname"
 
     # #plot unhinted faults
     # YLIMS="--ymin 0 --ymax 200"
@@ -440,6 +444,108 @@ if [ "$PLOTID" == "3" ]; then
     plotname=${plotdir}/${cfg}_zs${ZIPFS}.$PLOTEXT
     montage -tile 2x0 -geometry +5+5 -border 5 $files ${plotname}
     # display ${plotname} &
+fi
+
+# Network I/O amplification
+if [ "$PLOTID" == "4" ]; then
+    plotdir=$PLOTDIR/$PLOTID
+    mkdir -p $plotdir
+    plots=
+    files=
+    NORMALIZE=1
+    CORES=10
+    ZIPFS=0.85
+    valsize=4
+
+    ## data
+    for runcfg in "aifm" "eden"; do
+        LABEL=
+        LS=
+        CMI=
+
+        case $runcfg in
+        "aifm")                 rmem=aifm; name="AIFM"; LS=dashed; CMI=0; LABEL="AIFM(${valsize})";;
+        "eden")                 pattern="04-1[67]"; rmem=eden; name="Eden"; backend=rdma; cores=${CORES}; evb=32; evp=NONE; evprio=yes; rdhd=yes; desc="paper"; LS=solid; CMI=1; LABEL="Eden(${valsize})";;
+        *)                      echo "Unknown config"; exit;;
+        esac
+
+        # filter results
+        label=$runcfg
+        datafile=$plotdir/data_${name}_valsize${valsize}
+        descopt=
+        evbopt=
+        rmemopt=
+        evpopt=
+        evpropt=
+        rdopt=
+        if [[ $desc ]]; then descopt="-d=$desc";    fi
+        if [[ $evb ]];  then evbopt="-evb=$evb";    fi
+        if [[ $evp ]];  then evpopt="-evp=$evp";    fi
+        if [[ $rmem ]];  then rmemopt="-r=$rmem";   fi
+        if [[ $rdhd ]];  then rdopt="-rd=$rdhd";    fi
+        if [[ $evprio ]];  then evpropt="-evpr=$evprio";    fi
+
+        if [[ $FORCE ]] || [ ! -f "$datafile" ]; then
+            if [[ "$rmem" == "aifm" ]]; then
+                if [[ ! -f "$datafile" ]]; then
+                    echo "ERROR! Expecting AIFM data in $datafile"
+                    exit 1
+                    ## AIFM parse from log files
+                    # echo "LMem%,Xput,HTMiss,HTBytes,ArrMiss,Arrbytes,Misses,Bytes,MissRate,BytesPerMiss"
+                    # for f in `ls 4.log*`; do 
+                    #     mb=$(echo $f | awk -F_ '{ printf "%d", $2*100/26624 }')
+                    #     mops=$(grep 'mops =' $f | awk -F= '{printf "%d", 1000000 * $2}')
+                    #     htmiss=$(grep 'hashtable miss rate =' $f | awk -F= '{printf "%d", $2*'$mops'*32}' | xargs)
+                    #     htbytes=$(grep 'hashtable miss val len =' $f | awk -F= '{printf "%d", $2}')
+                    #     arrmiss=$(grep 'array miss rate =' $f | awk -F= '{printf "%d", $2*'$mops'}' | xargs)
+                    #     arrbytes=$(grep 'array miss val len =' $f | awk -F= '{printf "%d", $2}')
+                    #     totmiss=$((htmiss+arrmiss))
+                    #     totbytes=$((htbytes+arrbytes))
+                    #     missrate=$(echo $totmiss $mops | awk '{ printf "%.2f", $1/$2 }')
+                    #     bytespermiss=$(echo $totbytes $totmiss | awk '{ printf "%.2f", $1/$2 }')
+                    #     echo $mb,$mops,$htmiss,$htbytes,$arrbytes,$arrbytes,$totmiss,$totbytes,$missrate,$bytespermiss
+                    # done
+                fi
+            else
+                echo "LMem%,Xput,Faults,RdHds,Misses,Bytes,MissRate,BytesPerMiss,System,Backend,EvP,EvB,CPU,Zipfs" > ${datafile}
+                for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+                    tmpfile=${TMP_FILE_PFX}data
+                    rm -f ${tmpfile}
+                    echo bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$tmpfile -vs=${valsize}  \
+                        ${descopt} ${evbopt} ${rmemopt} ${evpopt} ${rdopt} ${evpropt} -zs=${ZIPFS} -lmp=${memp}
+                    bash ${SCRIPT_DIR}/show.sh -cs="$pattern" -be=$backend -c=$cores -of=$tmpfile   -vs=${valsize}  \
+                        ${descopt} ${evbopt} ${rmemopt} ${evpopt} ${rdopt} ${evpropt} -zs=${ZIPFS} -lmp=${memp}
+                    cat $tmpfile
+                    xput=$(csv_column_mean $tmpfile "Xput")
+                    faults=$(csv_column_mean $tmpfile "Faults")
+                    rdhds=$(csv_column_mean $tmpfile "RdHds")
+                    pages=$((faults+rdhds))
+                    bytes=$((pages*4096))
+                    missrate=
+                    bytespermiss=
+                    if [[ $xput ]]; then    missrate=$(echo $faults $xput | awk '{ printf "%.2f", $1/$2 }');    fi
+                    if [[ $faults ]]; then  bytespermiss=$(echo $bytes $faults | awk '{ printf "%.2f", $1/$2 }'); fi
+                    echo ${memp},${xput},${faults},${rdhds},${pages},${bytes},${missrate},${bytespermiss},${rmem},${bkend},${evp},${evb},${cores},${zipfs} >> ${datafile}
+                done
+            fi
+        fi
+
+        label=${LABEL:-$runcfg}
+        ls=${LS:-solid}
+        cmi=${CMI:-1}
+        plots="$plots -d $datafile -l $label -ls $ls -cmi $cmi"
+    done
+
+    #plot network I/O bytes
+    YLIMS="--ymin 0 --ymax 50"
+    plotname=${plotdir}/synthetic_netbytes_${cfg}_zs${ZIPFS}.${PLOTEXT}
+    if [[ $FORCE_PLOTS ]] || [ ! -f "$plotname" ]; then
+        python3 ${ROOTDIR}/scripts/plot.py ${plots}         \
+            -yc Bytes -yl "Gbps" --ymul 8e-9 ${YLIMS}       \
+            -xc "LMem%" -xl "Local Mem (%)" ${XLIMS}        \
+            --size 6 6 -fs 11 -of $PLOTEXT -o $plotname
+    fi
+    echo "Plot saved to ${plotname}"
 fi
 
 
