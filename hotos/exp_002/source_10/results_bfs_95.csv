@@ -1,3 +1,0 @@
-name,percent,loc,floc,local,app,lmemp,input
-bfs_100,95.0,-1,0,True,bfs,100,native
-bfs_10,95.0,-1,9,True,bfs,10,native

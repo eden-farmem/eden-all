@@ -346,7 +346,7 @@ for exp in $LS_CMD; do
         HEADER="$HEADER,FaultsZP";      LINE="$LINE,${faultszp}";
         HEADER="$HEADER,FaultsP0";      LINE="$LINE,${faultsp0}";
         HEADER="$HEADER,KFaults";       LINE="$LINE,${kfaults}";
-        HEADER="$HEADER,KFaults%"       LINE="$LINE,$((kfaults*100/(faults+1)))";
+        HEADER="$HEADER,KFaults%"       LINE="$LINE,$((kfaults*100/(evicts+1)))";
         HEADER="$HEADER,KFaultsR";      LINE="$LINE,${kfaultsr}";
         HEADER="$HEADER,KFaultsW";      LINE="$LINE,${kfaultsw}";
         HEADER="$HEADER,KFaultsWP";     LINE="$LINE,${kfaultswp}";

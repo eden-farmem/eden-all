@@ -184,8 +184,8 @@ run_vary_lmem() {
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
     # for memp in 4 8 16 22 33 41 50 58 66 75 83 91 100; do
-    # for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
-    for memp in 10; do
+    for memp in 100 91 83 75 66 58 50 41 33 22 16 8 4; do
+    # for memp in 10; do
         check_for_stop
         lmemopt=
         if [[ $MAXRSS ]]; then 
@@ -250,7 +250,7 @@ ebs=                    # set eviction batch size
 evp=                    # set eviction policy
 evg=4                   # set eviction gens
 prio=                   # enable eviction priority
-desc="test"
+desc="paper"
 
 ## basic
 # run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
@@ -259,15 +259,14 @@ desc="test"
 
 ## prio
 for try in 1 2 3; do
-# for vs_kent in 4,27 1600,21 3200,20; do 
-# for vs_kent in 4,27; do 
-# VALUE_SIZE=$(echo $vs_kent | cut -d, -f1)
-# KVENTRIES_SHIFT=$(echo $vs_kent | cut -d, -f2)
+for vs_kent in 4,27 1600,21; do 
+VALUE_SIZE=$(echo $vs_kent | cut -d, -f1)
+KVENTRIES_SHIFT=$(echo $vs_kent | cut -d, -f2)
 echo "VALUE_SIZE=$VALUE_SIZE KVENTRIES_SHIFT=$KVENTRIES_SHIFT"
 # run_vary_lmem "uthr"    "local" "$op" "$CORES" "$THREADS" "$ZIPFS" "$rd" "$ebs" "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "yes"
 # run_vary_lmem "eden"    "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "yes"
-# run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "$prio"
+run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "$evp" "$evg" "$KPR" "yes"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "$prio"
 # run_vary_lmem "eden-bh" "rdma" "$op" "$CORES" "$THREADS" "$ZIPFS" "1"   "32"   "SC"   "$evg" "$KPR" "$prio"

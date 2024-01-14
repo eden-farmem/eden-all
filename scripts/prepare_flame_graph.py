@@ -254,17 +254,23 @@ def get_locations_from_trace(ftraces, trace, nolib=False, annotleaf=False, local
     """Get code locations in text from a trace"""
     locations = []
     ignore = False
-    for i, ip in enumerate(trace):
+    is_leaf = True
+    for i, ip in enumerate(reversed(trace)):
         cp = ftraces.codepointers[ip]
         if cp.ignore_trace():
             return None
-        locations += [c.flamegraph_name(nolib=nolib)   \
-            for c in reversed(cp.inlineparents) if (not local or c.local)]
+        for c in cp.inlineparents:
+            # if c.ignore_trace():
+            #     return None
+            if (local and not c.local):
+                continue
+            locations.append(c.flamegraph_name(is_leaf, nolib=nolib))
+            is_leaf = False
         if cp.ignore() or (local and not cp.local):
             continue
-        is_leaf = annotleaf and (i == len(trace)-1)
         locations.append(cp.flamegraph_name(is_leaf, nolib))
-    return locations
+        is_leaf = False
+    return reversed(locations)
 
 ### Main
 
@@ -326,7 +332,14 @@ def main():
         for f in traces.faults:
             locations = get_locations_from_trace(traces, f.trace, args.nolib, \
                 annotleaf=False, local=args.local)
-            assert locations, "Trace ignored"
+            if not locations:
+                print("ERROR! Trace ignored. Count: {}".format(f.count))
+                for ip in f.trace:
+                    cp = traces.codepointers[ip]
+                    for c in reversed(cp.inlineparents):
+                        print(c.file, c.line, c.lib, c.local, c.ignore())
+                    print(cp.file, cp.line, cp.lib, cp.local, cp.ignore())
+                return
             cpname = locations[-1]
             if f.type == "zero":    cpname += " (zero)"
             cpname += " ({})".format(f.op)
@@ -340,7 +353,8 @@ def main():
         with open(args.output, "w") as fp:
             fp.write("count,percent,cdf,code\n")
             for cpname, count in codecounts:
-                fp.write("{},{},{},{}\n".format(count, pdf[cpname], cdf[cpname], cpname))
+                fp.write("{},{},{},{}\n".format(count, pdf[cpname], cdf[cpname], cpname))        
+        print("Total: {}, 95%: {}".format(len(cdf), 1 + min([i for i,v in enumerate(cdf.values()) if v >= 95])))
         return
 
     # return in flamegraph format (default)

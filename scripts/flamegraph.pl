@@ -239,7 +239,7 @@ if ($bgcolors eq "") {
 	} elsif ($colors =~ /^(red|green|blue|aqua|yellow|purple|orange)$/) {
 		$bgcolors = "grey";
 	} else {
-		$bgcolors = "yellow";
+		$bgcolors = "#ffffff";
 	}
 }
 my ($bgcolor1, $bgcolor2);
@@ -516,15 +516,18 @@ sub color {
 		return "rgb($x,$g,$x)";
 	}
 	if (defined $type and $type eq "aqua") {
-		my $r = 50 + int(60 * $v1);
-		my $g = 165 + int(55 * $v1);
-		my $b = 165 + int(55 * $v1);
-		return "rgb($r,$g,$b)";
+		# my $r = 50 + int(60 * $v1);
+		# my $g = 165 + int(55 * $v1);
+		# my $b = 165 + int(55 * $v1);
+		# return "rgb($r,$g,$b)";
+		return "rgb(100,200,200)";
 	}
 	if (defined $type and $type eq "orange") {
-		my $r = 190 + int(65 * $v1);
-		my $g = 90 + int(65 * $v1);
-		return "rgb($r,$g,0)";
+		my $r = 170 + int(40 * $v1);
+		my $g = 170 + int(40 * $v1);
+		my $b = 170 + int(40 * $v1);
+		return "rgb($r,$g,$b)";
+		# return "rgb(220,220,220)";
 	}
 
 	return "rgb(0,0,0)";

@@ -41,7 +41,7 @@ esac
 done
 
 ## saved runs
-#run-04-05-19-08-05
+#run-04-14-14-21-13
 
 # take the latest run if not specified
 if [ -z "${RUNID}" ]; then
@@ -88,6 +88,9 @@ ${ROOT_SCRIPTS_DIR}/flamegraph.pl ${expdir}/flamegraph-zero.dat --title "${APPNA
 
 # Also dump locations in plain 
 srcdir=${SCRIPTDIR}/synthetic-aifm/app
-python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -o ${expdir}/locations.dat
-python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -z -o ${expdir}/locations-zero.dat
-python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain --local -nz -o ${expdir}/locations-nonzero.dat
+for zeroopt in "" "--zero" "--nonzero"; do
+        echo "OPTS: ${zeroopt} ${localopt}"
+    for localopt in "" "--local"; do
+        python3 ${ROOT_SCRIPTS_DIR}/prepare_flame_graph.py -s ${srcdir} -i ${tracesfolded} --plain ${zeroopt} ${localopt} -o ${expdir}/locations${zeroopt}${localopt}.dat
+    done
+done

@@ -157,14 +157,19 @@ run_vary_lmem() {
     # run
     configure_max_local_mem "$kind" "$cores"
     # for memp in `seq 10 10 100`; do
-    for memp in 10 100; do
+    # for memp in 10 100; do
+    for lmem in 1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31; do
         check_for_stop
         lmemopt=
-        if [[ $MAXRSS ]]; then 
-            lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
-            lmem=$((lmem_mb*1024*1024))
-            lmemopt="-lm=${lmem} -lmp=${memp}"
-        fi
+        # if [[ $MAXRSS ]]; then 
+        #     lmem_mb=$(percentof "$MAXRSS" "$memp" | ftoi)
+        #     lmem=$((lmem_mb*1024*1024))
+        #     lmemopt="-lm=${lmem} -lmp=${memp}"
+        # fi
+        memp=$(percentage "$lmem" "31" | ftoi)
+        lmem_bytes=$((lmem*1024*1024*1024))
+        lmemopt="-lm=${lmem_bytes} -lmp=${memp}"
+        echo $memp, $lmem_bytes, $lmemopt
         echo bash run.sh -c=${cores} -t=${threads} ${OPTS} ${FFLAG} -d="""${desc}""" ${lmemopt}
         bash run.sh -c=${cores} -t=${threads} ${OPTS} ${FFLAG} -d="""${desc}""" ${lmemopt}
     done
@@ -175,12 +180,14 @@ rd=         # set custom read-ahead
 ebs=64      # set eviction batch size
 evp=        # set eviction policy
 evg=        # set eviction gens
-desc="shimzero17"
+desc="paper"
 
 # eden runs
+for try in 1 2 3 4 5; do
 # run_vary_lmem "pthr" "local" 1 1 "$rd" "$ebs" "$evp" "$evg"
 # run_vary_lmem "eden-nh" "rdma" 1 1 "$rd" "$ebs" "$evp" "$evg"
 run_vary_lmem "eden-bh" "rdma" 1 1 "$rd" "$ebs" "$evp" "$evg"
+done
 
 # cleanup
 rm -f ${TMP_PFX}*

@@ -288,8 +288,8 @@ if [ "$PLOTID" == "3" ]; then
     # for valsize in 4 1600; do
     for valsize in 4; do
         # for runcfg in "aifm" "fswap" "eden"; do
-        # for runcfg in "aifm" "eden" "eden-basic"; do
-        for runcfg in "eden"; do
+        for runcfg in "aifm" "eden" "eden-basic"; do
+        # for runcfg in "eden" "eden-pr"; do
         
             LABEL=
             LS=
